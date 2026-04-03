@@ -36,5 +36,15 @@ namespace UniAI
         /// 扩展参数（Provider 特有参数）
         /// </summary>
         public Dictionary<string, object> ExtendedParams { get; set; }
+
+        /// <summary>
+        /// 工具定义列表
+        /// </summary>
+        public List<AITool> Tools { get; set; }
+
+        /// <summary>
+        /// 工具选择策略: "auto"/"any"/"none" 或指定工具名
+        /// </summary>
+        public string ToolChoice { get; set; }
     }
 }

@@ -107,8 +107,8 @@ namespace UniAI
                     }
                 }
 
-                // 检查请求结果
-                if (request.result != UnityWebRequest.Result.Success)
+                // 检查请求结果（HTTP 200 视为成功，SSE 流结束时连接关闭可能导致 result != Success）
+                if (request.result != UnityWebRequest.Result.Success && request.responseCode != 200)
                 {
                     AILogger.Error($"Stream HTTP {request.responseCode}: {request.error}");
                 }

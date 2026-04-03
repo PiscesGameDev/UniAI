@@ -19,5 +19,10 @@ namespace UniAI
         /// Token 使用量（仅最后一个块有值）
         /// </summary>
         public TokenUsage Usage { get; set; }
+
+        /// <summary>
+        /// 流式中的 Tool 调用（增量累积完成后填充）
+        /// </summary>
+        public AIToolCall ToolCall { get; set; }
     }
 }

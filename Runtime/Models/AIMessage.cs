@@ -46,5 +46,14 @@ namespace UniAI
             Role = AIRole.Assistant,
             Contents = { new AITextContent(text) }
         };
+
+        /// <summary>
+        /// 快捷创建 Tool 结果消息
+        /// </summary>
+        public static AIMessage ToolResult(string toolUseId, string content, bool isError = false) => new()
+        {
+            Role = AIRole.User,
+            Contents = { new AIToolResultContent { ToolUseId = toolUseId, Content = content, IsError = isError } }
+        };
     }
 }

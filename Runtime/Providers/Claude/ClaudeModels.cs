@@ -15,6 +15,8 @@ namespace UniAI.Providers.Claude
         [JsonProperty("system")] public string System;
         [JsonProperty("messages")] public List<ClaudeMessage> Messages;
         [JsonProperty("stream")] public bool Stream;
+        [JsonProperty("tools")] public List<ClaudeToolDef> Tools;
+        [JsonProperty("tool_choice")] public object ToolChoice;
     }
 
     [Serializable]
@@ -124,5 +126,56 @@ namespace UniAI.Providers.Claude
     {
         [JsonProperty("type")] public string Type;
         [JsonProperty("message")] public string Message;
+    }
+
+    // ─── Tool Models ───
+
+    [Serializable]
+    internal class ClaudeToolDef
+    {
+        [JsonProperty("name")] public string Name;
+        [JsonProperty("description")] public string Description;
+        [JsonProperty("input_schema")] public object InputSchema;
+    }
+
+    [Serializable]
+    internal class ClaudeToolUseBlock
+    {
+        [JsonProperty("type")] public string Type = "tool_use";
+        [JsonProperty("id")] public string Id;
+        [JsonProperty("name")] public string Name;
+        [JsonProperty("input")] public object Input;
+    }
+
+    [Serializable]
+    internal class ClaudeToolResultBlock
+    {
+        [JsonProperty("type")] public string Type = "tool_result";
+        [JsonProperty("tool_use_id")] public string ToolUseId;
+        [JsonProperty("content")] public string Content;
+        [JsonProperty("is_error")] public bool IsError;
+    }
+
+    [Serializable]
+    internal class ClaudeContentBlockStart
+    {
+        [JsonProperty("type")] public string Type;
+        [JsonProperty("index")] public int Index;
+        [JsonProperty("content_block")] public ClaudeContentBlockInfo ContentBlock;
+    }
+
+    [Serializable]
+    internal class ClaudeContentBlockInfo
+    {
+        [JsonProperty("type")] public string Type;
+        [JsonProperty("id")] public string Id;
+        [JsonProperty("name")] public string Name;
+    }
+
+    [Serializable]
+    internal class ClaudeInputJsonDelta
+    {
+        [JsonProperty("type")] public string Type;
+        [JsonProperty("partial_json")] public string PartialJson;
     }
 }

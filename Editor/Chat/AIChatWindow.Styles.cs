@@ -121,6 +121,19 @@ namespace UniAI.Editor.Chat
             _contextToggleOffStyle.normal.textColor = new Color(0.5f, 0.5f, 0.5f);
         }
 
+        private void EnsureToolCallStyle()
+        {
+            if (_toolCallStyle != null) return;
+            _toolCallStyle = new GUIStyle(EditorStyles.label)
+            {
+                fontSize = 11,
+                wordWrap = true,
+                richText = false,
+                padding = new RectOffset(4, 4, 2, 2)
+            };
+            _toolCallStyle.normal.textColor = new Color(0.6f, 0.8f, 0.65f);
+        }
+
         // ─── Drawing Helpers ───
 
         private static void EnsureSpinnerIcons()

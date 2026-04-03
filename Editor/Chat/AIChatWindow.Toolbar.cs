@@ -34,7 +34,7 @@ namespace UniAI.Editor.Chat
                 if (newIdx != _selectedProviderIndex)
                 {
                     _selectedProviderIndex = newIdx;
-                    EnsureClient();
+                    EnsureRunner();
                     if (_activeSession != null)
                         _activeSession.ProviderId = _config.Providers[_selectedProviderIndex].Id;
                 }
@@ -44,6 +44,28 @@ namespace UniAI.Editor.Chat
             {
                 GUILayout.Space(8);
                 GUILayout.Label(_config.Providers[_selectedProviderIndex].Model, EditorStyles.miniLabel);
+            }
+
+            GUILayout.Space(12);
+
+            // ─── Agent 选择 ───
+            if (_agentNames != null && _agentNames.Length > 0)
+            {
+                GUILayout.Label("Agent:", EditorStyles.miniLabel, GUILayout.Width(40));
+                int newAgentIdx = EditorGUILayout.Popup(_selectedAgentIndex, _agentNames,
+                    GUILayout.Width(100), GUILayout.Height(22));
+                if (newAgentIdx != _selectedAgentIndex)
+                {
+                    _selectedAgentIndex = newAgentIdx;
+                    EnsureRunner();
+                    if (_activeSession != null)
+                        _activeSession.AgentId = GetSelectedAgentId();
+                }
+            }
+
+            if (GUILayout.Button("...", EditorStyles.miniButton, GUILayout.Width(22), GUILayout.Height(22)))
+            {
+                AIAgentWindow.Open();
             }
 
             GUILayout.FlexibleSpace();

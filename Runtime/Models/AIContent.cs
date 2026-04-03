@@ -34,4 +34,26 @@ namespace UniAI
             MediaType = mediaType;
         }
     }
+
+    /// <summary>
+    /// AI 发起的 Tool 调用（出现在 assistant 消息中）
+    /// </summary>
+    public class AIToolUseContent : AIContent
+    {
+        public override string Type => "tool_use";
+        public string Id { get; set; }
+        public string Name { get; set; }
+        public string Arguments { get; set; }
+    }
+
+    /// <summary>
+    /// 用户回填的 Tool 执行结果（出现在 user 消息中）
+    /// </summary>
+    public class AIToolResultContent : AIContent
+    {
+        public override string Type => "tool_result";
+        public string ToolUseId { get; set; }
+        public string Content { get; set; }
+        public bool IsError { get; set; }
+    }
 }

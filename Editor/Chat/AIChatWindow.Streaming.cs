@@ -30,7 +30,7 @@ namespace UniAI.Editor.Chat
 
         private async UniTaskVoid StreamResponseAsync()
         {
-            if (_client == null)
+            if (_runner == null)
             {
                 AddErrorMessage("未配置 AI 提供商，请打开设置进行配置。");
                 return;
@@ -52,32 +52,74 @@ namespace UniAI.Editor.Chat
 
             try
             {
-                var request = BuildRequest();
+                var aiMessages = BuildAIMessages();
 
+                // 注入 Unity 上下文到消息列表
                 string context = ContextCollector.Collect(_contextSlots);
                 if (!string.IsNullOrEmpty(context))
                 {
-                    request.SystemPrompt = string.IsNullOrEmpty(request.SystemPrompt)
-                        ? context
-                        : request.SystemPrompt + "\n\n" + context;
+                    // 在用户消息前插入上下文作为系统提示补充
+                    aiMessages.Insert(0, AIMessage.User($"[Unity Context]\n{context}"));
+                    aiMessages.Insert(1, AIMessage.Assistant("收到上下文信息，我会结合这些信息回答你的问题。"));
                 }
 
                 var ct = _streamCts.Token;
-                await foreach (var chunk in _client.StreamAsync(request, ct))
+                await foreach (var evt in _runner.RunStreamAsync(aiMessages, ct))
                 {
                     if (ct.IsCancellationRequested) break;
 
-                    if (!string.IsNullOrEmpty(chunk.DeltaText))
+                    switch (evt.Type)
                     {
-                        assistantMsg.Content += chunk.DeltaText;
-                        _scrollToBottom = true;
-                        Repaint();
-                    }
+                        case AgentEventType.TextDelta:
+                            assistantMsg.Content += evt.Text;
+                            _scrollToBottom = true;
+                            Repaint();
+                            break;
 
-                    if (chunk.IsComplete && chunk.Usage != null)
-                    {
-                        assistantMsg.InputTokens = chunk.Usage.InputTokens;
-                        assistantMsg.OutputTokens = chunk.Usage.OutputTokens;
+                        case AgentEventType.ToolCallStart:
+                            _activeSession.Messages.Add(new ChatMessage
+                            {
+                                Role = AIRole.Assistant,
+                                IsToolCall = true,
+                                ToolName = evt.ToolCall?.Name ?? "unknown",
+                                ToolArguments = evt.ToolCall?.Arguments ?? "",
+                                Content = $"调用工具: {evt.ToolCall?.Name}",
+                                Timestamp = DateTimeOffset.UtcNow.ToUnixTimeSeconds()
+                            });
+                            _scrollToBottom = true;
+                            Repaint();
+                            break;
+
+                        case AgentEventType.ToolCallResult:
+                        {
+                            // 找到最近的 ToolCall 消息并更新结果
+                            for (int i = _activeSession.Messages.Count - 1; i >= 0; i--)
+                            {
+                                var m = _activeSession.Messages[i];
+                                if (m.IsToolCall && m.ToolName == evt.ToolName && string.IsNullOrEmpty(m.ToolResult))
+                                {
+                                    m.ToolResult = evt.ToolResult;
+                                    m.IsToolError = evt.IsToolError;
+                                    break;
+                                }
+                            }
+                            _scrollToBottom = true;
+                            Repaint();
+                            break;
+                        }
+
+                        case AgentEventType.TurnComplete:
+                            if (evt.Usage != null)
+                            {
+                                assistantMsg.InputTokens += evt.Usage.InputTokens;
+                                assistantMsg.OutputTokens += evt.Usage.OutputTokens;
+                            }
+                            break;
+
+                        case AgentEventType.Error:
+                            assistantMsg.Content += $"\n\n[错误: {evt.Text}]";
+                            Repaint();
+                            break;
                     }
                 }
             }
@@ -100,32 +142,29 @@ namespace UniAI.Editor.Chat
                 _history.Save(_activeSession);
                 Repaint();
 
-                if (_activeSession.Messages.Count == 2 && _activeSession.Title == "新对话")
+                if (_activeSession.Messages.Count >= 2 && _activeSession.Title == "新对话")
                     GenerateTitleAsync().Forget();
             }
         }
 
-        private AIRequest BuildRequest()
+        private List<AIMessage> BuildAIMessages()
         {
-            var request = new AIRequest
-            {
-                SystemPrompt = "You are a helpful Unity game development assistant. " +
-                    "Provide clear, concise answers. When showing code, use C# and Unity best practices.",
-                Messages = new List<AIMessage>()
-            };
+            var messages = new List<AIMessage>();
 
             foreach (var msg in _activeSession.Messages)
             {
                 if (msg.IsStreaming && string.IsNullOrEmpty(msg.Content))
                     continue;
+                if (msg.IsToolCall)
+                    continue; // Tool 调用消息是 UI 展示用，不作为对话消息发送
 
                 var aiMsg = msg.Role == AIRole.User
                     ? AIMessage.User(msg.Content)
                     : AIMessage.Assistant(msg.Content);
-                request.Messages.Add(aiMsg);
+                messages.Add(aiMsg);
             }
 
-            return request;
+            return messages;
         }
 
         private void CancelStream()
@@ -152,13 +191,27 @@ namespace UniAI.Editor.Chat
 
             try
             {
+                // 找到第一条用户消息和第一条 assistant 文本消息
+                string userText = null, assistantText = null;
+                foreach (var msg in _activeSession.Messages)
+                {
+                    if (msg.IsToolCall) continue;
+                    if (msg.Role == AIRole.User && userText == null)
+                        userText = msg.Content;
+                    else if (msg.Role == AIRole.Assistant && assistantText == null && !string.IsNullOrEmpty(msg.Content))
+                        assistantText = msg.Content;
+                    if (userText != null && assistantText != null) break;
+                }
+
+                if (userText == null || assistantText == null) return;
+
                 var titleRequest = new AIRequest
                 {
                     SystemPrompt = "Generate a short title (max 8 Chinese characters or 4 English words) for this conversation. Reply with ONLY the title, nothing else.",
                     Messages = new List<AIMessage>
                     {
-                        AIMessage.User(_activeSession.Messages[0].Content),
-                        AIMessage.Assistant(_activeSession.Messages[1].Content)
+                        AIMessage.User(userText),
+                        AIMessage.Assistant(assistantText)
                     },
                     MaxTokens = 32,
                     Temperature = 0.3f

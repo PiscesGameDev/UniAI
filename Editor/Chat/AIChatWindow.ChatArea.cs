@@ -135,6 +135,12 @@ namespace UniAI.Editor.Chat
 
         private void DrawMessage(ChatMessage msg, float areaWidth)
         {
+            if (msg.IsToolCall)
+            {
+                DrawToolCallMessage(msg, areaWidth);
+                return;
+            }
+
             bool isUser = msg.Role == AIRole.User;
             Color bgColor = isUser ? _userMsgBg : _assistantMsgBg;
             float maxContentWidth = areaWidth - MSG_HORIZONTAL_PAD * 2 - 32;
@@ -209,6 +215,69 @@ namespace UniAI.Editor.Chat
             EditorGUILayout.EndHorizontal();
 
             GUILayout.Space(6);
+            EditorGUILayout.EndVertical();
+        }
+
+        // ─── Tool Call Message ───
+
+        private void DrawToolCallMessage(ChatMessage msg, float areaWidth)
+        {
+            float maxContentWidth = areaWidth - MSG_HORIZONTAL_PAD * 2 - 32;
+
+            EditorGUILayout.BeginVertical();
+            GUILayout.Space(4);
+
+            EditorGUILayout.BeginHorizontal();
+            GUILayout.Space(MSG_HORIZONTAL_PAD + 20); // 缩进，表示是 assistant 的子操作
+
+            var contentRect = EditorGUILayout.BeginVertical();
+            if (contentRect.width > 1)
+            {
+                var bubbleRect = new Rect(
+                    contentRect.x - 6,
+                    contentRect.y - 3,
+                    contentRect.width + 12,
+                    contentRect.height + 6);
+                DrawRoundedRect(bubbleRect, _toolCallBg, MSG_BUBBLE_RADIUS);
+            }
+
+            GUILayout.Space(2);
+
+            // 工具名称行
+            string statusIcon = string.IsNullOrEmpty(msg.ToolResult)
+                ? "..."
+                : (msg.IsToolError ? "x" : "v");
+            string header = $"[{statusIcon}] Tool: {msg.ToolName}";
+
+            EnsureToolCallStyle();
+            GUILayout.Label(header, _toolCallStyle, GUILayout.MaxWidth(maxContentWidth));
+
+            // 参数（折叠显示）
+            if (!string.IsNullOrEmpty(msg.ToolArguments))
+            {
+                var argsDisplay = msg.ToolArguments.Length > 120
+                    ? msg.ToolArguments.Substring(0, 120) + "..."
+                    : msg.ToolArguments;
+                GUILayout.Label($"  Args: {argsDisplay}", EditorStyles.miniLabel, GUILayout.MaxWidth(maxContentWidth));
+            }
+
+            // 结果
+            if (!string.IsNullOrEmpty(msg.ToolResult))
+            {
+                var resultDisplay = msg.ToolResult.Length > 200
+                    ? msg.ToolResult.Substring(0, 200) + "..."
+                    : msg.ToolResult;
+                var resultStyle = msg.IsToolError ? EditorStyles.miniLabel : EditorStyles.miniLabel;
+                GUILayout.Label($"  Result: {resultDisplay}", resultStyle, GUILayout.MaxWidth(maxContentWidth));
+            }
+
+            GUILayout.Space(2);
+            EditorGUILayout.EndVertical();
+
+            GUILayout.Space(MSG_HORIZONTAL_PAD);
+            EditorGUILayout.EndHorizontal();
+
+            GUILayout.Space(4);
             EditorGUILayout.EndVertical();
         }
     }

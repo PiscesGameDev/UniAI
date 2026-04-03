@@ -1,5 +1,4 @@
 using System;
-using UnityEditor;
 using UnityEngine;
 
 namespace UniAI.Editor.Chat
@@ -26,6 +25,7 @@ namespace UniAI.Editor.Chat
                 ? _config.Providers[_selectedProviderIndex].Id
                 : "";
             _activeSession = ChatSession.Create(providerId);
+            _activeSession.AgentId = GetSelectedAgentId();
             _chatScroll = Vector2.zero;
             _inputText = "";
             GUI.FocusControl("ChatInput");
@@ -44,7 +44,7 @@ namespace UniAI.Editor.Chat
                     if (_config.Providers[i].Id == session.ProviderId)
                     {
                         _selectedProviderIndex = i;
-                        EnsureClient();
+                        EnsureRunner();
                         break;
                     }
                 }
@@ -52,6 +52,34 @@ namespace UniAI.Editor.Chat
         }
 
         // ─── Client Management ───
+
+        private void EnsureRunner()
+        {
+            EnsureClient();
+            if (_client == null)
+            {
+                _runner = null;
+                return;
+            }
+
+            var agent = GetSelectedAgent();
+            _runner = new AIAgentRunner(_client, agent);
+        }
+
+        private AgentDefinition GetSelectedAgent()
+        {
+            if (_availableAgents == null || _availableAgents.Count == 0)
+                return AgentManager.DefaultAgent;
+            if (_selectedAgentIndex >= _availableAgents.Count)
+                _selectedAgentIndex = 0;
+            return _availableAgents[_selectedAgentIndex];
+        }
+
+        private string GetSelectedAgentId()
+        {
+            var agent = GetSelectedAgent();
+            return agent == AgentManager.DefaultAgent ? "" : agent.name;
+        }
 
         private void EnsureClient()
         {

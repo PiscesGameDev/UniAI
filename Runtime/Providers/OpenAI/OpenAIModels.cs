@@ -14,6 +14,8 @@ namespace UniAI.Providers.OpenAI
         [JsonProperty("max_tokens")] public int MaxTokens;
         [JsonProperty("temperature")] public float Temperature;
         [JsonProperty("stream")] public bool Stream;
+        [JsonProperty("tools")] public List<OpenAIToolDef> Tools;
+        [JsonProperty("tool_choice")] public object ToolChoice;
     }
 
     [Serializable]
@@ -21,6 +23,8 @@ namespace UniAI.Providers.OpenAI
     {
         [JsonProperty("role")] public string Role;
         [JsonProperty("content")] public object Content;
+        [JsonProperty("tool_call_id")] public string ToolCallId;
+        [JsonProperty("tool_calls")] public List<OpenAIToolCallMsg> ToolCallsOut;
     }
 
     [Serializable]
@@ -66,6 +70,7 @@ namespace UniAI.Providers.OpenAI
     {
         [JsonProperty("role")] public string Role;
         [JsonProperty("content")] public string Content;
+        [JsonProperty("tool_calls")] public List<OpenAIToolCallMsg> ToolCalls;
     }
 
     [Serializable]
@@ -99,6 +104,47 @@ namespace UniAI.Providers.OpenAI
     {
         [JsonProperty("role")] public string Role;
         [JsonProperty("content")] public string Content;
+        [JsonProperty("tool_calls")] public List<OpenAIStreamToolCall> ToolCalls;
+    }
+
+    // ─── Tool Models ───
+
+    [Serializable]
+    internal class OpenAIToolDef
+    {
+        [JsonProperty("type")] public string Type = "function";
+        [JsonProperty("function")] public OpenAIFunctionDef Function;
+    }
+
+    [Serializable]
+    internal class OpenAIFunctionDef
+    {
+        [JsonProperty("name")] public string Name;
+        [JsonProperty("description")] public string Description;
+        [JsonProperty("parameters")] public object Parameters;
+    }
+
+    [Serializable]
+    internal class OpenAIToolCallMsg
+    {
+        [JsonProperty("id")] public string Id;
+        [JsonProperty("type")] public string Type;
+        [JsonProperty("function")] public OpenAIFunctionCall Function;
+    }
+
+    [Serializable]
+    internal class OpenAIFunctionCall
+    {
+        [JsonProperty("name")] public string Name;
+        [JsonProperty("arguments")] public string Arguments;
+    }
+
+    [Serializable]
+    internal class OpenAIStreamToolCall
+    {
+        [JsonProperty("index")] public int Index;
+        [JsonProperty("id")] public string Id;
+        [JsonProperty("function")] public OpenAIFunctionCall Function;
     }
 
     // ─── Error Models ───

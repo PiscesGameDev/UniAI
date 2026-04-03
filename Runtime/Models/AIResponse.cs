@@ -1,3 +1,5 @@
+using System.Collections.Generic;
+
 namespace UniAI
 {
     /// <summary>
@@ -34,6 +36,16 @@ namespace UniAI
         /// 原始响应 JSON（调试用）
         /// </summary>
         public string RawResponse { get; set; }
+
+        /// <summary>
+        /// AI 请求的 Tool 调用列表
+        /// </summary>
+        public List<AIToolCall> ToolCalls { get; set; }
+
+        /// <summary>
+        /// 是否包含 Tool 调用
+        /// </summary>
+        public bool HasToolCalls => ToolCalls?.Count > 0;
 
         public static AIResponse Success(string text, TokenUsage usage = null, string stopReason = null, string rawResponse = null) => new()
         {

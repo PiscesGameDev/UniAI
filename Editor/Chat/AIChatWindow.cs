@@ -1,7 +1,5 @@
-using System;
 using System.Collections.Generic;
 using System.Threading;
-using Cysharp.Threading.Tasks;
 using UnityEditor;
 using UnityEngine;
 
@@ -38,11 +36,13 @@ namespace UniAI.Editor.Chat
         private static readonly Color _guideCardBg = new(0.22f, 0.24f, 0.28f);
         private static readonly Color _guideCardHoverBg = new(0.26f, 0.28f, 0.33f);
         private static readonly Color _contextBarBg = new(0.19f, 0.19f, 0.21f);
+        private static readonly Color _toolCallBg = new(0.20f, 0.25f, 0.22f);
 
         // ─── State ───
 
         private AIConfig _config;
         private AIClient _client;
+        private AIAgentRunner _runner;
         private ChatHistory _history;
         private ChatSession _activeSession;
         private string _inputText = "";
@@ -55,6 +55,12 @@ namespace UniAI.Editor.Chat
         private bool _scrollToBottom;
         private int _selectedProviderIndex;
         private bool _showActionBar;
+
+        // ─── Agent State ───
+
+        private List<AgentDefinition> _availableAgents;
+        private string[] _agentNames;
+        private int _selectedAgentIndex;
 
         // Spinner state
         private double _spinnerStartTime;
@@ -79,6 +85,7 @@ namespace UniAI.Editor.Chat
         private GUIStyle _welcomeSubStyle;
         private GUIStyle _contextToggleOnStyle;
         private GUIStyle _contextToggleOffStyle;
+        private GUIStyle _toolCallStyle;
         private bool _stylesReady;
 
         // ─── Provider Cache ───
@@ -103,7 +110,8 @@ namespace UniAI.Editor.Chat
             _history = new ChatHistory();
             _history.Load();
             RebuildProviderCache();
-            EnsureClient();
+            RebuildAgentCache();
+            EnsureRunner();
             EditorApplication.update += OnEditorUpdate;
         }
 
@@ -154,6 +162,14 @@ namespace UniAI.Editor.Chat
             GUILayout.EndArea();
 
             HandleInputShortcuts();
+        }
+
+        // ─── Agent Cache ───
+
+        private void RebuildAgentCache()
+        {
+            _availableAgents = AgentManager.GetAllAgents();
+            _agentNames = AgentManager.GetAgentNames(_availableAgents);
         }
     }
 }
