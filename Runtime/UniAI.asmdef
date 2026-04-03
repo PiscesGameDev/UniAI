@@ -1,0 +1,17 @@
+{
+  "name": "UniAI",
+  "rootNamespace": "UniAI",
+  "references": [
+    "UniTask",
+    "UniTask.Linq"
+  ],
+  "includePlatforms": [],
+  "excludePlatforms": [],
+  "allowUnsafeCode": false,
+  "overrideReferences": false,
+  "precompiledReferences": [],
+  "autoReferenced": true,
+  "defineConstraints": [],
+  "versionDefines": [],
+  "noEngineReferences": false
+}

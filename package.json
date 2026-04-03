@@ -1,0 +1,8 @@
+{
+  "name": "com.uniai.core",
+  "version": "0.0.1",
+  "displayName": "UniAI",
+  "description": "Unity AI interaction framework supporting multiple providers (Claude, OpenAI), multimodal input, and SSE streaming.",
+  "unity": "2022.3",
+  "dependencies": {}
+}

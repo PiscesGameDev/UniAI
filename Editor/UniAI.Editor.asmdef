@@ -1,0 +1,20 @@
+{
+  "name": "UniAI.Editor",
+  "rootNamespace": "UniAI.Editor",
+  "references": [
+    "UniAI",
+    "UniTask",
+    "UniTask.Linq"
+  ],
+  "includePlatforms": [
+    "Editor"
+  ],
+  "excludePlatforms": [],
+  "allowUnsafeCode": false,
+  "overrideReferences": false,
+  "precompiledReferences": [],
+  "autoReferenced": true,
+  "defineConstraints": [],
+  "versionDefines": [],
+  "noEngineReferences": false
+}
