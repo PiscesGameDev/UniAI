@@ -136,7 +136,7 @@ namespace UniAI.Editor.Chat
         {
             while (_sessions.Count > MAX_SESSIONS)
             {
-                var oldest = _sessions[_sessions.Count - 1];
+                var oldest = _sessions[^1];
                 string path = GetPath(oldest.Id);
                 if (File.Exists(path))
                     File.Delete(path);

@@ -164,7 +164,7 @@ namespace UniAI.Editor
 
             // Status dot
             _dotStyle.normal.textColor = GetDotColor(entry.Id);
-            GUILayout.Label("\u25cf", _dotStyle, GUILayout.Width(16), GUILayout.Height(36));
+            GUILayout.Label("●", _dotStyle, GUILayout.Width(16), GUILayout.Height(36));
 
             GUILayout.Space(6);
             EditorGUILayout.EndHorizontal();
@@ -261,11 +261,11 @@ namespace UniAI.Editor
             {
                 var s = new GUIStyle(EditorStyles.miniLabel);
                 s.normal.textColor = _greenDot;
-                GUILayout.Label("\u2714 Connected", s);
+                GUILayout.Label("✔ Connected", s);
                 GUILayout.Space(4);
             }
 
-            if (GUILayout.Button("\u2699", EditorStyles.miniButton, GUILayout.Width(24))) { }
+            if (GUILayout.Button("⚙", EditorStyles.miniButton, GUILayout.Width(24))) { }
             EditorGUILayout.EndHorizontal();
 
             GUILayout.Space(6);
@@ -353,7 +353,7 @@ namespace UniAI.Editor
                 var eyeIcon = isVisible ? _eyeOpenIcon : _eyeCloseIcon;
                 bool clicked = eyeIcon != null
                     ? GUILayout.Button(new GUIContent(eyeIcon), GUILayout.Width(26), GUILayout.Height(18))
-                    : GUILayout.Button(isVisible ? "\u25c9" : "\u25ce", GUILayout.Width(26));
+                    : GUILayout.Button(isVisible ? "◉" : "◎", GUILayout.Width(26));
 
                 if (clicked)
                 {
@@ -378,7 +378,7 @@ namespace UniAI.Editor
             {
                 EditorGUILayout.BeginHorizontal();
                 GUILayout.Space(LabelWidth + 4);
-                EditorGUILayout.LabelField($"\u26a0 {err}", _errorStyle);
+                EditorGUILayout.LabelField($"⚠ {err}", _errorStyle);
                 EditorGUILayout.EndHorizontal();
             }
         }
