@@ -1,0 +1,56 @@
+name: Publish UPM Package
+
+on:
+  push:
+    tags:
+      - '*'
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write  # 确保有写入权限
+    
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+          
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '16'
+          
+      - name: Extract tag version
+        id: get_version
+        run: echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+        
+      - name: Create package manifest
+        run: |
+          # 读取 package.json 内容
+          PACKAGE_JSON=$(cat package.json)
+          PACKAGE_NAME=$(echo $PACKAGE_JSON | jq -r '.name')
+          PACKAGE_VERSION=${{ steps.get_version.outputs.VERSION }}
+          
+          # 创建注册表目录结构
+          mkdir -p .upm-registry/$PACKAGE_NAME
+          
+          # 创建版本文件
+          echo $PACKAGE_JSON | jq ".version = \"$PACKAGE_VERSION\"" > .upm-registry/$PACKAGE_NAME/$PACKAGE_VERSION.json
+          
+          # 创建索引文件
+          echo '{"packages":{}}' > .upm-registry/index.json
+          jq --arg name "$PACKAGE_NAME" \
+            --arg version "$PACKAGE_VERSION" \
+            '.packages[$name] = {"versions":{($version):{}}}' .upm-registry/index.json > temp.json
+          mv temp.json .upm-registry/index.json
+          
+      - name: Deploy to GitHub Pages
+        uses: peaceiris/actions-gh-pages@v3
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: .upm-registry
+          publish_branch: gh-pages  # 明确指定分支
+          keep_files: true
+          force_orphan: true  # 每次部署都清空历史文件，确保注册表干净
