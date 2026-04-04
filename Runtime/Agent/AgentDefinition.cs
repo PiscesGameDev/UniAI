@@ -11,6 +11,7 @@ namespace UniAI
     public class AgentDefinition : ScriptableObject
     {
         [SerializeField] private string _agentName = "助手";
+        [SerializeField] private string _description;
         [SerializeField, TextArea(3, 10)] private string _systemPrompt;
         [SerializeField] private Texture2D _icon;
         [SerializeField, Range(0f, 1f)] private float _temperature = 0.7f;
@@ -22,6 +23,11 @@ namespace UniAI
         /// Agent 显示名称
         /// </summary>
         public string AgentName => _agentName;
+
+        /// <summary>
+        /// 职责描述
+        /// </summary>
+        public string Description => _description;
 
         /// <summary>
         /// 系统提示词（角色设定）

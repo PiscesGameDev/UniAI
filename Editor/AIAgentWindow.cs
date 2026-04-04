@@ -12,9 +12,7 @@ namespace UniAI.Editor
     public class AIAgentWindow : EditorWindow
     {
         private const float LeftPanelWidth = 200f;
-        private const float LabelWidth = 100f;
         private const float Pad = 10f;
-        private const float SystemPromptHeight = 400f;
         private const string DefaultAgentDir = "Assets/UniAI/Agents";
 
         // Colors
@@ -25,6 +23,7 @@ namespace UniAI.Editor
         private int _selectedIndex;
         private Vector2 _rightScroll;
         private SerializedObject _serializedAgent;
+        private UnityEditor.Editor _cachedEditor;
 
         // Styles
         private GUIStyle _titleStyle;
@@ -47,12 +46,19 @@ namespace UniAI.Editor
             RefreshAgentList();
         }
 
+        private void OnDisable()
+        {
+            if (_cachedEditor != null) DestroyImmediate(_cachedEditor);
+        }
+
         private void RefreshAgentList()
         {
             _agents = AgentManager.GetAllAgents();
             if (_selectedIndex >= _agents.Count)
                 _selectedIndex = Mathf.Max(0, _agents.Count - 1);
-            _serializedAgent = null; // 强制重建
+            _serializedAgent = null;
+            if (_cachedEditor != null) DestroyImmediate(_cachedEditor);
+            _cachedEditor = null;
         }
 
         private bool IsDefaultAgent(AgentDefinition agent)
@@ -163,7 +169,9 @@ namespace UniAI.Editor
                 else
                 {
                     _selectedIndex = index;
-                    _serializedAgent = null; // 切换选中时重建
+                    _serializedAgent = null;
+                    if (_cachedEditor != null) DestroyImmediate(_cachedEditor);
+                    _cachedEditor = null;
                 }
 
                 Event.current.Use();
@@ -208,82 +216,33 @@ namespace UniAI.Editor
 
         private void DrawAgentDetail(AgentDefinition agent, bool isReadonly)
         {
-            // 确保 SerializedObject
-            if (_serializedAgent == null || _serializedAgent.targetObject != agent)
-                _serializedAgent = new SerializedObject(agent);
-
-            _serializedAgent.Update();
-
-            // Header
-            string headerLabel = isReadonly ? "默认助手 (内置)" : $"{agent.AgentName ?? agent.name} 配置";
+            // Header: 标题 + 开始对话按钮
             EditorGUILayout.BeginHorizontal();
             GUILayout.Space(Pad);
+            string headerLabel = isReadonly ? "默认助手 (内置)" : $"{agent.AgentName ?? agent.name} 配置";
             GUILayout.Label(headerLabel, _sectionTitleStyle);
             GUILayout.FlexibleSpace();
+            if (GUILayout.Button("开启对话", GUILayout.Height(24), GUILayout.Width(100)))
+                OpenChatWithAgent(agent);
             GUILayout.Space(Pad);
             EditorGUILayout.EndHorizontal();
 
             GUILayout.Space(8);
 
+            // 使用 CustomEditor 绘制
+            if (_serializedAgent == null || _serializedAgent.targetObject != agent)
+            {
+                _serializedAgent = new SerializedObject(agent);
+                if (_cachedEditor != null) DestroyImmediate(_cachedEditor);
+                _cachedEditor = UnityEditor.Editor.CreateEditor(agent);
+            }
+
             EditorGUI.BeginDisabledGroup(isReadonly);
 
-            // 基本信息 Section
-            DrawSection(() =>
-            {
-                GUILayout.Label("基本信息", _sectionTitleStyle);
-                GUILayout.Space(6);
-
-                DrawPropertyField("名称", "_agentName");
-                DrawPropertyField("图标", "_icon");
-
-                GUILayout.Space(4);
-                GUILayout.Label("System Prompt:", EditorStyles.boldLabel);
-                var promptProp = _serializedAgent.FindProperty("_systemPrompt");
-                EditorGUILayout.PropertyField(promptProp, GUIContent.none, GUILayout.MinHeight(isReadonly ? 60 : SystemPromptHeight));
-            });
-
-            GUILayout.Space(8);
-
-            // 参数 Section
-            DrawSection(() =>
-            {
-                GUILayout.Label("参数设置", _sectionTitleStyle);
-                GUILayout.Space(6);
-
-                var tempProp = _serializedAgent.FindProperty("_temperature");
-                EditorGUILayout.BeginHorizontal();
-                EditorGUILayout.LabelField("Temperature", GUILayout.Width(LabelWidth));
-                tempProp.floatValue = EditorGUILayout.Slider(tempProp.floatValue, 0f, 1f);
-                EditorGUILayout.EndHorizontal();
-
-                var maxTokensProp = _serializedAgent.FindProperty("_maxTokens");
-                EditorGUILayout.BeginHorizontal();
-                EditorGUILayout.LabelField("Max Tokens", GUILayout.Width(LabelWidth));
-                maxTokensProp.intValue = EditorGUILayout.IntField(maxTokensProp.intValue);
-                EditorGUILayout.EndHorizontal();
-
-                var maxTurnsProp = _serializedAgent.FindProperty("_maxTurns");
-                EditorGUILayout.BeginHorizontal();
-                EditorGUILayout.LabelField("Max Turns", GUILayout.Width(LabelWidth));
-                maxTurnsProp.intValue = EditorGUILayout.IntSlider(maxTurnsProp.intValue, 1, 50);
-                EditorGUILayout.EndHorizontal();
-            });
-
-            GUILayout.Space(8);
-
-            // 工具列表 Section
-            DrawSection(() =>
-            {
-                GUILayout.Label("工具列表", _sectionTitleStyle);
-                GUILayout.Space(6);
-
-                var toolsProp = _serializedAgent.FindProperty("_tools");
-                EditorGUILayout.PropertyField(toolsProp, new GUIContent("Tools"), true);
-            });
+            if (_cachedEditor != null)
+                _cachedEditor.OnInspectorGUI();
 
             EditorGUI.EndDisabledGroup();
-
-            _serializedAgent.ApplyModifiedProperties();
 
             if (isReadonly)
             {
@@ -295,34 +254,7 @@ namespace UniAI.Editor
                 EditorGUILayout.EndHorizontal();
             }
 
-            GUILayout.Space(12);
-
-            // 底部操作
-            EditorGUILayout.BeginHorizontal();
-            GUILayout.FlexibleSpace();
-            if (GUILayout.Button("开启对话", GUILayout.Height(28), GUILayout.Width(120)))
-                OpenChatWithAgent(agent);
-
             GUILayout.Space(Pad);
-            EditorGUILayout.EndHorizontal();
-
-            GUILayout.Space(Pad);
-        }
-
-        // ────────────────────────────── Helpers ──────────────────────────────
-
-        private void DrawSection(System.Action drawContent)
-        {
-            EditorGUIHelper.DrawSection(Pad, drawContent);
-        }
-
-        private void DrawPropertyField(string label, string propertyName)
-        {
-            var prop = _serializedAgent.FindProperty(propertyName);
-            EditorGUILayout.BeginHorizontal();
-            EditorGUILayout.LabelField(label, GUILayout.Width(LabelWidth));
-            EditorGUILayout.PropertyField(prop, GUIContent.none);
-            EditorGUILayout.EndHorizontal();
         }
 
         // ────────────────────────────── Create / Delete ──────────────────────────────

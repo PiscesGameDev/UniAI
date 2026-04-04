@@ -12,7 +12,7 @@ namespace UniAI.Editor
     /// </summary>
     public class AIChannelWindow : EditorWindow
     {
-        private const float LeftPanelWidth = 200f;
+        private const float LeftPanelWidth = 140f;
         private const float LabelWidth = 100f;
         private const float Pad = 10f;
         private const string IconsDir = "Assets/UniAI/Editor/Icons";
@@ -21,7 +21,6 @@ namespace UniAI.Editor
         private static readonly Color _greenDot = new(0.3f, 0.85f, 0.4f);
         private static readonly Color _greyDot = new(0.45f, 0.45f, 0.45f);
         private static readonly Color _orangeDot = new(0.92f, 0.65f, 0.1f);
-        private static readonly Color _blueLink = new(0.4f, 0.72f, 1f);
         private static readonly Color _yellowDot = new(0.95f, 0.9f, 0.3f);
 
         // State
@@ -47,9 +46,7 @@ namespace UniAI.Editor
         // Styles
         private GUIStyle _titleStyle;
         private GUIStyle _channelTitleStyle;
-        private GUIStyle _statusLinkStyle;
         private GUIStyle _errorStyle;
-        private GUIStyle _dotStyle;
         private GUIStyle _addBtnStyle;
         private GUIStyle _modelNameStyle;
         private bool _stylesReady;
@@ -141,32 +138,23 @@ namespace UniAI.Editor
         {
             var entry = _config.Providers[index];
             bool isSelected = _selectedIndex == index;
-            var rect = EditorGUILayout.BeginHorizontal(GUILayout.Height(32));
+            var rect = EditorGUILayout.BeginHorizontal(GUILayout.Height(30));
 
             if (rect.width > 1)
                 EditorGUI.DrawRect(rect, isSelected ? EditorGUIHelper.ItemSelectedBg : EditorGUIHelper.ItemBg);
 
-            GUILayout.Space(Pad);
+            GUILayout.Space(Pad + 4);
 
-            var newEnabled = EditorGUILayout.Toggle(entry.Enabled, GUILayout.Width(16), GUILayout.Height(32));
-            if (newEnabled != entry.Enabled)
-            {
-                entry.Enabled = newEnabled;
-                AIConfigManager.SaveConfig(_config);
-            }
+            // 用文字明度区分启用/未启用
+            var oldColor = GUI.contentColor;
+            if (!entry.Enabled)
+                GUI.contentColor = new Color(1f, 1f, 1f, 0.35f);
 
-            GUILayout.Space(4);
+            GUILayout.Label(entry.Name ?? entry.Id, EditorStyles.label, GUILayout.Height(30));
 
-            EditorGUI.BeginDisabledGroup(!entry.Enabled);
-            GUILayout.Label(entry.Name ?? entry.Id, EditorStyles.label, GUILayout.Height(32));
-            EditorGUI.EndDisabledGroup();
+            GUI.contentColor = oldColor;
 
             GUILayout.FlexibleSpace();
-
-            // Aggregated status dot
-            _dotStyle.normal.textColor = entry.Enabled ? GetChannelDotColor(entry) : _greyDot;
-            GUILayout.Label("●", _dotStyle, GUILayout.Width(16), GUILayout.Height(32));
-
             GUILayout.Space(6);
             EditorGUILayout.EndHorizontal();
 
@@ -183,32 +171,27 @@ namespace UniAI.Editor
         }
 
         /// <summary>
-        /// 聚合渠道下所有模型的测试状态
+        /// 聚合渠道下所有模型的测试状态文本
         /// </summary>
-        private Color GetChannelDotColor(ChannelEntry entry)
+        private string GetChannelModelStatusText(ChannelEntry entry)
         {
-            if (entry.Models == null || entry.Models.Count == 0) return _greyDot;
+            if (entry.Models == null || entry.Models.Count == 0) return "";
 
-            bool anyTesting = false, anySuccess = false, anyFail = false, allTested = true;
+            int total = entry.Models.Count;
+            int ok = 0, fail = 0, testing = 0;
             foreach (var modelId in entry.Models)
             {
                 var key = ModelKey(entry.Id, modelId);
-                if (!_modelResults.TryGetValue(key, out var r))
-                {
-                    allTested = false;
-                    continue;
-                }
-                if (r.IsTesting) anyTesting = true;
-                else if (r.IsSuccess == true) anySuccess = true;
-                else if (r.IsSuccess == false) anyFail = true;
-                else allTested = false;
+                if (!_modelResults.TryGetValue(key, out var r)) continue;
+                if (r.IsTesting) testing++;
+                else if (r.IsSuccess == true) ok++;
+                else if (r.IsSuccess == false) fail++;
             }
 
-            if (anyTesting) return _yellowDot;
-            if (anyFail) return _orangeDot;
-            if (anySuccess && allTested) return _greenDot;
-            if (anySuccess) return _greenDot; // partial success
-            return _greyDot;
+            if (testing > 0) return "测试中...";
+            if (ok == 0 && fail == 0) return "";
+            if (fail > 0) return $"{ok}/{total} 在线";
+            return $"全部在线 ({ok})";
         }
 
         // ────────────────────────────── Right Panel ──────────────────────────────
@@ -220,9 +203,6 @@ namespace UniAI.Editor
             EditorGUILayout.BeginHorizontal();
             GUILayout.Space(Pad);
             GUILayout.Label("渠道管理", _titleStyle);
-            GUILayout.FlexibleSpace();
-            GUILayout.Label("系统状态: ", EditorStyles.miniLabel);
-            GUILayout.Label(GetSystemStatusText(), _statusLinkStyle);
             GUILayout.Space(Pad);
             EditorGUILayout.EndHorizontal();
 
@@ -394,7 +374,16 @@ namespace UniAI.Editor
 
         private void DrawModelDiagnostics(ChannelEntry entry)
         {
+            EditorGUILayout.BeginHorizontal();
             GUILayout.Label("模型诊断", _channelTitleStyle);
+            var statusText = GetChannelModelStatusText(entry);
+            if (!string.IsNullOrEmpty(statusText))
+            {
+                GUILayout.Space(8);
+                GUILayout.Label(statusText, EditorStyles.miniLabel);
+            }
+            GUILayout.FlexibleSpace();
+            EditorGUILayout.EndHorizontal();
             GUILayout.Space(6);
 
             bool hasApiKey = HasApiKey(entry);
@@ -741,6 +730,18 @@ namespace UniAI.Editor
         {
             var entry = _config.Providers[index];
             var menu = new GenericMenu();
+
+            // 启用/禁用
+            var toggleLabel = entry.Enabled ? "禁用" : "启用";
+            menu.AddItem(new GUIContent(toggleLabel), false, () =>
+            {
+                entry.Enabled = !entry.Enabled;
+                AIConfigManager.SaveConfig(_config);
+                Repaint();
+            });
+
+            menu.AddSeparator("");
+
             menu.AddItem(new GUIContent($"移除「{entry.Name}」"), false, () =>
             {
                 // Clean up model results for this channel
@@ -766,29 +767,6 @@ namespace UniAI.Editor
             return !string.IsNullOrEmpty(AIConfigManager.GetEffectiveApiKey(entry));
         }
 
-        private string GetSystemStatusText()
-        {
-            int totalModels = 0, testedOk = 0, configured = 0;
-            foreach (var entry in _config.Providers)
-            {
-                if (!HasApiKey(entry)) continue;
-                configured++;
-                if (entry.Models == null) continue;
-                foreach (var modelId in entry.Models)
-                {
-                    totalModels++;
-                    var key = ModelKey(entry.Id, modelId);
-                    if (_modelResults.TryGetValue(key, out var r) && r.IsSuccess == true)
-                        testedOk++;
-                }
-            }
-
-            if (configured == 0) return "未配置渠道";
-            if (totalModels == 0) return "未配置模型";
-            if (testedOk == totalModels && testedOk > 0) return $"全部在线 ({testedOk}/{totalModels})";
-            if (testedOk > 0) return $"{testedOk}/{totalModels} 模型在线";
-            return $"{configured} 渠道已配置";
-        }
 
         private void EnsureStyles()
         {
@@ -798,13 +776,9 @@ namespace UniAI.Editor
             _titleStyle = new GUIStyle(EditorStyles.boldLabel) { fontSize = 16 };
             _channelTitleStyle = new GUIStyle(EditorStyles.boldLabel) { fontSize = 13 };
 
-            _statusLinkStyle = new GUIStyle(EditorStyles.miniLabel);
-            _statusLinkStyle.normal.textColor = _blueLink;
-
             _errorStyle = new GUIStyle(EditorStyles.miniLabel) { wordWrap = true };
             _errorStyle.normal.textColor = _orangeDot;
 
-            _dotStyle = new GUIStyle(EditorStyles.label) { fontSize = 10, alignment = TextAnchor.MiddleCenter };
             _addBtnStyle = new GUIStyle(GUI.skin.button) { alignment = TextAnchor.MiddleCenter };
             _modelNameStyle = new GUIStyle(EditorStyles.label) { fontSize = 11 };
         }
