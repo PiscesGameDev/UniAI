@@ -26,24 +26,20 @@ namespace UniAI.Editor.Chat
 
             GUILayout.Space(12);
 
-            if (_providerNames != null && _providerNames.Length > 0)
+            // ─── 模型选择 ───
+            if (_modelNames != null && _modelNames.Length > 0)
             {
-                GUILayout.Label("提供商:", EditorStyles.miniLabel, GUILayout.Width(52));
-                int newIdx = EditorGUILayout.Popup(_selectedProviderIndex, _providerNames,
-                    GUILayout.Width(120), GUILayout.Height(22));
-                if (newIdx != _selectedProviderIndex)
+                GUILayout.Label("模型:", EditorStyles.miniLabel, GUILayout.Width(36));
+                int newIdx = EditorGUILayout.Popup(_selectedModelIndex, _modelNames,
+                    GUILayout.Width(180), GUILayout.Height(22));
+                if (newIdx != _selectedModelIndex)
                 {
-                    _selectedProviderIndex = newIdx;
+                    _selectedModelIndex = newIdx;
+                    _currentModelId = _modelEntries[newIdx].ModelId;
                     EnsureRunner();
                     if (_activeSession != null)
-                        _activeSession.ProviderId = _config.Providers[_selectedProviderIndex].Id;
+                        _activeSession.ModelId = _currentModelId;
                 }
-            }
-
-            if (_selectedProviderIndex < _config.Providers.Count)
-            {
-                GUILayout.Space(8);
-                GUILayout.Label(_config.Providers[_selectedProviderIndex].Model, EditorStyles.miniLabel);
             }
 
             GUILayout.Space(12);

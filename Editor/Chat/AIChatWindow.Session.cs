@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using UnityEngine;
 
 namespace UniAI.Editor.Chat
@@ -21,10 +22,8 @@ namespace UniAI.Editor.Chat
 
         private void CreateNewSession()
         {
-            string providerId = _config.Providers.Count > _selectedProviderIndex
-                ? _config.Providers[_selectedProviderIndex].Id
-                : "";
-            _activeSession = ChatSession.Create(providerId);
+            string modelId = _currentModelId ?? "";
+            _activeSession = ChatSession.Create(modelId);
             _activeSession.AgentId = GetSelectedAgentId();
             _chatScroll = Vector2.zero;
             GUI.FocusControl("ChatInput");
@@ -36,13 +35,15 @@ namespace UniAI.Editor.Chat
             _activeSession = session;
             _chatScroll.y = float.MaxValue;
 
-            if (!string.IsNullOrEmpty(session.ProviderId))
+            // 恢复 Session 记录的模型选择
+            if (!string.IsNullOrEmpty(session.ModelId) && _modelEntries != null)
             {
-                for (int i = 0; i < _config.Providers.Count; i++)
+                for (int i = 0; i < _modelEntries.Count; i++)
                 {
-                    if (_config.Providers[i].Id == session.ProviderId)
+                    if (_modelEntries[i].ModelId == session.ModelId)
                     {
-                        _selectedProviderIndex = i;
+                        _selectedModelIndex = i;
+                        _currentModelId = session.ModelId;
                         EnsureRunner();
                         break;
                     }
@@ -82,27 +83,20 @@ namespace UniAI.Editor.Chat
 
         private void EnsureClient()
         {
-            if (_config.Providers.Count == 0)
+            if (_modelEntries == null || _modelEntries.Count == 0)
             {
                 _client = null;
                 return;
             }
 
-            if (_selectedProviderIndex >= _config.Providers.Count)
-                _selectedProviderIndex = 0;
+            if (_selectedModelIndex >= _modelEntries.Count)
+                _selectedModelIndex = 0;
 
-            var entry = _config.Providers[_selectedProviderIndex];
-            entry.ApiKey = entry.GetEffectiveApiKey();
-
-            if (string.IsNullOrEmpty(entry.ApiKey))
-            {
-                _client = null;
-                return;
-            }
+            _currentModelId = _modelEntries[_selectedModelIndex].ModelId;
 
             try
             {
-                _client = AIClient.Create(entry, _config.General);
+                _client = AIClient.Create(_config, _currentModelId);
             }
             catch (Exception e)
             {
@@ -111,23 +105,29 @@ namespace UniAI.Editor.Chat
             }
         }
 
-        private void RebuildProviderCache()
+        private void RebuildModelCache()
         {
-            _providerNames = new string[_config.Providers.Count];
-            for (int i = 0; i < _config.Providers.Count; i++)
-                _providerNames[i] = _config.Providers[i].Name ?? _config.Providers[i].Id;
+            _modelEntries = _config.GetAllModels();
+            _modelNames = new string[_modelEntries.Count];
+            for (int i = 0; i < _modelEntries.Count; i++)
+                _modelNames[i] = _modelEntries[i].ModelId;
 
-            if (!string.IsNullOrEmpty(_config.ActiveProviderId))
+            // 尝试保持之前选择的模型
+            if (!string.IsNullOrEmpty(_currentModelId))
             {
-                for (int i = 0; i < _config.Providers.Count; i++)
+                for (int i = 0; i < _modelEntries.Count; i++)
                 {
-                    if (_config.Providers[i].Id == _config.ActiveProviderId)
+                    if (_modelEntries[i].ModelId == _currentModelId)
                     {
-                        _selectedProviderIndex = i;
-                        break;
+                        _selectedModelIndex = i;
+                        return;
                     }
                 }
             }
+
+            // 回退到第一个
+            _selectedModelIndex = 0;
+            _currentModelId = _modelEntries.Count > 0 ? _modelEntries[0].ModelId : null;
         }
     }
 }

@@ -1,6 +1,7 @@
 using System;
 using System.IO;
 using Newtonsoft.Json;
+using Newtonsoft.Json.Linq;
 using UnityEditor;
 using UnityEngine;
 
@@ -37,7 +38,56 @@ namespace UniAI.Editor
                     provider.ApiKey = effectiveKey;
             }
 
+            // 迁移旧配置：Model (string) → Models (List<string>)
+            MigrateModels(config);
+
             return config;
+        }
+
+        /// <summary>
+        /// 迁移旧配置格式：如果 Models 为空，尝试从旧的 Model 字段迁移
+        /// </summary>
+        private static void MigrateModels(AIConfig config)
+        {
+            // 读取原始 JSON 检查是否存在旧 Model 字段
+            string rawJson = null;
+            if (File.Exists(SettingsPath))
+            {
+                try { rawJson = File.ReadAllText(SettingsPath); } catch { /* ignore */ }
+            }
+
+            if (string.IsNullOrEmpty(rawJson)) return;
+
+            try
+            {
+                var root = JObject.Parse(rawJson);
+                var providersArray = root["Providers"] as JArray;
+                if (providersArray == null) return;
+
+                bool migrated = false;
+                for (int i = 0; i < providersArray.Count && i < config.Providers.Count; i++)
+                {
+                    var providerJson = providersArray[i] as JObject;
+                    var provider = config.Providers[i];
+
+                    if (provider.Models.Count > 0) continue;
+
+                    // 检查旧的 Model 字段
+                    var oldModel = providerJson?["Model"]?.ToString();
+                    if (!string.IsNullOrEmpty(oldModel))
+                    {
+                        provider.Models = new System.Collections.Generic.List<string> { oldModel };
+                        migrated = true;
+                    }
+                }
+
+                if (migrated)
+                {
+                    Debug.Log("[UniAI] Migrated config: Model → Models");
+                    SaveConfig(config);
+                }
+            }
+            catch { /* ignore migration errors */ }
         }
 
         /// <summary>

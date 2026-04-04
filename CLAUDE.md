@@ -67,6 +67,7 @@ SSEDownloadHandler + SSEParser（SSE 协议层）
 |----|------|------|
 | `IAIProvider` | `Runtime/Providers/IAIProvider.cs` | Provider 接口：`SendAsync` + `StreamAsync` |
 | `ProviderBase` | `Runtime/Providers/ProviderBase.cs` | Provider 抽象基类：SendAsync 模板方法 + ParseError + SerializerSettings |
+| `FallbackProvider` | `Runtime/Providers/FallbackProvider.cs` | 多渠道故障转移包装，依次尝试直到成功 |
 | `ClaudeProvider` | `Runtime/Providers/Claude/ClaudeProvider.cs` | Claude Messages API (`/v1/messages`) |
 | `ClaudeModels` | `Runtime/Providers/Claude/ClaudeModels.cs` | Claude 请求/响应/流式事件的 JSON 模型 |
 | `OpenAIProvider` | `Runtime/Providers/OpenAI/OpenAIProvider.cs` | OpenAI Chat Completions API (`/chat/completions`) |
@@ -76,7 +77,7 @@ SSEDownloadHandler + SSEParser（SSE 协议层）
 
 | 类 | 路径 | 职责 |
 |----|------|------|
-| `AIHttpClient` | `Runtime/Http/AIHttpClient.cs` | 静态 HTTP 客户端，`PostJsonAsync` + `PostStreamAsync` |
+| `AIHttpClient` | `Runtime/Http/AIHttpClient.cs` | 静态 HTTP 客户端，`GetAsync` + `PostJsonAsync` + `PostStreamAsync` |
 | `HttpResult` | `Runtime/Http/HttpResult.cs` | HTTP 结果封装 |
 | `SSEDownloadHandler` | `Runtime/Http/SSEDownloadHandler.cs` | 继承 `DownloadHandlerScript`，增量接收 SSE 数据写入 Channel |
 | `SSEParser` | `Runtime/Http/SSEParser.cs` | SSE 协议解析器，行解析为 `SSEEvent` |
@@ -98,7 +99,8 @@ SSEDownloadHandler + SSEParser（SSE 协议层）
 | 类 | 路径 | 职责 |
 |----|------|------|
 | `AIConfigManager` | `Editor/AIConfigManager.cs` | 配置持久化（优先级: 环境变量 > UserSettings JSON > EditorPrefs） |
-| `AISettingsWindow` | `Editor/AISettingsWindow.cs` | 配置窗口（双面板: Provider 列表 + 详情） |
+| `AISettingsWindow` | `Editor/AISettingsWindow.cs` | 渠道管理窗口（双面板: 渠道列表 + 详情，支持获取模型列表） |
+| `ModelListService` | `Editor/ModelListService.cs` | 从 Provider API 获取可用模型列表（支持 OpenAI + Claude 分页） |
 | `AgentManager` | `Editor/AgentManager.cs` | Agent 资产扫描 + 内置默认 Agent（无 Tool，通用聊天助手） |
 | `AIChatWindow` | `Editor/Chat/AIChatWindow*.cs` | AI 对话窗口（partial class，支持 Agent 选择 + Tool 调用渲染） |
 | `ChatSession` | `Editor/Chat/ChatSession.cs` | 会话模型 + `ChatMessage` |
@@ -166,26 +168,26 @@ EditorPrefs (UniAI_Config)        ← 编辑器级备份
 
 ```
 AIConfig
-├── Providers: List<ProviderEntry>   # Provider 列表
-│   ├── Id, Name, Protocol           # 标识
-│   ├── ApiKey, BaseUrl, Model       # 连接参数
+├── Providers: List<ProviderEntry>   # 渠道列表
+│   ├── Id, Name, Protocol           # 标识（Protocol 决定 API 调用方式）
+│   ├── ApiKey, BaseUrl              # 连接参数
+│   ├── Models: List<string>         # 该渠道支持的模型列表
 │   ├── ApiVersion                   # Claude 专用
 │   ├── IconName, EnvVarName         # UI 和环境变量
 ├── ActiveProviderId: string         # 当前激活的 Provider
 └── General: GeneralConfig           # 通用设置
     ├── TimeoutSeconds: int (60)
-    ├── MaxRetries: int (2)
     └── LogLevel: AILogLevel (Info)
 ```
 
 ### 5.3 内置预设
 
-| Id | 名称 | 协议 | 默认 BaseUrl | 默认 Model |
+| Id | 名称 | 协议 | 默认 BaseUrl | 默认 Models |
 |----|------|------|-------------|------------|
-| `claude` | Claude | Claude | `https://api.anthropic.com` | `claude-sonnet-4-20250514` |
-| `openai` | OpenAI | OpenAI | `https://api.openai.com/v1` | `gpt-4o` |
-| `gemini` | Gemini | OpenAI | `https://generativelanguage.googleapis.com/v1beta/openai` | `gemini-2.0-flash` |
-| `deepseek` | DeepSeek | OpenAI | `https://api.deepseek.com/v1` | `deepseek-chat` |
+| `claude` | Claude | Claude | `https://api.anthropic.com` | claude-sonnet-4-20250514, claude-opus-4-6 |
+| `openai` | OpenAI | OpenAI | `https://api.openai.com/v1` | gpt-4o, gpt-4o-mini, o1 |
+| `gemini` | Gemini | OpenAI | `https://generativelanguage.googleapis.com/v1beta/openai` | gemini-2.0-flash, gemini-2.5-pro |
+| `deepseek` | DeepSeek | OpenAI | `https://api.deepseek.com/v1` | deepseek-chat, deepseek-reasoner |
 
 ## 6. Assembly 结构
 

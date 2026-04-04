@@ -33,6 +33,7 @@ namespace UniAI.Editor
         private readonly HashSet<string> _showApiKey = new();
         private readonly Dictionary<string, ConnStatus> _connStatus = new();
         private readonly Dictionary<string, string> _connError = new();
+        private readonly Dictionary<string, string> _modelInput = new(); // 模型输入框状态
 
         // Icons cache
         private readonly Dictionary<string, Texture2D> _iconCache = new();
@@ -51,11 +52,15 @@ namespace UniAI.Editor
         private GUIStyle _addBtnStyle;
         private bool _stylesReady;
 
-        [MenuItem("Window/UniAI/Configuration")]
-        [MenuItem("Tools/UniAI/Configuration")]
+        // Model fetching state (keyed by provider Id)
+        private readonly Dictionary<string, bool> _fetchingModels = new();
+        private readonly Dictionary<string, ModelListResult> _fetchedModels = new();
+
+        [MenuItem("Window/UniAI/渠道管理")]
+        [MenuItem("Tools/UniAI/渠道管理")]
         public static void Open()
         {
-            var w = GetWindow<AISettingsWindow>("Configuration");
+            var w = GetWindow<AISettingsWindow>("渠道管理");
             w.minSize = new Vector2(720, 460);
         }
 
@@ -121,7 +126,7 @@ namespace UniAI.Editor
 
             EditorGUILayout.BeginHorizontal();
             GUILayout.Space(Pad);
-            if (GUILayout.Button("Add Provider", _addBtnStyle, GUILayout.Height(26)))
+            if (GUILayout.Button("添加渠道", _addBtnStyle, GUILayout.Height(26)))
                 ShowAddProviderMenu();
             GUILayout.Space(Pad);
             EditorGUILayout.EndHorizontal();
@@ -203,9 +208,9 @@ namespace UniAI.Editor
             // Header
             EditorGUILayout.BeginHorizontal();
             GUILayout.Space(Pad);
-            GUILayout.Label("UniAI Configuration", _titleStyle);
+            GUILayout.Label("渠道管理", _titleStyle);
             GUILayout.FlexibleSpace();
-            GUILayout.Label("System Status: ", EditorStyles.miniLabel);
+            GUILayout.Label("系统状态: ", EditorStyles.miniLabel);
             GUILayout.Label(GetSystemStatusText(), _statusLinkStyle);
             GUILayout.Space(Pad);
             EditorGUILayout.EndHorizontal();
@@ -215,7 +220,7 @@ namespace UniAI.Editor
             if (SelectedEntry != null)
                 DrawSection(DrawProviderConfig);
             else
-                DrawSection(() => GUILayout.Label("No provider selected. Click 'Add Provider' to get started."));
+                DrawSection(() => GUILayout.Label("未选择渠道，请点击「添加渠道」开始配置。"));
 
             GUILayout.Space(12);
 
@@ -239,14 +244,14 @@ namespace UniAI.Editor
 
             // Title row
             EditorGUILayout.BeginHorizontal();
-            GUILayout.Label($"{entry.Name} Configuration", _sectionTitleStyle);
+            GUILayout.Label($"{entry.Name} 渠道配置", _sectionTitleStyle);
             GUILayout.FlexibleSpace();
 
             if (_connStatus.TryGetValue(entry.Id, out var status) && status == ConnStatus.Connected)
             {
                 var s = new GUIStyle(EditorStyles.miniLabel);
                 s.normal.textColor = _greenDot;
-                GUILayout.Label("✔ Connected", s);
+                GUILayout.Label("✔ 已连接", s);
                 GUILayout.Space(4);
             }
 
@@ -274,7 +279,7 @@ namespace UniAI.Editor
             // Common fields
             DrawApiKeyRow(entry);
             DrawTextField("Base URL", ref entry.BaseUrl);
-            DrawTextField("Model", ref entry.Model);
+            DrawModelTags(entry);
 
             // Claude-specific
             if (entry.Protocol == ProviderProtocol.Claude)
@@ -350,7 +355,7 @@ namespace UniAI.Editor
             // Test button
             bool isTesting = _connStatus.TryGetValue(entry.Id, out var st) && st == ConnStatus.Testing;
             EditorGUI.BeginDisabledGroup(isTesting);
-            string btnText = isTesting ? "Testing..." : $"Test ({entry.Name})";
+            string btnText = isTesting ? "测试中..." : $"测试 ({entry.Name})";
             if (GUILayout.Button(btnText, GUILayout.Width(110)))
                 TestProvider(entry);
             EditorGUI.EndDisabledGroup();
@@ -376,11 +381,164 @@ namespace UniAI.Editor
             EditorGUILayout.EndHorizontal();
         }
 
+        private void DrawModelTags(ProviderEntry entry)
+        {
+            EditorGUILayout.BeginHorizontal();
+            EditorGUILayout.LabelField("Models", GUILayout.Width(LabelWidth));
+            EditorGUILayout.BeginVertical();
+
+            // 已添加的模型标签
+            if (entry.Models != null && entry.Models.Count > 0)
+            {
+                EditorGUILayout.BeginHorizontal();
+                float lineWidth = 0;
+                float maxWidth = EditorGUIUtility.currentViewWidth - LeftPanelWidth - LabelWidth - 60;
+
+                for (int i = entry.Models.Count - 1; i >= 0; i--)
+                {
+                    var model = entry.Models[i];
+                    var content = new GUIContent($"  {model}  ✕");
+                    float tagWidth = EditorStyles.miniButton.CalcSize(content).x + 4;
+
+                    if (lineWidth + tagWidth > maxWidth && lineWidth > 0)
+                    {
+                        EditorGUILayout.EndHorizontal();
+                        EditorGUILayout.BeginHorizontal();
+                        lineWidth = 0;
+                    }
+
+                    if (GUILayout.Button(content, EditorStyles.miniButton, GUILayout.Height(20)))
+                    {
+                        entry.Models.RemoveAt(i);
+                        AIConfigManager.SaveConfig(_config);
+                    }
+
+                    lineWidth += tagWidth;
+                }
+
+                GUILayout.FlexibleSpace();
+                EditorGUILayout.EndHorizontal();
+                GUILayout.Space(2);
+            }
+
+            // 输入框 + 添加按钮 + 获取模型按钮
+            if (!_modelInput.ContainsKey(entry.Id))
+                _modelInput[entry.Id] = "";
+
+            EditorGUILayout.BeginHorizontal();
+            _modelInput[entry.Id] = EditorGUILayout.TextField(_modelInput[entry.Id], GUILayout.Height(20));
+            if (GUILayout.Button("+", EditorStyles.miniButton, GUILayout.Width(24), GUILayout.Height(20)))
+            {
+                AddModelToEntry(entry);
+            }
+
+            // 获取模型列表按钮
+            bool isFetching = _fetchingModels.TryGetValue(entry.Id, out var f) && f;
+            EditorGUI.BeginDisabledGroup(isFetching || !HasApiKey(entry));
+            string fetchBtnText = isFetching ? "获取中..." : "获取模型";
+            if (GUILayout.Button(fetchBtnText, EditorStyles.miniButton, GUILayout.Width(68), GUILayout.Height(20)))
+            {
+                FetchModelsForEntry(entry);
+            }
+            EditorGUI.EndDisabledGroup();
+
+            // 回车添加
+            if (Event.current.type == EventType.KeyDown && Event.current.keyCode == KeyCode.Return
+                && GUI.GetNameOfFocusedControl() == $"model_input_{entry.Id}")
+            {
+                AddModelToEntry(entry);
+                Event.current.Use();
+            }
+
+            EditorGUILayout.EndHorizontal();
+
+            // 获取模型错误提示
+            if (_fetchedModels.TryGetValue(entry.Id, out var fetchResult) && !fetchResult.IsSuccess)
+            {
+                EditorGUILayout.LabelField($"⚠ {fetchResult.Error}", _errorStyle);
+            }
+
+            EditorGUILayout.EndVertical();
+            EditorGUILayout.EndHorizontal();
+        }
+
+        private async void FetchModelsForEntry(ProviderEntry entry)
+        {
+            _fetchingModels[entry.Id] = true;
+            _fetchedModels.Remove(entry.Id);
+            Repaint();
+
+            try
+            {
+                var result = await ModelListService.FetchModelsAsync(entry, _config.General);
+                _fetchedModels[entry.Id] = result;
+
+                if (result.IsSuccess && result.Models.Count > 0)
+                {
+                    ShowModelSelectionMenu(entry, result.Models);
+                }
+                else if (result.IsSuccess)
+                {
+                    _fetchedModels[entry.Id] = ModelListResult.Fail("未获取到任何模型。");
+                }
+            }
+            catch (Exception e)
+            {
+                _fetchedModels[entry.Id] = ModelListResult.Fail(e.Message);
+            }
+
+            _fetchingModels[entry.Id] = false;
+            Repaint();
+        }
+
+        private void ShowModelSelectionMenu(ProviderEntry entry, List<ModelInfo> models)
+        {
+            var existingModels = new HashSet<string>(entry.Models ?? new List<string>());
+            var menu = new GenericMenu();
+
+            foreach (var model in models)
+            {
+                bool alreadyAdded = existingModels.Contains(model.Id);
+                if (alreadyAdded)
+                {
+                    menu.AddDisabledItem(new GUIContent($"✔ {model.Label}"));
+                }
+                else
+                {
+                    var m = model; // capture
+                    menu.AddItem(new GUIContent(m.Label), false, () =>
+                    {
+                        entry.Models ??= new List<string>();
+                        if (!entry.Models.Contains(m.Id))
+                        {
+                            entry.Models.Add(m.Id);
+                            AIConfigManager.SaveConfig(_config);
+                            Repaint();
+                        }
+                    });
+                }
+            }
+
+            menu.ShowAsContext();
+        }
+
+        private void AddModelToEntry(ProviderEntry entry)
+        {
+            var input = _modelInput[entry.Id]?.Trim();
+            if (string.IsNullOrEmpty(input)) return;
+            if (entry.Models.Contains(input)) return;
+
+            entry.Models.Add(input);
+            _modelInput[entry.Id] = "";
+            AIConfigManager.SaveConfig(_config);
+            Repaint();
+        }
+
         // ─── General Settings ───
 
         private void DrawGeneralSettings()
         {
-            GUILayout.Label("General settings", _sectionTitleStyle);
+            GUILayout.Label("通用设置", _sectionTitleStyle);
             GUILayout.Space(8);
 
             EditorGUILayout.BeginHorizontal();
@@ -401,15 +559,15 @@ namespace UniAI.Editor
             EditorGUILayout.BeginHorizontal();
             GUILayout.Space(Pad);
 
-            if (GUILayout.Button("Test All Connections", GUILayout.Height(28), GUILayout.Width(160)))
+            if (GUILayout.Button("测试所有连接", GUILayout.Height(28), GUILayout.Width(160)))
                 TestAllProviders();
 
             GUILayout.FlexibleSpace();
 
-            if (GUILayout.Button("Save", GUILayout.Height(28), GUILayout.Width(80)))
+            if (GUILayout.Button("保存", GUILayout.Height(28), GUILayout.Width(80)))
             {
                 AIConfigManager.SaveConfig(_config);
-                ShowNotification(new GUIContent("Configuration saved"));
+                ShowNotification(new GUIContent("配置已保存"));
             }
 
             GUILayout.Space(Pad);
@@ -427,7 +585,7 @@ namespace UniAI.Editor
             {
                 if (existingIds.Contains(preset.Id))
                 {
-                    menu.AddDisabledItem(new GUIContent($"{preset.Name} (already added)"));
+                    menu.AddDisabledItem(new GUIContent($"{preset.Name} (已添加)"));
                 }
                 else
                 {
@@ -442,7 +600,7 @@ namespace UniAI.Editor
             }
 
             menu.AddSeparator("");
-            menu.AddItem(new GUIContent("Custom (OpenAI Compatible)"), false, () =>
+            menu.AddItem(new GUIContent("自定义 (OpenAI 兼容)"), false, () =>
             {
                 var id = $"custom_{DateTime.Now.Ticks}";
                 _config.Providers.Add(new ProviderEntry
@@ -451,7 +609,7 @@ namespace UniAI.Editor
                     Name = "Custom",
                     Protocol = ProviderProtocol.OpenAI,
                     BaseUrl = "https://",
-                    Model = ""
+                    Models = new List<string>()
                 });
                 _selectedIndex = _config.Providers.Count - 1;
                 Repaint();
@@ -464,11 +622,14 @@ namespace UniAI.Editor
         {
             var entry = _config.Providers[index];
             var menu = new GenericMenu();
-            menu.AddItem(new GUIContent($"Remove \"{entry.Name}\""), false, () =>
+            menu.AddItem(new GUIContent($"移除「{entry.Name}」"), false, () =>
             {
                 _connStatus.Remove(entry.Id);
                 _connError.Remove(entry.Id);
                 _showApiKey.Remove(entry.Id);
+                _modelInput.Remove(entry.Id);
+                _fetchingModels.Remove(entry.Id);
+                _fetchedModels.Remove(entry.Id);
                 _config.Providers.RemoveAt(index);
                 if (_selectedIndex >= _config.Providers.Count)
                     _selectedIndex = Mathf.Max(0, _config.Providers.Count - 1);
@@ -491,10 +652,10 @@ namespace UniAI.Editor
                 {
                     Id = entry.Id, Name = entry.Name, Protocol = entry.Protocol,
                     ApiKey = entry.GetEffectiveApiKey(), BaseUrl = entry.BaseUrl,
-                    Model = entry.Model, ApiVersion = entry.ApiVersion
+                    Models = entry.Models, ApiVersion = entry.ApiVersion
                 };
 
-                var client = AIClient.Create(testEntry, _config.General);
+                var client = AIClient.Create(testEntry, testEntry.DefaultModel, _config.General);
                 var response = await client.SendAsync(new AIRequest
                 {
                     Messages = { AIMessage.User("Hi, respond with just \"ok\".") },
@@ -551,9 +712,9 @@ namespace UniAI.Editor
                 if (_connStatus.TryGetValue(entry.Id, out var s) && s == ConnStatus.Connected) connected++;
             }
 
-            if (configured == 0) return "No providers configured";
-            if (connected == configured && connected > 0) return "All Providers Connected";
-            return $"{connected}/{configured} Connected";
+            if (configured == 0) return "未配置渠道";
+            if (connected == configured && connected > 0) return "所有渠道已连接";
+            return $"{connected}/{configured} 已连接";
         }
 
         private void EnsureStyles()

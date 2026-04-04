@@ -22,13 +22,29 @@ namespace UniAI
     }
 
     /// <summary>
+    /// 模型路由信息 — 模型名 + 首选渠道
+    /// </summary>
+    public struct ModelRoute
+    {
+        /// <summary>
+        /// 模型名称（如 "claude-opus-4-6"）
+        /// </summary>
+        public string ModelId;
+
+        /// <summary>
+        /// 首选渠道（优先级最高的）
+        /// </summary>
+        public ProviderEntry Provider;
+    }
+
+    /// <summary>
     /// AI 框架配置 — 动态 Provider 列表
     /// </summary>
     [Serializable]
     public class AIConfig
     {
         /// <summary>
-        /// Provider 列表（支持动态增删）
+        /// 渠道列表（支持动态增删）
         /// </summary>
         public List<ProviderEntry> Providers = new();
 
@@ -50,10 +66,51 @@ namespace UniAI
             if (Providers.Count == 0) return null;
             return Providers.Find(p => p.Id == ActiveProviderId) ?? Providers[0];
         }
+
+        /// <summary>
+        /// 获取所有可用模型（扁平化、去重，同名模型取优先级最高的渠道）
+        /// </summary>
+        public List<ModelRoute> GetAllModels()
+        {
+            var result = new List<ModelRoute>();
+            var seen = new HashSet<string>();
+
+            foreach (var provider in Providers)
+            {
+                if (provider.Models == null) continue;
+                foreach (var modelId in provider.Models)
+                {
+                    if (string.IsNullOrEmpty(modelId)) continue;
+                    if (seen.Add(modelId))
+                    {
+                        result.Add(new ModelRoute { ModelId = modelId, Provider = provider });
+                    }
+                }
+            }
+
+            return result;
+        }
+
+        /// <summary>
+        /// 查找所有支持指定模型的渠道（按列表顺序 = 优先级）
+        /// </summary>
+        public List<ProviderEntry> FindProvidersForModel(string modelId)
+        {
+            var result = new List<ProviderEntry>();
+            if (string.IsNullOrEmpty(modelId)) return result;
+
+            foreach (var provider in Providers)
+            {
+                if (provider.Models != null && provider.Models.Contains(modelId))
+                    result.Add(provider);
+            }
+
+            return result;
+        }
     }
 
     /// <summary>
-    /// 单个 Provider 配置条目
+    /// 单个渠道配置条目
     /// </summary>
     [Serializable]
     public class ProviderEntry
@@ -63,7 +120,12 @@ namespace UniAI
         public ProviderProtocol Protocol;
         public string ApiKey;
         public string BaseUrl;
-        public string Model;
+
+        /// <summary>
+        /// 该渠道支持的模型列表
+        /// </summary>
+        public List<string> Models = new();
+
         /// <summary>
         /// Claude 协议专用：API 版本号
         /// </summary>
@@ -76,6 +138,11 @@ namespace UniAI
         /// 环境变量名（用于自动读取 API Key）
         /// </summary>
         public string EnvVarName;
+
+        /// <summary>
+        /// 默认模型（Models 列表中的第一个）
+        /// </summary>
+        public string DefaultModel => Models?.Count > 0 ? Models[0] : null;
 
         /// <summary>
         /// 获取有效的 API Key（环境变量优先，其次使用配置值）
@@ -97,7 +164,7 @@ namespace UniAI
         public bool IsApiKeyFromEnv()
         {
             if (string.IsNullOrEmpty(EnvVarName)) return false;
-            var envKey = System.Environment.GetEnvironmentVariable(EnvVarName);
+            var envKey = Environment.GetEnvironmentVariable(EnvVarName);
             return !string.IsNullOrEmpty(envKey) && ApiKey == envKey;
         }
     }
@@ -109,7 +176,7 @@ namespace UniAI
     {
         public string ApiKey;
         public string BaseUrl = "https://api.anthropic.com";
-        public string Model = "claude-sonnet-4-20250514";
+        public string Model;
         public string ApiVersion = "2023-06-01";
     }
 
@@ -118,7 +185,7 @@ namespace UniAI
     {
         public string ApiKey;
         public string BaseUrl = "https://api.openai.com/v1";
-        public string Model = "gpt-4o";
+        public string Model;
     }
 
     [Serializable]
@@ -136,28 +203,32 @@ namespace UniAI
         public static ProviderEntry Claude() => new()
         {
             Id = "claude", Name = "Claude", Protocol = ProviderProtocol.Claude,
-            BaseUrl = "https://api.anthropic.com", Model = "claude-sonnet-4-20250514",
+            BaseUrl = "https://api.anthropic.com",
+            Models = new List<string> { "claude-sonnet-4-20250514", "claude-opus-4-6" },
             ApiVersion = "2023-06-01", IconName = "provider-claude", EnvVarName = "ANTHROPIC_API_KEY"
         };
 
         public static ProviderEntry OpenAI() => new()
         {
             Id = "openai", Name = "OpenAI", Protocol = ProviderProtocol.OpenAI,
-            BaseUrl = "https://api.openai.com/v1", Model = "gpt-4o",
+            BaseUrl = "https://api.openai.com/v1",
+            Models = new List<string> { "gpt-4o", "gpt-4o-mini", "o1" },
             IconName = "provider-openai", EnvVarName = "OPENAI_API_KEY"
         };
 
         public static ProviderEntry Gemini() => new()
         {
             Id = "gemini", Name = "Gemini", Protocol = ProviderProtocol.OpenAI,
-            BaseUrl = "https://generativelanguage.googleapis.com/v1beta/openai", Model = "gemini-2.0-flash",
+            BaseUrl = "https://generativelanguage.googleapis.com/v1beta/openai",
+            Models = new List<string> { "gemini-2.0-flash", "gemini-2.5-pro" },
             IconName = "provider-gemini", EnvVarName = "GEMINI_API_KEY"
         };
 
         public static ProviderEntry DeepSeek() => new()
         {
             Id = "deepseek", Name = "DeepSeek", Protocol = ProviderProtocol.OpenAI,
-            BaseUrl = "https://api.deepseek.com/v1", Model = "deepseek-chat",
+            BaseUrl = "https://api.deepseek.com/v1",
+            Models = new List<string> { "deepseek-chat", "deepseek-reasoner" },
             IconName = "provider-deepseek", EnvVarName = "DEEPSEEK_API_KEY"
         };
 

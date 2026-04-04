@@ -53,7 +53,8 @@ namespace UniAI.Editor.Chat
         private CancellationTokenSource _streamCts;
         private ContextCollector.ContextSlot _contextSlots = ContextCollector.ContextSlot.Selection;
         private bool _scrollToBottom;
-        private int _selectedProviderIndex;
+        private int _selectedModelIndex;
+        private string _currentModelId;
         private bool _showActionBar;
 
         // ─── Agent State ───
@@ -89,9 +90,10 @@ namespace UniAI.Editor.Chat
         private GUIStyle _toolCallErrorStyle;
         private bool _stylesReady;
 
-        // ─── Provider Cache ───
+        // ─── Model Cache ───
 
-        private string[] _providerNames;
+        private string[] _modelNames;
+        private List<ModelRoute> _modelEntries;
 
         // ─── Menu ───
 
@@ -127,7 +129,7 @@ namespace UniAI.Editor.Chat
             _config = AIConfigManager.LoadConfig();
             _history = new ChatHistory();
             _history.Load();
-            RebuildProviderCache();
+            RebuildModelCache();
             RebuildAgentCache();
             EnsureRunner();
             EditorApplication.update += OnEditorUpdate;

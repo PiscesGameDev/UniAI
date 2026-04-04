@@ -36,9 +36,10 @@ namespace UniAI.Editor.Chat
         public long UpdatedAt;
         public string ProviderId;
         public string AgentId;
+        public string ModelId;
         public List<ChatMessage> Messages = new();
 
-        public static ChatSession Create(string providerId)
+        public static ChatSession Create(string modelId)
         {
             long now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
             return new ChatSession
@@ -47,7 +48,7 @@ namespace UniAI.Editor.Chat
                 Title = "新对话",
                 CreatedAt = now,
                 UpdatedAt = now,
-                ProviderId = providerId
+                ModelId = modelId
             };
         }
 
