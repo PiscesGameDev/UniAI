@@ -66,7 +66,7 @@ namespace UniAI
             var innerProviders = new List<IAIProvider>();
             foreach (var entry in providers)
             {
-                var apiKey = entry.GetEffectiveApiKey();
+                var apiKey = entry.ApiKey;
                 if (string.IsNullOrEmpty(apiKey)) continue;
                 innerProviders.Add(CreateProvider(entry, modelId, general));
             }
@@ -84,9 +84,9 @@ namespace UniAI
         }
 
         /// <summary>
-        /// 从单个 ProviderEntry + 指定模型创建客户端
+        /// 从单个 ChannelEntry + 指定模型创建客户端
         /// </summary>
-        public static AIClient Create(ProviderEntry entry, string modelId = null, GeneralConfig general = null)
+        public static AIClient Create(ChannelEntry entry, string modelId = null, GeneralConfig general = null)
         {
             if (entry == null) throw new ArgumentNullException(nameof(entry));
             general ??= new GeneralConfig();
@@ -103,16 +103,14 @@ namespace UniAI
         /// <summary>
         /// 创建具体的 IAIProvider 实例
         /// </summary>
-        private static IAIProvider CreateProvider(ProviderEntry entry, string modelId, GeneralConfig general)
+        private static IAIProvider CreateProvider(ChannelEntry entry, string modelId, GeneralConfig general)
         {
-            var apiKey = entry.GetEffectiveApiKey();
-
             return entry.Protocol switch
             {
                 ProviderProtocol.Claude => new ClaudeProvider(
                     new ClaudeConfig
                     {
-                        ApiKey = apiKey,
+                        ApiKey = entry.ApiKey,
                         BaseUrl = entry.BaseUrl,
                         Model = modelId ?? entry.DefaultModel,
                         ApiVersion = entry.ApiVersion ?? "2023-06-01"
@@ -121,7 +119,7 @@ namespace UniAI
                 ProviderProtocol.OpenAI => new OpenAIProvider(
                     new OpenAIConfig
                     {
-                        ApiKey = apiKey,
+                        ApiKey = entry.ApiKey,
                         BaseUrl = entry.BaseUrl,
                         Model = modelId ?? entry.DefaultModel
                     },

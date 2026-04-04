@@ -129,6 +129,12 @@ namespace UniAI.Editor.Chat
             _config = AIConfigManager.LoadConfig();
             _history = new ChatHistory();
             _history.Load();
+
+            // 恢复编辑器偏好
+            var prefs = AIConfigManager.Prefs;
+            _showSidebar = prefs.ShowSidebar;
+            _currentModelId = prefs.LastSelectedModelId;
+
             RebuildModelCache();
             RebuildAgentCache();
             EnsureRunner();

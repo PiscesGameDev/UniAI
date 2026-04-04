@@ -45,8 +45,9 @@ SSEDownloadHandler + SSEParser（SSE 协议层）
 |----|------|------|
 | `AIClient` | `Runtime/Core/AIClient.cs` | 框架唯一入口，封装 Provider 调用 |
 | `AIConfig` | `Runtime/Core/AIConfig.cs` | 配置模型（Provider 列表 + 通用设置） |
-| `ProviderEntry` | `Runtime/Core/AIConfig.cs:59` | 单个 Provider 配置条目 |
-| `ProviderPresets` | `Runtime/Core/AIConfig.cs:111` | 内置预设（Claude/OpenAI/Gemini/DeepSeek） |
+| `UniAISettings` | `Runtime/Core/UniAISettings.cs` | 运行时 ScriptableObject 配置，提供单例访问 |
+| `ChannelEntry` | `Runtime/Core/AIConfig.cs` | 单个渠道配置（含 Enabled 开关） |
+| `ChannelPresets` | `Runtime/Core/AIConfig.cs` | 内置预设（Claude/OpenAI/Gemini/DeepSeek） |
 | `AILogger` | `Runtime/Core/AILogger.cs` | 内部日志，支持级别控制和 API Key 脱敏 |
 
 ### 3.2 Runtime - 模型
@@ -98,8 +99,10 @@ SSEDownloadHandler + SSEParser（SSE 协议层）
 
 | 类 | 路径 | 职责 |
 |----|------|------|
-| `AIConfigManager` | `Editor/AIConfigManager.cs` | 配置持久化（优先级: 环境变量 > UserSettings JSON > EditorPrefs） |
-| `AISettingsWindow` | `Editor/AISettingsWindow.cs` | 渠道管理窗口（双面板: 渠道列表 + 详情，支持获取模型列表） |
+| `AIConfigManager` | `Editor/AIConfigManager.cs` | 配置持久化（读写 UniAISettings SO + EditorPreferences，环境变量覆盖） |
+| `EditorPreferences` | `Editor/EditorPreferences.cs` | ScriptableSingleton，编辑器偏好持久化（侧边栏状态、上次选模型） + 环境变量静态映射 |
+| `AIChannelWindow` | `Editor/AISettingsWindow.cs` | 渠道管理窗口（双面板: 渠道列表 + 详情，支持 Enabled 开关和获取模型列表） |
+| `UniAISettingsWindow` | `Editor/UniAISettingsWindow.cs` | 设置窗口（运行时参数: Timeout/LogLevel + 编辑器参数: Sidebar/MaxHistory） |
 | `ModelListService` | `Editor/ModelListService.cs` | 从 Provider API 获取可用模型列表（支持 OpenAI + Claude 分页） |
 | `AgentManager` | `Editor/AgentManager.cs` | Agent 资产扫描 + 内置默认 Agent（无 Tool，通用聊天助手） |
 | `AIChatWindow` | `Editor/Chat/AIChatWindow*.cs` | AI 对话窗口（partial class，支持 Agent 选择 + Tool 调用渲染） |
@@ -154,30 +157,35 @@ SSEDownloadHandler + SSEParser（SSE 协议层）
 
 ## 5. 配置体系
 
-### 5.1 配置优先级
+### 5.1 配置架构
 
 ```
-环境变量 (ANTHROPIC_API_KEY 等)   ← 最高优先级，覆盖 API Key
-        ↓
-UserSettings/UniAISettings.json   ← 项目级配置文件（不入 Git）
-        ↓
-EditorPrefs (UniAI_Config)        ← 编辑器级备份
-```
-
-### 5.2 AIConfig 结构
-
-```
-AIConfig
-├── Providers: List<ProviderEntry>   # 渠道列表
-│   ├── Id, Name, Protocol           # 标识（Protocol 决定 API 调用方式）
+UniAISettings (ScriptableObject, Runtime)
+├── Providers: List<ChannelEntry>   # 渠道列表
+│   ├── Id, Name, Protocol, Enabled  # 标识 + 启用开关
 │   ├── ApiKey, BaseUrl              # 连接参数
 │   ├── Models: List<string>         # 该渠道支持的模型列表
-│   ├── ApiVersion                   # Claude 专用
-│   ├── IconName, EnvVarName         # UI 和环境变量
+│   └── ApiVersion                   # Claude 专用
 ├── ActiveProviderId: string         # 当前激活的 Provider
 └── General: GeneralConfig           # 通用设置
     ├── TimeoutSeconds: int (60)
     └── LogLevel: AILogLevel (Info)
+
+EditorPreferences (ScriptableSingleton, Editor Only, 持久化到 Library/)
+├── LastSelectedModelId              # 上次选择的模型
+├── ShowSidebar                      # 聊天窗口侧边栏状态
+├── MaxHistorySessions               # 历史会话上限
+└── 环境变量映射（静态，按预设 ID → 环境变量名）
+```
+
+### 5.2 配置优先级
+
+```
+环境变量 (EditorPreferences.EnvVarName)  ← 最高优先级，覆盖 API Key（仅 Editor）
+        ↓
+UniAISettings.asset (Resources/UniAI/)   ← 运行时 ScriptableObject
+        ↓
+自动创建默认配置                          ← 首次使用时
 ```
 
 ### 5.3 内置预设
@@ -230,8 +238,8 @@ AIConfig
 2. 创建 `Runtime/Providers/NewProvider/` 目录
 3. 实现 `IAIProvider` 接口（`SendAsync` + `StreamAsync`）
 4. 创建对应的 Request/Response JSON 模型
-5. 在 `AIClient.Create(ProviderEntry, GeneralConfig)` 的 switch 中添加分支
-6. （可选）在 `ProviderPresets` 中添加预设
+5. 在 `AIClient.Create(ChannelEntry, GeneralConfig)` 的 switch 中添加分支
+6. （可选）在 `ChannelPresets` 中添加预设
 
 ### 添加新内容类型
 
@@ -267,7 +275,8 @@ public class ReadFileTool : AIToolAsset
 
 ## 9. 开发注意事项
 
-- **API Key 安全**: `AIConfigManager.SaveConfig` 会在保存前清除来自环境变量的 Key，避免写入文件。日志中 API Key 自动脱敏（仅显示前 8 位）。
+- **API Key 安全**: `AIConfigManager.SaveConfig` 会在保存前清除来自环境变量的 Key，避免写入 SO。环境变量名存储在 `EditorPreferences`（Editor-only），不进入运行时资产。日志中 API Key 自动脱敏（仅显示前 8 位）。
+- **配置拆分**: 运行时配置存储在 `UniAISettings` ScriptableObject（`Resources/UniAI/`），编辑器偏好基于 `ScriptableSingleton` 自动持久化到 `Library/` 目录。
 - **JSON 序列化**: 使用 Newtonsoft.Json（`JsonConvert`），`NullValueHandling.Ignore` 避免发送空字段。
 - **SSE 流式**: `SSEDownloadHandler` 通过 UniTask `Channel<string>` 实现生产者-消费者模式，主线程安全。
 - **取消支持**: 所有异步方法接受 `CancellationToken`，流式响应可随时取消。

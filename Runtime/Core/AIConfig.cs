@@ -34,7 +34,7 @@ namespace UniAI
         /// <summary>
         /// 首选渠道（优先级最高的）
         /// </summary>
-        public ProviderEntry Provider;
+        public ChannelEntry Provider;
     }
 
     /// <summary>
@@ -46,7 +46,7 @@ namespace UniAI
         /// <summary>
         /// 渠道列表（支持动态增删）
         /// </summary>
-        public List<ProviderEntry> Providers = new();
+        public List<ChannelEntry> Providers = new();
 
         /// <summary>
         /// 当前激活的 Provider Id
@@ -59,12 +59,13 @@ namespace UniAI
         public GeneralConfig General = new();
 
         /// <summary>
-        /// 获取当前激活的 Provider，找不到则返回第一个
+        /// 获取当前激活的 Provider，找不到则返回第一个启用的
         /// </summary>
-        public ProviderEntry GetActiveProvider()
+        public ChannelEntry GetActiveProvider()
         {
             if (Providers.Count == 0) return null;
-            return Providers.Find(p => p.Id == ActiveProviderId) ?? Providers[0];
+            var active = Providers.Find(p => p.Id == ActiveProviderId && p.Enabled);
+            return active ?? Providers.Find(p => p.Enabled) ?? Providers[0];
         }
 
         /// <summary>
@@ -77,6 +78,7 @@ namespace UniAI
 
             foreach (var provider in Providers)
             {
+                if (!provider.Enabled) continue;
                 if (provider.Models == null) continue;
                 foreach (var modelId in provider.Models)
                 {
@@ -94,13 +96,14 @@ namespace UniAI
         /// <summary>
         /// 查找所有支持指定模型的渠道（按列表顺序 = 优先级）
         /// </summary>
-        public List<ProviderEntry> FindProvidersForModel(string modelId)
+        public List<ChannelEntry> FindProvidersForModel(string modelId)
         {
-            var result = new List<ProviderEntry>();
+            var result = new List<ChannelEntry>();
             if (string.IsNullOrEmpty(modelId)) return result;
 
             foreach (var provider in Providers)
             {
+                if (!provider.Enabled) continue;
                 if (provider.Models != null && provider.Models.Contains(modelId))
                     result.Add(provider);
             }
@@ -113,11 +116,17 @@ namespace UniAI
     /// 单个渠道配置条目
     /// </summary>
     [Serializable]
-    public class ProviderEntry
+    public class ChannelEntry
     {
         public string Id;
         public string Name;
         public ProviderProtocol Protocol;
+
+        /// <summary>
+        /// 渠道是否启用（禁用后不参与模型路由和 Fallback）
+        /// </summary>
+        public bool Enabled = true;
+
         public string ApiKey;
         public string BaseUrl;
 
@@ -130,43 +139,11 @@ namespace UniAI
         /// Claude 协议专用：API 版本号
         /// </summary>
         public string ApiVersion;
-        /// <summary>
-        /// 图标文件名（不含扩展名），对应 Editor/Icons/ 目录
-        /// </summary>
-        public string IconName;
-        /// <summary>
-        /// 环境变量名（用于自动读取 API Key）
-        /// </summary>
-        public string EnvVarName;
 
         /// <summary>
         /// 默认模型（Models 列表中的第一个）
         /// </summary>
         public string DefaultModel => Models?.Count > 0 ? Models[0] : null;
-
-        /// <summary>
-        /// 获取有效的 API Key（环境变量优先，其次使用配置值）
-        /// </summary>
-        public string GetEffectiveApiKey()
-        {
-            if (!string.IsNullOrEmpty(EnvVarName))
-            {
-                var envKey = Environment.GetEnvironmentVariable(EnvVarName);
-                if (!string.IsNullOrEmpty(envKey))
-                    return envKey;
-            }
-            return ApiKey;
-        }
-
-        /// <summary>
-        /// 当前 ApiKey 是否来自环境变量
-        /// </summary>
-        public bool IsApiKeyFromEnv()
-        {
-            if (string.IsNullOrEmpty(EnvVarName)) return false;
-            var envKey = Environment.GetEnvironmentVariable(EnvVarName);
-            return !string.IsNullOrEmpty(envKey) && ApiKey == envKey;
-        }
     }
 
     // ─── Provider 级别配置（供直接构造 Provider 使用）───
@@ -198,44 +175,41 @@ namespace UniAI
     /// <summary>
     /// 内置 Provider 预设模板
     /// </summary>
-    public static class ProviderPresets
+    public static class ChannelPresets
     {
-        public static ProviderEntry Claude() => new()
+        public static ChannelEntry Claude() => new()
         {
             Id = "claude", Name = "Claude", Protocol = ProviderProtocol.Claude,
             BaseUrl = "https://api.anthropic.com",
             Models = new List<string> { "claude-sonnet-4-20250514", "claude-opus-4-6" },
-            ApiVersion = "2023-06-01", IconName = "provider-claude", EnvVarName = "ANTHROPIC_API_KEY"
+            ApiVersion = "2023-06-01"
         };
 
-        public static ProviderEntry OpenAI() => new()
+        public static ChannelEntry OpenAI() => new()
         {
             Id = "openai", Name = "OpenAI", Protocol = ProviderProtocol.OpenAI,
             BaseUrl = "https://api.openai.com/v1",
-            Models = new List<string> { "gpt-4o", "gpt-4o-mini", "o1" },
-            IconName = "provider-openai", EnvVarName = "OPENAI_API_KEY"
+            Models = new List<string> { "gpt-4o", "gpt-4o-mini", "o1" }
         };
 
-        public static ProviderEntry Gemini() => new()
+        public static ChannelEntry Gemini() => new()
         {
             Id = "gemini", Name = "Gemini", Protocol = ProviderProtocol.OpenAI,
             BaseUrl = "https://generativelanguage.googleapis.com/v1beta/openai",
-            Models = new List<string> { "gemini-2.0-flash", "gemini-2.5-pro" },
-            IconName = "provider-gemini", EnvVarName = "GEMINI_API_KEY"
+            Models = new List<string> { "gemini-2.0-flash", "gemini-2.5-pro" }
         };
 
-        public static ProviderEntry DeepSeek() => new()
+        public static ChannelEntry DeepSeek() => new()
         {
             Id = "deepseek", Name = "DeepSeek", Protocol = ProviderProtocol.OpenAI,
             BaseUrl = "https://api.deepseek.com/v1",
-            Models = new List<string> { "deepseek-chat", "deepseek-reasoner" },
-            IconName = "provider-deepseek", EnvVarName = "DEEPSEEK_API_KEY"
+            Models = new List<string> { "deepseek-chat", "deepseek-reasoner" }
         };
 
         /// <summary>
         /// 创建默认 Provider 列表（Claude + OpenAI + Gemini + DeepSeek）
         /// </summary>
-        public static List<ProviderEntry> CreateDefaults() => new() { Claude(), OpenAI(), Gemini(), DeepSeek() };
+        public static List<ChannelEntry> CreateDefaults() => new() { Claude(), OpenAI(), Gemini(), DeepSeek() };
 
         private static readonly HashSet<string> _presetIds = new() { "claude", "openai", "gemini", "deepseek" };
 
@@ -247,6 +221,6 @@ namespace UniAI
         /// <summary>
         /// 所有可用预设（用于 Add Provider 菜单）
         /// </summary>
-        public static ProviderEntry[] All => new[] { Claude(), OpenAI(), Gemini(), DeepSeek() };
+        public static ChannelEntry[] All => new[] { Claude(), OpenAI(), Gemini(), DeepSeek() };
     }
 }

@@ -12,7 +12,7 @@ namespace UniAI.Providers
     {
         public abstract string Name { get; }
 
-        protected readonly int _timeoutSeconds;
+        private readonly int _timeoutSeconds;
 
         protected static readonly JsonSerializerSettings SerializerSettings = new()
         {

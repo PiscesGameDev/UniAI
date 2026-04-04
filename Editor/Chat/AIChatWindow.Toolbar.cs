@@ -17,7 +17,11 @@ namespace UniAI.Editor.Chat
 
             string toggleIcon = _showSidebar ? "☰" : "▶";
             if (GUILayout.Button(toggleIcon, EditorStyles.miniButton, GUILayout.Width(28), GUILayout.Height(22)))
+            {
                 _showSidebar = !_showSidebar;
+                AIConfigManager.Prefs.ShowSidebar = _showSidebar;
+                AIConfigManager.SavePrefs();
+            }
 
             GUILayout.Space(4);
 
@@ -39,6 +43,10 @@ namespace UniAI.Editor.Chat
                     EnsureRunner();
                     if (_activeSession != null)
                         _activeSession.ModelId = _currentModelId;
+
+                    // 持久化模型选择
+                    AIConfigManager.Prefs.LastSelectedModelId = _currentModelId;
+                    AIConfigManager.SavePrefs();
                 }
             }
 
@@ -76,7 +84,7 @@ namespace UniAI.Editor.Chat
             GUILayout.Space(8);
 
             if (GUILayout.Button("⚙", EditorStyles.miniButton, GUILayout.Width(24), GUILayout.Height(22)))
-                AISettingsWindow.Open();
+                AIChannelWindow.Open();
 
             GUILayout.Space(PAD);
             EditorGUILayout.EndHorizontal();

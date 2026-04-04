@@ -13,7 +13,6 @@ namespace UniAI.Editor.Chat
     public class ChatHistory
     {
         private const string HISTORY_DIR = "ProjectSettings/UniAI/History";
-        private const int MAX_SESSIONS = 50;
 
         private readonly List<ChatSession> _sessions = new();
         private string _searchFilter = "";
@@ -134,7 +133,8 @@ namespace UniAI.Editor.Chat
 
         private void EnforceLimit()
         {
-            while (_sessions.Count > MAX_SESSIONS)
+            int maxSessions = AIConfigManager.Prefs.MaxHistorySessions;
+            while (_sessions.Count > maxSessions)
             {
                 var oldest = _sessions[^1];
                 string path = GetPath(oldest.Id);

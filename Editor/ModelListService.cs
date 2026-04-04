@@ -16,11 +16,11 @@ namespace UniAI.Editor
         /// 获取指定渠道支持的模型 ID 列表
         /// </summary>
         internal static async UniTask<ModelListResult> FetchModelsAsync(
-            ProviderEntry entry, GeneralConfig general, CancellationToken ct = default)
+            ChannelEntry entry, GeneralConfig general, CancellationToken ct = default)
         {
             try
             {
-                var apiKey = entry.GetEffectiveApiKey();
+                var apiKey = AIConfigManager.GetEffectiveApiKey(entry);
                 if (string.IsNullOrEmpty(apiKey))
                     return ModelListResult.Fail("No API Key configured.");
 
