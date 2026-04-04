@@ -31,7 +31,7 @@ namespace UniAI
         /// <summary>
         /// Agent 图标
         /// </summary>
-        public Texture2D Icon => _icon;
+        public Texture2D Icon { get => _icon; set => _icon = value; }
 
         /// <summary>
         /// 温度参数
@@ -56,6 +56,23 @@ namespace UniAI
         /// <summary>
         /// 是否包含工具
         /// </summary>
-        public bool HasTools => _tools != null && _tools.Count > 0;
+        public bool HasTools => _tools is { Count: > 0 };
+
+        /// <summary>
+        /// 创建内置默认 Agent（无 Tool，通用聊天助手，单轮对话）
+        /// </summary>
+        public static AgentDefinition CreateDefault()
+        {
+            var agent = CreateInstance<AgentDefinition>();
+            agent.name = "DefaultAgent";
+            agent._agentName = "默认助手";
+            agent._systemPrompt =
+                "您是一位乐于助人的 Unity 游戏开发助手. " +
+                "请提供简洁明了的答案. 当展示代码时，请使用 C# 和 Unity 最佳实践.";
+            agent._temperature = 0.7f;
+            agent._maxTokens = 4096;
+            agent._maxTurns = 1;
+            return agent;
+        }
     }
 }

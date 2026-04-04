@@ -20,24 +20,13 @@ namespace UniAI.Editor
         {
             get
             {
-                if (_defaultAgent == null)
+                if (_defaultAgent != null) return _defaultAgent;
+                _defaultAgent = AgentDefinition.CreateDefault();
+                // 加载默认图标（Editor 资源，Runtime 不可用）
+                var icon = AssetDatabase.LoadAssetAtPath<Texture2D>(DefaultAgentIconPath);
+                if (icon != null)
                 {
-                    _defaultAgent = ScriptableObject.CreateInstance<AgentDefinition>();
-                    _defaultAgent.name = "DefaultAgent";
-                    // 通过 SerializedObject 设置私有字段
-                    var so = new SerializedObject(_defaultAgent);
-                    so.FindProperty("_agentName").stringValue = "默认助手";
-                    so.FindProperty("_systemPrompt").stringValue =
-                        "You are a helpful Unity game development assistant. " +
-                        "Provide clear, concise answers. When showing code, use C# and Unity best practices.";
-                    so.FindProperty("_temperature").floatValue = 0.7f;
-                    so.FindProperty("_maxTokens").intValue = 4096;
-                    so.FindProperty("_maxTurns").intValue = 1;
-                    // 加载默认图标（如果存在）
-                    var icon = AssetDatabase.LoadAssetAtPath<Texture2D>(DefaultAgentIconPath);
-                    if (icon != null)
-                        so.FindProperty("_icon").objectReferenceValue = icon;
-                    so.ApplyModifiedPropertiesWithoutUndo();
+                    _defaultAgent.Icon = icon;
                 }
                 return _defaultAgent;
             }

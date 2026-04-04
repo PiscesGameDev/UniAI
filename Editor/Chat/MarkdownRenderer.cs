@@ -11,7 +11,6 @@ namespace UniAI.Editor.Chat
     public static class MarkdownRenderer
     {
         private static GUIStyle _normalStyle;
-        private static GUIStyle _boldStyle;
         private static GUIStyle _h1Style;
         private static GUIStyle _h2Style;
         private static GUIStyle _h3Style;
@@ -296,9 +295,7 @@ namespace UniAI.Editor.Chat
                 fontSize = 13,
                 padding = new RectOffset(4, 4, 2, 2)
             };
-
-            _boldStyle = new GUIStyle(_normalStyle) { fontStyle = FontStyle.Bold };
-
+            
             _h1Style = new GUIStyle(EditorStyles.boldLabel)
             {
                 fontSize = 18,

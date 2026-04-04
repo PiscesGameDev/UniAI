@@ -67,11 +67,8 @@ namespace UniAI.Providers
 
                     try
                     {
-                        bool receivedData = false;
-
                         await foreach (var chunk in _providers[i].StreamAsync(request, linkedToken))
                         {
-                            receivedData = true;
                             await writer.YieldAsync(chunk);
                         }
 

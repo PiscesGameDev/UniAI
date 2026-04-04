@@ -613,7 +613,9 @@ namespace UniAI.Editor
 
             try
             {
-                var result = await ModelListService.FetchModelsAsync(entry, _config.General);
+                var apiKey = EditorPreferences.GetEffectiveApiKey(entry);
+                var timeout = _config.General?.TimeoutSeconds ?? 30;
+                var result = await ModelListService.FetchModelsAsync(entry, apiKey, timeout);
                 _fetchedModels[entry.Id] = result;
 
                 if (result.IsSuccess && result.Models.Count > 0)

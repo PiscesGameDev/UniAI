@@ -2,34 +2,34 @@ using System;
 using System.Collections.Generic;
 using System.Threading;
 using Cysharp.Threading.Tasks;
-using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 
-namespace UniAI.Editor
+namespace UniAI
 {
     /// <summary>
-    /// 从 Provider API 获取可用模型列表（Editor 专用）
+    /// 从 Provider API 获取可用模型列表
     /// </summary>
-    internal static class ModelListService
+    public static class ModelListService
     {
         /// <summary>
         /// 获取指定渠道支持的模型 ID 列表
         /// </summary>
-        internal static async UniTask<ModelListResult> FetchModelsAsync(
-            ChannelEntry entry, GeneralConfig general, CancellationToken ct = default)
+        /// <param name="entry">渠道配置</param>
+        /// <param name="apiKey">有效的 API Key（调用方负责解析环境变量等）</param>
+        /// <param name="timeoutSeconds">请求超时秒数</param>
+        /// <param name="ct">取消令牌</param>
+        public static async UniTask<ModelListResult> FetchModelsAsync(
+            ChannelEntry entry, string apiKey, int timeoutSeconds = 30, CancellationToken ct = default)
         {
             try
             {
-                var apiKey = AIConfigManager.GetEffectiveApiKey(entry);
                 if (string.IsNullOrEmpty(apiKey))
                     return ModelListResult.Fail("No API Key configured.");
 
-                var timeout = general?.TimeoutSeconds ?? 30;
-
                 return entry.Protocol switch
                 {
-                    ProviderProtocol.OpenAI => await FetchOpenAIModels(entry.BaseUrl, apiKey, timeout, ct),
-                    ProviderProtocol.Claude => await FetchClaudeModels(entry.BaseUrl, apiKey, entry.ApiVersion, timeout, ct),
+                    ProviderProtocol.OpenAI => await FetchOpenAIModels(entry.BaseUrl, apiKey, timeoutSeconds, ct),
+                    ProviderProtocol.Claude => await FetchClaudeModels(entry.BaseUrl, apiKey, entry.ApiVersion, timeoutSeconds, ct),
                     _ => ModelListResult.Fail($"Unsupported protocol: {entry.Protocol}")
                 };
             }
@@ -55,9 +55,8 @@ namespace UniAI.Editor
 
             var models = new List<ModelInfo>();
             var json = JObject.Parse(result.Body);
-            var data = json["data"] as JArray;
 
-            if (data != null)
+            if (json["data"] is JArray data)
             {
                 foreach (var item in data)
                 {
@@ -91,7 +90,6 @@ namespace UniAI.Editor
             bool hasMore = true;
             string afterId = null;
 
-            // Claude API 支持分页
             while (hasMore)
             {
                 ct.ThrowIfCancellationRequested();
@@ -103,9 +101,8 @@ namespace UniAI.Editor
                     return ModelListResult.Fail(result.Error ?? $"HTTP {result.StatusCode}");
 
                 var json = JObject.Parse(result.Body);
-                var data = json["data"] as JArray;
 
-                if (data != null)
+                if (json["data"] is JArray data)
                 {
                     foreach (var item in data)
                     {
@@ -131,7 +128,10 @@ namespace UniAI.Editor
         }
     }
 
-    internal class ModelInfo
+    /// <summary>
+    /// 模型信息
+    /// </summary>
+    public class ModelInfo
     {
         public string Id;
         public string DisplayName;
@@ -140,19 +140,22 @@ namespace UniAI.Editor
         public string Label => !string.IsNullOrEmpty(DisplayName) ? $"{DisplayName} ({Id})" : Id;
     }
 
-    internal class ModelListResult
+    /// <summary>
+    /// 模型列表查询结果
+    /// </summary>
+    public class ModelListResult
     {
         public bool IsSuccess;
         public List<ModelInfo> Models;
         public string Error;
 
-        internal static ModelListResult Success(List<ModelInfo> models) => new()
+        public static ModelListResult Success(List<ModelInfo> models) => new()
         {
             IsSuccess = true,
             Models = models
         };
 
-        internal static ModelListResult Fail(string error) => new()
+        public static ModelListResult Fail(string error) => new()
         {
             IsSuccess = false,
             Error = error,
