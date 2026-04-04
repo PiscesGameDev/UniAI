@@ -95,7 +95,7 @@ namespace UniAI.Editor.Chat
         // ─── Menu ───
 
         [MenuItem("Window/UniAI/Chat")]
-        [MenuItem("Tools/UniAI Chat")]
+        [MenuItem("Tools/UniAI/Chat")]
         public static void Open()
         {
             var w = GetWindow<AIChatWindow>("UniAI 对话");

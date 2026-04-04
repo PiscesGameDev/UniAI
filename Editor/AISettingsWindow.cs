@@ -57,7 +57,7 @@ namespace UniAI.Editor
         private bool _stylesReady;
 
         [MenuItem("Window/UniAI/Configuration")]
-        [MenuItem("Tools/UniAI Configuration")]
+        [MenuItem("Tools/UniAI/Configuration")]
         public static void Open()
         {
             var w = GetWindow<AISettingsWindow>("Configuration");

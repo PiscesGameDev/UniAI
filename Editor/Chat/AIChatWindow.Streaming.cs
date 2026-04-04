@@ -10,12 +10,12 @@ namespace UniAI.Editor.Chat
     {
         private void SendMessage()
         {
+            string text = _inputText.Trim();
+            _inputText = "";
+
             if (_activeSession == null)
                 CreateNewSession();
             if (_activeSession == null) return;
-
-            string text = _inputText.Trim();
-            _inputText = "";
 
             _activeSession.Messages.Add(new ChatMessage
             {

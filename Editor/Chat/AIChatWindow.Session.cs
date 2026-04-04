@@ -27,7 +27,6 @@ namespace UniAI.Editor.Chat
             _activeSession = ChatSession.Create(providerId);
             _activeSession.AgentId = GetSelectedAgentId();
             _chatScroll = Vector2.zero;
-            _inputText = "";
             GUI.FocusControl("ChatInput");
             Repaint();
         }

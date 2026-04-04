@@ -92,6 +92,42 @@ namespace UniAI
         /// </summary>
         public IUniTaskAsyncEnumerable<AgentEvent> RunStreamAsync(List<AIMessage> messages, CancellationToken ct = default)
         {
+            // 无 Tool 时直接转换 Provider 流，避免额外的 UniTaskAsyncEnumerable.Create 嵌套
+            if (!_definition.HasTools)
+                return RunStreamSimple(messages, ct);
+
+            return RunStreamWithTools(messages, ct);
+        }
+
+        /// <summary>
+        /// 简单流式（无 Tool）：直接将 Provider 的 AIStreamChunk 转换为 AgentEvent，
+        /// 不额外包裹 UniTaskAsyncEnumerable.Create，减少嵌套层数
+        /// </summary>
+        private IUniTaskAsyncEnumerable<AgentEvent> RunStreamSimple(List<AIMessage> messages, CancellationToken ct)
+        {
+            var request = BuildRequest(new List<AIMessage>(messages));
+            return _client.StreamAsync(request, ct)
+                .Select(ChunkToEvent)
+                .Where(evt => evt != null);
+        }
+
+        private static AgentEvent ChunkToEvent(AIStreamChunk chunk)
+        {
+            if (!string.IsNullOrEmpty(chunk.DeltaText))
+                return new AgentEvent { Type = AgentEventType.TextDelta, Text = chunk.DeltaText };
+
+            if (chunk.IsComplete)
+                return new AgentEvent { Type = AgentEventType.TurnComplete, TurnIndex = 0, Usage = chunk.Usage };
+
+            // ToolCall chunks 不应出现在无 Tool 的 Agent 中，忽略
+            return null;
+        }
+
+        /// <summary>
+        /// 带 Tool 的流式运行：需要 UniTaskAsyncEnumerable.Create 包裹以实现多轮循环
+        /// </summary>
+        private IUniTaskAsyncEnumerable<AgentEvent> RunStreamWithTools(List<AIMessage> messages, CancellationToken ct)
+        {
             return UniTaskAsyncEnumerable.Create<AgentEvent>(async (writer, token) =>
             {
                 using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct, token);
@@ -99,7 +135,7 @@ namespace UniAI
 
                 var workingMessages = new List<AIMessage>(messages);
                 var totalUsage = new TokenUsage();
-                int maxTurns = _definition.HasTools ? _definition.MaxTurns : 1;
+                int maxTurns = _definition.MaxTurns;
 
                 for (int turn = 0; turn < maxTurns; turn++)
                 {

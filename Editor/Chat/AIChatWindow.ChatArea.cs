@@ -21,8 +21,10 @@ namespace UniAI.Editor.Chat
             _chatScroll = EditorGUILayout.BeginScrollView(_chatScroll);
 
             GUILayout.Space(PAD);
-            foreach (var msg in _activeSession.Messages)
-                DrawMessage(msg, width);
+            // 使用 for 循环替代 foreach，避免流式过程中 Messages 列表变化导致枚举异常
+            var messages = _activeSession.Messages;
+            for (int i = 0; i < messages.Count; i++)
+                DrawMessage(messages[i], width);
             GUILayout.Space(PAD);
 
             EditorGUILayout.EndScrollView();

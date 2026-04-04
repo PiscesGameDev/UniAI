@@ -105,6 +105,11 @@ namespace UniAI
                     {
                         await writer.YieldAsync(line);
                     }
+
+                    // 让出一帧，避免 SSEDownloadHandler.ReceiveData 回调中
+                    // 同步触发整个 async 链（Channel.TryWrite → 内联 continuation），
+                    // 导致过深的调用栈或在 native 回调中执行 Unity API
+                    await UniTask.Yield();
                 }
 
                 // 检查请求结果（HTTP 200 视为成功，SSE 流结束时连接关闭可能导致 result != Success）

@@ -38,7 +38,7 @@ namespace UniAI.Editor
         private bool _stylesReady;
 
         [MenuItem("Window/UniAI/Agents")]
-        [MenuItem("Tools/UniAI Agents")]
+        [MenuItem("Tools/UniAI/Agents")]
         public static void Open()
         {
             var w = GetWindow<AIAgentWindow>("Agents");
