@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using UnityEditor;
 using UnityEngine;
@@ -7,7 +8,7 @@ using UnityEngine;
 namespace UniAI.Editor
 {
     /// <summary>
-    /// UniAI 渠道管理窗口 — 双面板布局，左侧渠道列表，右侧渠道配置详情
+    /// UniAI 渠道管理窗口 — 双面板布局，左侧渠道列表，右侧渠道配置 + 模型诊断
     /// </summary>
     public class AIChannelWindow : EditorWindow
     {
@@ -21,37 +22,45 @@ namespace UniAI.Editor
         private static readonly Color _greyDot = new(0.45f, 0.45f, 0.45f);
         private static readonly Color _orangeDot = new(0.92f, 0.65f, 0.1f);
         private static readonly Color _blueLink = new(0.4f, 0.72f, 1f);
+        private static readonly Color _yellowDot = new(0.95f, 0.9f, 0.3f);
 
         // State
         private AIConfig _config;
         private int _selectedIndex;
         private Vector2 _rightScroll;
 
-        // Per-provider state (keyed by provider Id)
+        // Per-provider UI state
         private readonly HashSet<string> _showApiKey = new();
-        private readonly Dictionary<string, ConnStatus> _connStatus = new();
-        private readonly Dictionary<string, string> _connError = new();
-        private readonly Dictionary<string, string> _modelInput = new(); // 模型输入框状态
+        private readonly Dictionary<string, string> _modelInput = new();
 
-        // Icons cache
-        private Texture2D _eyeOpenIcon;
-        private Texture2D _eyeCloseIcon;
-
-        private enum ConnStatus { Testing, Connected, Error }
-
-        // Styles
-        private GUIStyle _titleStyle;
-        private GUIStyle _channelTitleStyle;
-        private GUIStyle _providerLabelStyle;
-        private GUIStyle _statusLinkStyle;
-        private GUIStyle _errorStyle;
-        private GUIStyle _dotStyle;
-        private GUIStyle _addBtnStyle;
-        private bool _stylesReady;
+        // Model test results: key = "{channelId}:{modelId}"
+        private readonly Dictionary<string, ModelTestResult> _modelResults = new();
 
         // Model fetching state (keyed by provider Id)
         private readonly Dictionary<string, bool> _fetchingModels = new();
         private readonly Dictionary<string, ModelListResult> _fetchedModels = new();
+
+        // Icons
+        private Texture2D _eyeOpenIcon;
+        private Texture2D _eyeCloseIcon;
+
+        // Styles
+        private GUIStyle _titleStyle;
+        private GUIStyle _channelTitleStyle;
+        private GUIStyle _statusLinkStyle;
+        private GUIStyle _errorStyle;
+        private GUIStyle _dotStyle;
+        private GUIStyle _addBtnStyle;
+        private GUIStyle _modelNameStyle;
+        private bool _stylesReady;
+
+        private class ModelTestResult
+        {
+            public bool IsTesting;
+            public bool? IsSuccess; // null = 待测
+            public long LatencyMs;
+            public string Error;
+        }
 
         [MenuItem("Window/UniAI/渠道管理")]
         [MenuItem("Tools/UniAI/渠道管理")]
@@ -73,6 +82,8 @@ namespace UniAI.Editor
                 ? _config.Providers[_selectedIndex]
                 : null;
 
+        private string ModelKey(string channelId, string modelId) => $"{channelId}:{modelId}";
+
         // ────────────────────────────── OnGUI ──────────────────────────────
 
         private void OnGUI()
@@ -80,16 +91,13 @@ namespace UniAI.Editor
             if (_config == null) _config = AIConfigManager.LoadConfig();
             EnsureStyles();
 
-            // Left panel bg + separator
             EditorGUI.DrawRect(new Rect(0, 0, LeftPanelWidth, position.height), EditorGUIHelper.LeftPanelBg);
             EditorGUI.DrawRect(new Rect(LeftPanelWidth, 0, 1, position.height), EditorGUIHelper.SeparatorColor);
 
-            // Left panel
             GUILayout.BeginArea(new Rect(0, 0, LeftPanelWidth, position.height));
             DrawLeftPanel();
             GUILayout.EndArea();
 
-            // Right panel
             float rx = LeftPanelWidth + 1;
             GUILayout.BeginArea(new Rect(rx, 0, position.width - rx, position.height));
             _rightScroll = EditorGUILayout.BeginScrollView(_rightScroll);
@@ -140,7 +148,6 @@ namespace UniAI.Editor
 
             GUILayout.Space(Pad);
 
-            // Enabled toggle
             var newEnabled = EditorGUILayout.Toggle(entry.Enabled, GUILayout.Width(16), GUILayout.Height(32));
             if (newEnabled != entry.Enabled)
             {
@@ -150,21 +157,19 @@ namespace UniAI.Editor
 
             GUILayout.Space(4);
 
-            // Name
             EditorGUI.BeginDisabledGroup(!entry.Enabled);
             GUILayout.Label(entry.Name ?? entry.Id, EditorStyles.label, GUILayout.Height(32));
             EditorGUI.EndDisabledGroup();
 
             GUILayout.FlexibleSpace();
 
-            // Status dot
-            _dotStyle.normal.textColor = entry.Enabled ? GetDotColor(entry.Id) : _greyDot;
+            // Aggregated status dot
+            _dotStyle.normal.textColor = entry.Enabled ? GetChannelDotColor(entry) : _greyDot;
             GUILayout.Label("●", _dotStyle, GUILayout.Width(16), GUILayout.Height(32));
 
             GUILayout.Space(6);
             EditorGUILayout.EndHorizontal();
 
-            // Left click = select
             if (Event.current.type == EventType.MouseDown && rect.Contains(Event.current.mousePosition))
             {
                 if (Event.current.button == 1)
@@ -177,13 +182,41 @@ namespace UniAI.Editor
             }
         }
 
+        /// <summary>
+        /// 聚合渠道下所有模型的测试状态
+        /// </summary>
+        private Color GetChannelDotColor(ChannelEntry entry)
+        {
+            if (entry.Models == null || entry.Models.Count == 0) return _greyDot;
+
+            bool anyTesting = false, anySuccess = false, anyFail = false, allTested = true;
+            foreach (var modelId in entry.Models)
+            {
+                var key = ModelKey(entry.Id, modelId);
+                if (!_modelResults.TryGetValue(key, out var r))
+                {
+                    allTested = false;
+                    continue;
+                }
+                if (r.IsTesting) anyTesting = true;
+                else if (r.IsSuccess == true) anySuccess = true;
+                else if (r.IsSuccess == false) anyFail = true;
+                else allTested = false;
+            }
+
+            if (anyTesting) return _yellowDot;
+            if (anyFail) return _orangeDot;
+            if (anySuccess && allTested) return _greenDot;
+            if (anySuccess) return _greenDot; // partial success
+            return _greyDot;
+        }
+
         // ────────────────────────────── Right Panel ──────────────────────────────
 
         private void DrawRightPanel()
         {
             GUILayout.Space(Pad);
 
-            // Header
             EditorGUILayout.BeginHorizontal();
             GUILayout.Space(Pad);
             GUILayout.Label("渠道管理", _titleStyle);
@@ -196,9 +229,15 @@ namespace UniAI.Editor
             GUILayout.Space(16);
 
             if (SelectedEntry != null)
+            {
                 DrawSection(DrawProviderConfig);
+                GUILayout.Space(12);
+                DrawSection(() => DrawModelDiagnostics(SelectedEntry));
+            }
             else
+            {
                 DrawSection(() => GUILayout.Label("未选择渠道，请点击「添加渠道」开始配置。"));
+            }
 
             GUILayout.FlexibleSpace();
 
@@ -220,21 +259,11 @@ namespace UniAI.Editor
             EditorGUILayout.BeginHorizontal();
             GUILayout.Label($"{entry.Name} 渠道配置", _channelTitleStyle);
             GUILayout.FlexibleSpace();
-
-            if (_connStatus.TryGetValue(entry.Id, out var status) && status == ConnStatus.Connected)
-            {
-                var s = new GUIStyle(EditorStyles.miniLabel);
-                s.normal.textColor = _greenDot;
-                GUILayout.Label("✔ 已连接", s);
-                GUILayout.Space(4);
-            }
-
-            if (GUILayout.Button("⚙", EditorStyles.miniButton, GUILayout.Width(24))) { }
             EditorGUILayout.EndHorizontal();
 
             GUILayout.Space(6);
 
-            // Enabled toggle
+            // Enabled
             EditorGUILayout.BeginHorizontal();
             EditorGUILayout.LabelField("启用", GUILayout.Width(LabelWidth));
             var newEnabled = EditorGUILayout.Toggle(entry.Enabled);
@@ -264,10 +293,11 @@ namespace UniAI.Editor
 
             GUILayout.Space(4);
 
-            // Common fields
+            // API Key
             DrawApiKeyRow(entry);
+
+            // Base URL
             DrawTextField("Base URL", ref entry.BaseUrl);
-            DrawModelTags(entry);
 
             // Claude-specific
             if (entry.Protocol == ProviderProtocol.Claude)
@@ -277,8 +307,7 @@ namespace UniAI.Editor
             GUILayout.Space(4);
             EditorGUILayout.BeginHorizontal();
             EditorGUILayout.LabelField("Protocol", GUILayout.Width(LabelWidth));
-            bool isPreset = ChannelPresets.IsPresetId(entry.Id);
-            if (isPreset)
+            if (ChannelPresets.IsPresetId(entry.Id))
             {
                 EditorGUI.BeginDisabledGroup(true);
                 EditorGUILayout.EnumPopup(entry.Protocol);
@@ -341,14 +370,6 @@ namespace UniAI.Editor
                 }
             }
 
-            // Test button
-            bool isTesting = _connStatus.TryGetValue(entry.Id, out var st) && st == ConnStatus.Testing;
-            EditorGUI.BeginDisabledGroup(isTesting);
-            string btnText = isTesting ? "测试中..." : $"测试 ({entry.Name})";
-            if (GUILayout.Button(btnText, GUILayout.Width(110)))
-                TestProvider(entry);
-            EditorGUI.EndDisabledGroup();
-
             EditorGUILayout.EndHorizontal();
 
             // Env var hint
@@ -357,16 +378,6 @@ namespace UniAI.Editor
                 EditorGUILayout.BeginHorizontal();
                 GUILayout.Space(LabelWidth + 4);
                 EditorGUILayout.LabelField($"来自环境变量 ${envVarName}", EditorStyles.miniLabel);
-                EditorGUILayout.EndHorizontal();
-            }
-
-            // Error line
-            if (_connStatus.TryGetValue(entry.Id, out var s2) && s2 == ConnStatus.Error
-                && _connError.TryGetValue(entry.Id, out var err) && !string.IsNullOrEmpty(err))
-            {
-                EditorGUILayout.BeginHorizontal();
-                GUILayout.Space(LabelWidth + 4);
-                EditorGUILayout.LabelField($"⚠ {err}", _errorStyle);
                 EditorGUILayout.EndHorizontal();
             }
         }
@@ -379,47 +390,91 @@ namespace UniAI.Editor
             EditorGUILayout.EndHorizontal();
         }
 
-        private void DrawModelTags(ChannelEntry entry)
-        {
-            EditorGUILayout.BeginHorizontal();
-            EditorGUILayout.LabelField("Models", GUILayout.Width(LabelWidth));
-            EditorGUILayout.BeginVertical();
+        // ────────────────────────────── Model Diagnostics ──────────────────────────────
 
-            // 已添加的模型标签
+        private void DrawModelDiagnostics(ChannelEntry entry)
+        {
+            GUILayout.Label("模型诊断", _channelTitleStyle);
+            GUILayout.Space(6);
+
+            bool hasApiKey = HasApiKey(entry);
+
+            // Model list table
             if (entry.Models != null && entry.Models.Count > 0)
             {
+                // Header
                 EditorGUILayout.BeginHorizontal();
-                float lineWidth = 0;
-                float maxWidth = EditorGUIUtility.currentViewWidth - LeftPanelWidth - LabelWidth - 60;
+                GUILayout.Label("模型 ID", EditorStyles.miniLabel, GUILayout.ExpandWidth(true));
+                GUILayout.Label("状态", EditorStyles.miniLabel, GUILayout.Width(50));
+                GUILayout.Label("延迟", EditorStyles.miniLabel, GUILayout.Width(60));
+                GUILayout.Space(96); // test + delete button width
+                EditorGUILayout.EndHorizontal();
 
-                for (int i = entry.Models.Count - 1; i >= 0; i--)
+                EditorGUIHelper.DrawSeparator();
+
+                for (int i = 0; i < entry.Models.Count; i++)
                 {
-                    var model = entry.Models[i];
-                    var content = new GUIContent($"  {model}  ✕");
-                    float tagWidth = EditorStyles.miniButton.CalcSize(content).x + 4;
+                    var modelId = entry.Models[i];
+                    var key = ModelKey(entry.Id, modelId);
+                    _modelResults.TryGetValue(key, out var result);
 
-                    if (lineWidth + tagWidth > maxWidth && lineWidth > 0)
+                    // Model row
+                    EditorGUILayout.BeginHorizontal();
+
+                    // Model name
+                    GUILayout.Label(modelId, _modelNameStyle, GUILayout.ExpandWidth(true));
+
+                    // Status dot + label
+                    DrawModelStatus(result, 50);
+
+                    // Latency
+                    string latencyText = "---";
+                    if (result is { IsTesting: false, IsSuccess: true })
+                        latencyText = $"{result.LatencyMs}ms";
+                    GUILayout.Label(latencyText, EditorStyles.miniLabel, GUILayout.Width(60));
+
+                    // Test button
+                    bool isTesting = result is { IsTesting: true };
+                    EditorGUI.BeginDisabledGroup(isTesting || !hasApiKey);
+                    if (GUILayout.Button(isTesting ? "..." : "测试", EditorStyles.miniButton, GUILayout.Width(44)))
                     {
-                        EditorGUILayout.EndHorizontal();
-                        EditorGUILayout.BeginHorizontal();
-                        lineWidth = 0;
+                        TestModel(entry, modelId);
                     }
+                    EditorGUI.EndDisabledGroup();
 
-                    if (GUILayout.Button(content, EditorStyles.miniButton, GUILayout.Height(20)))
+                    // Delete button
+                    if (GUILayout.Button("✕", EditorStyles.miniButton, GUILayout.Width(22)))
                     {
                         entry.Models.RemoveAt(i);
+                        _modelResults.Remove(key);
                         AIConfigManager.SaveConfig(_config);
+                        GUIUtility.ExitGUI();
+                        return;
                     }
 
-                    lineWidth += tagWidth;
+                    EditorGUILayout.EndHorizontal();
+
+                    // Error detail line
+                    if (result is { IsSuccess: false, IsTesting: false } && !string.IsNullOrEmpty(result.Error))
+                    {
+                        EditorGUILayout.BeginHorizontal();
+                        GUILayout.Space(16);
+                        EditorGUILayout.LabelField($"⚠ {result.Error}", _errorStyle);
+                        EditorGUILayout.EndHorizontal();
+                    }
                 }
 
-                GUILayout.FlexibleSpace();
-                EditorGUILayout.EndHorizontal();
-                GUILayout.Space(2);
+                EditorGUIHelper.DrawSeparator();
+            }
+            else
+            {
+                EditorGUILayout.LabelField("暂无模型，请手动添加或获取模型列表。", EditorStyles.miniLabel);
+                GUILayout.Space(4);
             }
 
-            // 输入框 + 添加按钮 + 获取模型按钮
+            GUILayout.Space(4);
+
+            // Add model row
             if (!_modelInput.ContainsKey(entry.Id))
                 _modelInput[entry.Id] = "";
 
@@ -430,35 +485,125 @@ namespace UniAI.Editor
                 AddModelToEntry(entry);
             }
 
-            // 获取模型列表按钮
             bool isFetching = _fetchingModels.TryGetValue(entry.Id, out var f) && f;
-            EditorGUI.BeginDisabledGroup(isFetching || !HasApiKey(entry));
-            string fetchBtnText = isFetching ? "获取中..." : "获取模型";
-            if (GUILayout.Button(fetchBtnText, EditorStyles.miniButton, GUILayout.Width(68), GUILayout.Height(20)))
+            EditorGUI.BeginDisabledGroup(isFetching || !hasApiKey);
+            if (GUILayout.Button(isFetching ? "获取中..." : "获取模型", EditorStyles.miniButton, GUILayout.Width(68), GUILayout.Height(20)))
             {
                 FetchModelsForEntry(entry);
             }
             EditorGUI.EndDisabledGroup();
-
-            // 回车添加
-            if (Event.current.type == EventType.KeyDown && Event.current.keyCode == KeyCode.Return
-                && GUI.GetNameOfFocusedControl() == $"model_input_{entry.Id}")
-            {
-                AddModelToEntry(entry);
-                Event.current.Use();
-            }
-
             EditorGUILayout.EndHorizontal();
 
-            // 获取模型错误提示
+            // Fetch error
             if (_fetchedModels.TryGetValue(entry.Id, out var fetchResult) && !fetchResult.IsSuccess)
             {
                 EditorGUILayout.LabelField($"⚠ {fetchResult.Error}", _errorStyle);
             }
 
-            EditorGUILayout.EndVertical();
-            EditorGUILayout.EndHorizontal();
+            GUILayout.Space(6);
+
+            // Test all models button
+            bool anyTesting = entry.Models != null && entry.Models.Any(m =>
+                _modelResults.TryGetValue(ModelKey(entry.Id, m), out var r) && r.IsTesting);
+
+            EditorGUI.BeginDisabledGroup(anyTesting || !hasApiKey || entry.Models == null || entry.Models.Count == 0);
+            if (GUILayout.Button(anyTesting ? "测试中..." : "测试所有模型", GUILayout.Height(24)))
+            {
+                TestAllModels(entry);
+            }
+            EditorGUI.EndDisabledGroup();
         }
+
+        private void DrawModelStatus(ModelTestResult result, float width)
+        {
+            string label;
+            Color color;
+
+            if (result == null || result.IsSuccess == null && !result.IsTesting)
+            {
+                label = "○ 待测";
+                color = _greyDot;
+            }
+            else if (result.IsTesting)
+            {
+                label = "◌ 测试中";
+                color = _yellowDot;
+            }
+            else if (result.IsSuccess == true)
+            {
+                label = "● 在线";
+                color = _greenDot;
+            }
+            else
+            {
+                label = "● 异常";
+                color = _orangeDot;
+            }
+
+            var style = new GUIStyle(EditorStyles.miniLabel);
+            style.normal.textColor = color;
+            GUILayout.Label(label, style, GUILayout.Width(width));
+        }
+
+        // ────────────────────────────── Model Testing ──────────────────────────────
+
+        private async void TestModel(ChannelEntry entry, string modelId)
+        {
+            var key = ModelKey(entry.Id, modelId);
+            _modelResults[key] = new ModelTestResult { IsTesting = true };
+            Repaint();
+
+            try
+            {
+                var testEntry = new ChannelEntry
+                {
+                    Id = entry.Id, Name = entry.Name, Protocol = entry.Protocol,
+                    ApiKey = AIConfigManager.GetEffectiveApiKey(entry),
+                    BaseUrl = entry.BaseUrl, Models = entry.Models, ApiVersion = entry.ApiVersion
+                };
+
+                var client = AIClient.Create(testEntry, modelId, _config.General);
+
+                var sw = Stopwatch.StartNew();
+                var response = await client.SendAsync(new AIRequest
+                {
+                    Messages = { AIMessage.User("Hi, respond with just \"ok\".") },
+                    MaxTokens = 16,
+                    Temperature = 0f
+                });
+                sw.Stop();
+
+                _modelResults[key] = new ModelTestResult
+                {
+                    IsTesting = false,
+                    IsSuccess = response.IsSuccess,
+                    LatencyMs = sw.ElapsedMilliseconds,
+                    Error = response.IsSuccess ? null : response.Error
+                };
+            }
+            catch (Exception e)
+            {
+                _modelResults[key] = new ModelTestResult
+                {
+                    IsTesting = false,
+                    IsSuccess = false,
+                    Error = e.Message
+                };
+            }
+
+            Repaint();
+        }
+
+        private void TestAllModels(ChannelEntry entry)
+        {
+            if (entry.Models == null) return;
+            foreach (var modelId in entry.Models)
+            {
+                TestModel(entry, modelId);
+            }
+        }
+
+        // ────────────────────────────── Model Fetch ──────────────────────────────
 
         private async void FetchModelsForEntry(ChannelEntry entry)
         {
@@ -472,13 +617,9 @@ namespace UniAI.Editor
                 _fetchedModels[entry.Id] = result;
 
                 if (result.IsSuccess && result.Models.Count > 0)
-                {
                     ShowModelSelectionMenu(entry, result.Models);
-                }
                 else if (result.IsSuccess)
-                {
                     _fetchedModels[entry.Id] = ModelListResult.Fail("未获取到任何模型。");
-                }
             }
             catch (Exception e)
             {
@@ -503,7 +644,7 @@ namespace UniAI.Editor
                 }
                 else
                 {
-                    var m = model; // capture
+                    var m = model;
                     menu.AddItem(new GUIContent(m.Label), false, () =>
                     {
                         entry.Models ??= new List<string>();
@@ -538,10 +679,6 @@ namespace UniAI.Editor
         {
             EditorGUILayout.BeginHorizontal();
             GUILayout.Space(Pad);
-
-            if (GUILayout.Button("测试所有连接", GUILayout.Height(28), GUILayout.Width(160)))
-                TestAllProviders();
-
             GUILayout.FlexibleSpace();
 
             if (GUILayout.Button("保存", GUILayout.Height(28), GUILayout.Width(80)))
@@ -569,7 +706,7 @@ namespace UniAI.Editor
                 }
                 else
                 {
-                    var p = preset; // capture
+                    var p = preset;
                     menu.AddItem(new GUIContent(preset.Name), false, () =>
                     {
                         _config.Providers.Add(p);
@@ -604,8 +741,10 @@ namespace UniAI.Editor
             var menu = new GenericMenu();
             menu.AddItem(new GUIContent($"移除「{entry.Name}」"), false, () =>
             {
-                _connStatus.Remove(entry.Id);
-                _connError.Remove(entry.Id);
+                // Clean up model results for this channel
+                var keysToRemove = _modelResults.Keys.Where(k => k.StartsWith(entry.Id + ":")).ToList();
+                foreach (var k in keysToRemove) _modelResults.Remove(k);
+
                 _showApiKey.Remove(entry.Id);
                 _modelInput.Remove(entry.Id);
                 _fetchingModels.Remove(entry.Id);
@@ -618,52 +757,6 @@ namespace UniAI.Editor
             menu.ShowAsContext();
         }
 
-        // ────────────────────────────── Connection Test ──────────────────────────────
-
-        private async void TestProvider(ChannelEntry entry)
-        {
-            _connStatus[entry.Id] = ConnStatus.Testing;
-            _connError.Remove(entry.Id);
-            Repaint();
-
-            try
-            {
-                var testEntry = new ChannelEntry
-                {
-                    Id = entry.Id, Name = entry.Name, Protocol = entry.Protocol,
-                    ApiKey = AIConfigManager.GetEffectiveApiKey(entry), BaseUrl = entry.BaseUrl,
-                    Models = entry.Models, ApiVersion = entry.ApiVersion
-                };
-
-                var client = AIClient.Create(testEntry, testEntry.DefaultModel, _config.General);
-                var response = await client.SendAsync(new AIRequest
-                {
-                    Messages = { AIMessage.User("Hi, respond with just \"ok\".") },
-                    MaxTokens = 16,
-                    Temperature = 0f
-                });
-
-                _connStatus[entry.Id] = response.IsSuccess ? ConnStatus.Connected : ConnStatus.Error;
-                if (!response.IsSuccess) _connError[entry.Id] = response.Error;
-            }
-            catch (Exception e)
-            {
-                _connStatus[entry.Id] = ConnStatus.Error;
-                _connError[entry.Id] = e.Message;
-            }
-
-            Repaint();
-        }
-
-        private void TestAllProviders()
-        {
-            foreach (var entry in _config.Providers)
-            {
-                if (HasApiKey(entry))
-                    TestProvider(entry);
-            }
-        }
-
         // ────────────────────────────── Helpers ──────────────────────────────
 
         private bool HasApiKey(ChannelEntry entry)
@@ -671,30 +764,28 @@ namespace UniAI.Editor
             return !string.IsNullOrEmpty(AIConfigManager.GetEffectiveApiKey(entry));
         }
 
-        private Color GetDotColor(string providerId)
-        {
-            if (!_connStatus.TryGetValue(providerId, out var s)) return _greyDot;
-            return s switch
-            {
-                ConnStatus.Connected => _greenDot,
-                ConnStatus.Error => _orangeDot,
-                ConnStatus.Testing => Color.yellow,
-                _ => _greyDot
-            };
-        }
-
         private string GetSystemStatusText()
         {
-            int connected = 0, configured = 0;
+            int totalModels = 0, testedOk = 0, configured = 0;
             foreach (var entry in _config.Providers)
             {
-                if (HasApiKey(entry)) configured++;
-                if (_connStatus.TryGetValue(entry.Id, out var s) && s == ConnStatus.Connected) connected++;
+                if (!HasApiKey(entry)) continue;
+                configured++;
+                if (entry.Models == null) continue;
+                foreach (var modelId in entry.Models)
+                {
+                    totalModels++;
+                    var key = ModelKey(entry.Id, modelId);
+                    if (_modelResults.TryGetValue(key, out var r) && r.IsSuccess == true)
+                        testedOk++;
+                }
             }
 
             if (configured == 0) return "未配置渠道";
-            if (connected == configured && connected > 0) return "所有渠道已连接";
-            return $"{connected}/{configured} 已连接";
+            if (totalModels == 0) return "未配置模型";
+            if (testedOk == totalModels && testedOk > 0) return $"全部在线 ({testedOk}/{totalModels})";
+            if (testedOk > 0) return $"{testedOk}/{totalModels} 模型在线";
+            return $"{configured} 渠道已配置";
         }
 
         private void EnsureStyles()
@@ -704,7 +795,6 @@ namespace UniAI.Editor
 
             _titleStyle = new GUIStyle(EditorStyles.boldLabel) { fontSize = 16 };
             _channelTitleStyle = new GUIStyle(EditorStyles.boldLabel) { fontSize = 13 };
-            _providerLabelStyle = new GUIStyle(EditorStyles.boldLabel) { fontSize = 14, alignment = TextAnchor.MiddleLeft };
 
             _statusLinkStyle = new GUIStyle(EditorStyles.miniLabel);
             _statusLinkStyle.normal.textColor = _blueLink;
@@ -714,6 +804,7 @@ namespace UniAI.Editor
 
             _dotStyle = new GUIStyle(EditorStyles.label) { fontSize = 10, alignment = TextAnchor.MiddleCenter };
             _addBtnStyle = new GUIStyle(GUI.skin.button) { alignment = TextAnchor.MiddleCenter };
+            _modelNameStyle = new GUIStyle(EditorStyles.label) { fontSize = 11 };
         }
     }
 }

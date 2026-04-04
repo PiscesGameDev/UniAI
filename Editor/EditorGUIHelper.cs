@@ -36,5 +36,14 @@ namespace UniAI.Editor
             GUILayout.Space(pad);
             EditorGUILayout.EndHorizontal();
         }
+
+        /// <summary>
+        /// 绘制水平分隔线
+        /// </summary>
+        internal static void DrawSeparator()
+        {
+            var rect = EditorGUILayout.GetControlRect(false, 1);
+            EditorGUI.DrawRect(rect, SeparatorColor);
+        }
     }
 }
