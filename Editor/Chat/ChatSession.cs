@@ -1,11 +1,14 @@
 using System;
 using System.Collections.Generic;
+using Newtonsoft.Json;
+using Newtonsoft.Json.Converters;
 
 namespace UniAI.Editor.Chat
 {
     [Serializable]
     public class ChatMessage
     {
+        [JsonConverter(typeof(StringEnumConverter))]
         public AIRole Role;
         public string Content;
         public int InputTokens;

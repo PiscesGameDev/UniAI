@@ -11,138 +11,28 @@ namespace UniAI.Providers.OpenAI
     /// <summary>
     /// OpenAI Chat Completions API 实现（兼容所有 OpenAI 兼容接口）
     /// </summary>
-    public class OpenAIProvider : IAIProvider
+    public class OpenAIProvider : ProviderBase
     {
-        public string Name => "OpenAI";
+        public override string Name => "OpenAI";
 
         private readonly OpenAIConfig _config;
-        private readonly int _timeoutSeconds;
 
         public OpenAIProvider(OpenAIConfig config, int timeoutSeconds = 60)
+            : base(timeoutSeconds)
         {
             _config = config;
-            _timeoutSeconds = timeoutSeconds;
         }
 
-        public async UniTask<AIResponse> SendAsync(AIRequest request, CancellationToken ct = default)
+        protected override string BuildUrl() => $"{_config.BaseUrl.TrimEnd('/')}/chat/completions";
+
+        protected override Dictionary<string, string> BuildHeaders() => new()
         {
-            var url = $"{_config.BaseUrl.TrimEnd('/')}/chat/completions";
-            var body = BuildRequestBody(request, stream: false);
-            var json = JsonConvert.SerializeObject(body, Formatting.None, _serializerSettings);
-            var headers = BuildHeaders();
+            { "Authorization", $"Bearer {_config.ApiKey}" }
+        };
 
-            AILogger.Verbose($"OpenAI SendAsync model={body.Model}");
+        protected override string GetModelFromBody(object body) => ((OpenAIRequest)body).Model;
 
-            var result = await AIHttpClient.PostJsonAsync(url, json, headers, _timeoutSeconds, ct);
-
-            if (!result.IsSuccess)
-                return ParseError(result);
-
-            return ParseResponse(result.Body);
-        }
-
-        public IUniTaskAsyncEnumerable<AIStreamChunk> StreamAsync(AIRequest request, CancellationToken ct = default)
-        {
-            return UniTaskAsyncEnumerable.Create<AIStreamChunk>(async (writer, token) =>
-            {
-                using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct, token);
-                var linkedToken = cts.Token;
-
-                var url = $"{_config.BaseUrl.TrimEnd('/')}/chat/completions";
-                var body = BuildRequestBody(request, stream: true);
-                var json = JsonConvert.SerializeObject(body, Formatting.None, _serializerSettings);
-                var headers = BuildHeaders();
-
-                AILogger.Verbose($"OpenAI StreamAsync model={body.Model}");
-
-                var parser = new SSEParser();
-
-                // 流式 Tool 调用累积
-                var toolCallAccumulators = new Dictionary<int, (string Id, string Name, string Args)>();
-
-                await foreach (var line in AIHttpClient.PostStreamAsync(url, json, headers, linkedToken))
-                {
-                    var evt = parser.ParseLine(line);
-                    if (evt == null) continue;
-
-                    if (evt.Data == null || evt.Data == "[DONE]")
-                    {
-                        // 输出累积的 tool calls
-                        foreach (var kvp in toolCallAccumulators)
-                        {
-                            var (id, name, args) = kvp.Value;
-                            await writer.YieldAsync(new AIStreamChunk
-                            {
-                                ToolCall = new AIToolCall { Id = id, Name = name, Arguments = args }
-                            });
-                        }
-                        await writer.YieldAsync(new AIStreamChunk { IsComplete = true });
-                        break;
-                    }
-
-                    try
-                    {
-                        var resp = JsonConvert.DeserializeObject<OpenAIStreamResponse>(evt.Data);
-                        var choice = resp?.Choices?.FirstOrDefault();
-                        if (choice == null) continue;
-
-                        // 处理 tool_calls 增量
-                        if (choice.Delta?.ToolCalls != null)
-                        {
-                            foreach (var tc in choice.Delta.ToolCalls)
-                            {
-                                if (!toolCallAccumulators.ContainsKey(tc.Index))
-                                    toolCallAccumulators[tc.Index] = (tc.Id ?? "", tc.Function?.Name ?? "", "");
-
-                                var current = toolCallAccumulators[tc.Index];
-                                if (!string.IsNullOrEmpty(tc.Id))
-                                    current.Id = tc.Id;
-                                if (!string.IsNullOrEmpty(tc.Function?.Name))
-                                    current.Name = tc.Function.Name;
-                                if (!string.IsNullOrEmpty(tc.Function?.Arguments))
-                                    current.Args += tc.Function.Arguments;
-                                toolCallAccumulators[tc.Index] = current;
-                            }
-                            continue;
-                        }
-
-                        if (choice.FinishReason != null)
-                        {
-                            // 输出累积的 tool calls
-                            foreach (var kvp in toolCallAccumulators)
-                            {
-                                var (id, name, args) = kvp.Value;
-                                await writer.YieldAsync(new AIStreamChunk
-                                {
-                                    ToolCall = new AIToolCall { Id = id, Name = name, Arguments = args }
-                                });
-                            }
-
-                            await writer.YieldAsync(new AIStreamChunk
-                            {
-                                IsComplete = true,
-                                Usage = resp.Usage != null ? new TokenUsage
-                                {
-                                    InputTokens = resp.Usage.PromptTokens,
-                                    OutputTokens = resp.Usage.CompletionTokens
-                                } : null
-                            });
-                            break;
-                        }
-
-                        var deltaText = choice.Delta?.Content;
-                        if (deltaText != null)
-                            await writer.YieldAsync(new AIStreamChunk { DeltaText = deltaText });
-                    }
-                    catch (Exception e)
-                    {
-                        AILogger.Warning($"Failed to parse OpenAI stream event: {e.Message}");
-                    }
-                }
-            });
-        }
-
-        private OpenAIRequest BuildRequestBody(AIRequest request, bool stream)
+        protected override object BuildRequestBody(AIRequest request, bool stream)
         {
             var messages = new List<OpenAIMessage>();
 
@@ -259,12 +149,98 @@ namespace UniAI.Providers.OpenAI
             return openAIRequest;
         }
 
-        private Dictionary<string, string> BuildHeaders() => new()
+        public override IUniTaskAsyncEnumerable<AIStreamChunk> StreamAsync(AIRequest request, CancellationToken ct = default)
         {
-            { "Authorization", $"Bearer {_config.ApiKey}" }
-        };
+            return UniTaskAsyncEnumerable.Create<AIStreamChunk>(async (writer, token) =>
+            {
+                using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct, token);
+                var linkedToken = cts.Token;
 
-        private static AIResponse ParseResponse(string json)
+                var url = BuildUrl();
+                var body = (OpenAIRequest)BuildRequestBody(request, stream: true);
+                var json = JsonConvert.SerializeObject(body, Formatting.None, SerializerSettings);
+                var headers = BuildHeaders();
+
+                AILogger.Verbose($"OpenAI StreamAsync model={body.Model}");
+
+                var parser = new SSEParser();
+
+                // 流式 Tool 调用累积
+                var toolCallAccumulators = new Dictionary<int, (string Id, string Name, string Args)>();
+
+                await foreach (var line in AIHttpClient.PostStreamAsync(url, json, headers, linkedToken))
+                {
+                    var evt = parser.ParseLine(line);
+                    if (evt == null) continue;
+
+                    if (evt.Data == null || evt.Data == "[DONE]")
+                    {
+                        break;
+                    }
+
+                    try
+                    {
+                        var resp = JsonConvert.DeserializeObject<OpenAIStreamResponse>(evt.Data);
+                        var choice = resp?.Choices?.FirstOrDefault();
+                        if (choice == null) continue;
+
+                        // 处理 tool_calls 增量
+                        if (choice.Delta?.ToolCalls != null)
+                        {
+                            foreach (var tc in choice.Delta.ToolCalls)
+                            {
+                                if (!toolCallAccumulators.ContainsKey(tc.Index))
+                                    toolCallAccumulators[tc.Index] = (tc.Id ?? "", tc.Function?.Name ?? "", "");
+
+                                var current = toolCallAccumulators[tc.Index];
+                                if (!string.IsNullOrEmpty(tc.Id))
+                                    current.Id = tc.Id;
+                                if (!string.IsNullOrEmpty(tc.Function?.Name))
+                                    current.Name = tc.Function.Name;
+                                if (!string.IsNullOrEmpty(tc.Function?.Arguments))
+                                    current.Args += tc.Function.Arguments;
+                                toolCallAccumulators[tc.Index] = current;
+                            }
+                            continue;
+                        }
+
+                        if (choice.FinishReason != null)
+                        {
+                            // 输出累积的 tool calls
+                            foreach (var kvp in toolCallAccumulators)
+                            {
+                                var (id, name, args) = kvp.Value;
+                                await writer.YieldAsync(new AIStreamChunk
+                                {
+                                    ToolCall = new AIToolCall { Id = id, Name = name, Arguments = args }
+                                });
+                            }
+
+                            await writer.YieldAsync(new AIStreamChunk
+                            {
+                                IsComplete = true,
+                                Usage = resp.Usage != null ? new TokenUsage
+                                {
+                                    InputTokens = resp.Usage.PromptTokens,
+                                    OutputTokens = resp.Usage.CompletionTokens
+                                } : null
+                            });
+                            break;
+                        }
+
+                        var deltaText = choice.Delta?.Content;
+                        if (deltaText != null)
+                            await writer.YieldAsync(new AIStreamChunk { DeltaText = deltaText });
+                    }
+                    catch (Exception e)
+                    {
+                        AILogger.Warning($"Failed to parse OpenAI stream event: {e.Message}");
+                    }
+                }
+            });
+        }
+
+        protected override AIResponse ParseResponse(string json)
         {
             try
             {
@@ -285,7 +261,7 @@ namespace UniAI.Providers.OpenAI
                     }).ToList();
                 }
 
-                var response = AIResponse.Success(
+                return AIResponse.Success(
                     text,
                     resp.Usage != null ? new TokenUsage
                     {
@@ -293,10 +269,9 @@ namespace UniAI.Providers.OpenAI
                         OutputTokens = resp.Usage.CompletionTokens
                     } : null,
                     finishReason,
-                    json
+                    json,
+                    toolCalls
                 );
-                response.ToolCalls = toolCalls;
-                return response;
             }
             catch (Exception e)
             {
@@ -305,25 +280,16 @@ namespace UniAI.Providers.OpenAI
             }
         }
 
-        private static AIResponse ParseError(HttpResult result)
+        protected override string TryParseErrorBody(string body)
         {
-            string errorMsg = result.Error;
-            if (!string.IsNullOrEmpty(result.Body))
+            try
             {
-                try
-                {
-                    var err = JsonConvert.DeserializeObject<OpenAIErrorResponse>(result.Body);
-                    if (err?.Error != null)
-                        errorMsg = $"{err.Error.Type}: {err.Error.Message}";
-                }
-                catch { /* use original error */ }
+                var err = JsonConvert.DeserializeObject<OpenAIErrorResponse>(body);
+                if (err?.Error != null)
+                    return $"{err.Error.Type}: {err.Error.Message}";
             }
-            return AIResponse.Fail($"HTTP {result.StatusCode}: {errorMsg}", result.Body);
+            catch { /* use original error */ }
+            return null;
         }
-
-        private static readonly JsonSerializerSettings _serializerSettings = new()
-        {
-            NullValueHandling = NullValueHandling.Ignore
-        };
     }
 }

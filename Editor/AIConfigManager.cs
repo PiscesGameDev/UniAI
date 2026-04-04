@@ -32,10 +32,9 @@ namespace UniAI.Editor
             // 环境变量覆盖 API Key
             foreach (var provider in config.Providers)
             {
-                if (string.IsNullOrEmpty(provider.EnvVarName)) continue;
-                var envKey = Environment.GetEnvironmentVariable(provider.EnvVarName);
-                if (!string.IsNullOrEmpty(envKey))
-                    provider.ApiKey = envKey;
+                var effectiveKey = provider.GetEffectiveApiKey();
+                if (effectiveKey != provider.ApiKey)
+                    provider.ApiKey = effectiveKey;
             }
 
             return config;
@@ -50,9 +49,7 @@ namespace UniAI.Editor
             var clone = JsonConvert.DeserializeObject<AIConfig>(JsonConvert.SerializeObject(config));
             foreach (var provider in clone.Providers)
             {
-                if (string.IsNullOrEmpty(provider.EnvVarName)) continue;
-                var envKey = Environment.GetEnvironmentVariable(provider.EnvVarName);
-                if (!string.IsNullOrEmpty(envKey) && provider.ApiKey == envKey)
+                if (provider.IsApiKeyFromEnv())
                     provider.ApiKey = null;
             }
 

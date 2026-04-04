@@ -66,6 +66,7 @@ SSEDownloadHandler + SSEParser（SSE 协议层）
 | 类 | 路径 | 协议 |
 |----|------|------|
 | `IAIProvider` | `Runtime/Providers/IAIProvider.cs` | Provider 接口：`SendAsync` + `StreamAsync` |
+| `ProviderBase` | `Runtime/Providers/ProviderBase.cs` | Provider 抽象基类：SendAsync 模板方法 + ParseError + SerializerSettings |
 | `ClaudeProvider` | `Runtime/Providers/Claude/ClaudeProvider.cs` | Claude Messages API (`/v1/messages`) |
 | `ClaudeModels` | `Runtime/Providers/Claude/ClaudeModels.cs` | Claude 请求/响应/流式事件的 JSON 模型 |
 | `OpenAIProvider` | `Runtime/Providers/OpenAI/OpenAIProvider.cs` | OpenAI Chat Completions API (`/chat/completions`) |
@@ -80,13 +81,7 @@ SSEDownloadHandler + SSEParser（SSE 协议层）
 | `SSEDownloadHandler` | `Runtime/Http/SSEDownloadHandler.cs` | 继承 `DownloadHandlerScript`，增量接收 SSE 数据写入 Channel |
 | `SSEParser` | `Runtime/Http/SSEParser.cs` | SSE 协议解析器，行解析为 `SSEEvent` |
 
-### 3.5 Runtime - 模板
-
-| 类 | 路径 | 职责 |
-|----|------|------|
-| `PromptTemplate` | `Runtime/Template/PromptTemplate.cs` | `{{变量名}}` 占位符模板，支持从文件/Resources/字符串加载 |
-
-### 3.6 Runtime - Agent 系统
+### 3.5 Runtime - Agent 系统
 
 | 类 | 路径 | 职责 |
 |----|------|------|
@@ -98,7 +93,7 @@ SSEDownloadHandler + SSEParser（SSE 协议层）
 
 **核心设计**: 普通 Chat = 默认 Agent（无 Tool，MaxTurns=1）。所有对话统一走 `AIAgentRunner`，无 Tool 时循环只跑一轮。
 
-### 3.7 Editor
+### 3.6 Editor
 
 | 类 | 路径 | 职责 |
 |----|------|------|

@@ -76,6 +76,30 @@ namespace UniAI
         /// 环境变量名（用于自动读取 API Key）
         /// </summary>
         public string EnvVarName;
+
+        /// <summary>
+        /// 获取有效的 API Key（环境变量优先，其次使用配置值）
+        /// </summary>
+        public string GetEffectiveApiKey()
+        {
+            if (!string.IsNullOrEmpty(EnvVarName))
+            {
+                var envKey = Environment.GetEnvironmentVariable(EnvVarName);
+                if (!string.IsNullOrEmpty(envKey))
+                    return envKey;
+            }
+            return ApiKey;
+        }
+
+        /// <summary>
+        /// 当前 ApiKey 是否来自环境变量
+        /// </summary>
+        public bool IsApiKeyFromEnv()
+        {
+            if (string.IsNullOrEmpty(EnvVarName)) return false;
+            var envKey = System.Environment.GetEnvironmentVariable(EnvVarName);
+            return !string.IsNullOrEmpty(envKey) && ApiKey == envKey;
+        }
     }
 
     // ─── Provider 级别配置（供直接构造 Provider 使用）───
@@ -101,7 +125,6 @@ namespace UniAI
     public class GeneralConfig
     {
         public int TimeoutSeconds = 60;
-        public int MaxRetries = 2;
         public AILogLevel LogLevel = AILogLevel.Info;
     }
 

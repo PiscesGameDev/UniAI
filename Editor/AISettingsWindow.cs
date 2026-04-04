@@ -19,15 +19,10 @@ namespace UniAI.Editor
         private const string IconsDir = "Assets/UniAI/Editor/Icons";
 
         // Colors
-        private static readonly Color _leftPanelBg = new(0.18f, 0.18f, 0.18f);
-        private static readonly Color _itemBg = new(0.24f, 0.24f, 0.24f);
-        private static readonly Color _itemSelectedBg = new(0.30f, 0.30f, 0.33f);
-        private static readonly Color _separatorColor = new(0.12f, 0.12f, 0.12f);
         private static readonly Color _greenDot = new(0.3f, 0.85f, 0.4f);
         private static readonly Color _greyDot = new(0.45f, 0.45f, 0.45f);
         private static readonly Color _orangeDot = new(0.92f, 0.65f, 0.1f);
         private static readonly Color _blueLink = new(0.4f, 0.72f, 1f);
-        private static readonly Color _sectionBg = new(0.21f, 0.21f, 0.21f);
 
         // State
         private AIConfig _config;
@@ -94,8 +89,8 @@ namespace UniAI.Editor
             EnsureStyles();
 
             // Left panel bg + separator
-            EditorGUI.DrawRect(new Rect(0, 0, LeftPanelWidth, position.height), _leftPanelBg);
-            EditorGUI.DrawRect(new Rect(LeftPanelWidth, 0, 1, position.height), _separatorColor);
+            EditorGUI.DrawRect(new Rect(0, 0, LeftPanelWidth, position.height), EditorGUIHelper.LeftPanelBg);
+            EditorGUI.DrawRect(new Rect(LeftPanelWidth, 0, 1, position.height), EditorGUIHelper.SeparatorColor);
 
             // Left panel
             GUILayout.BeginArea(new Rect(0, 0, LeftPanelWidth, position.height));
@@ -149,7 +144,7 @@ namespace UniAI.Editor
             var rect = EditorGUILayout.BeginHorizontal(GUILayout.Height(36));
 
             if (rect.width > 1)
-                EditorGUI.DrawRect(rect, isSelected ? _itemSelectedBg : _itemBg);
+                EditorGUI.DrawRect(rect, isSelected ? EditorGUIHelper.ItemSelectedBg : EditorGUIHelper.ItemBg);
 
             GUILayout.Space(Pad);
 
@@ -235,17 +230,7 @@ namespace UniAI.Editor
 
         private void DrawSection(Action drawContent)
         {
-            EditorGUILayout.BeginHorizontal();
-            GUILayout.Space(Pad);
-            var r = EditorGUILayout.BeginVertical();
-            if (r.width > 1)
-                EditorGUI.DrawRect(new Rect(r.x, r.y, r.width, r.height), _sectionBg);
-            GUILayout.Space(8);
-            drawContent();
-            GUILayout.Space(8);
-            EditorGUILayout.EndVertical();
-            GUILayout.Space(Pad);
-            EditorGUILayout.EndHorizontal();
+            EditorGUIHelper.DrawSection(Pad, drawContent);
         }
 
         private void DrawProviderConfig()
@@ -404,11 +389,6 @@ namespace UniAI.Editor
             EditorGUILayout.EndHorizontal();
 
             EditorGUILayout.BeginHorizontal();
-            EditorGUILayout.LabelField("Max Retries", GUILayout.Width(LabelWidth));
-            _config.General.MaxRetries = EditorGUILayout.IntSlider(_config.General.MaxRetries, 0, 5);
-            EditorGUILayout.EndHorizontal();
-
-            EditorGUILayout.BeginHorizontal();
             EditorGUILayout.LabelField("Log Level", GUILayout.Width(LabelWidth));
             _config.General.LogLevel = (AILogLevel)EditorGUILayout.EnumPopup(_config.General.LogLevel);
             EditorGUILayout.EndHorizontal();
@@ -507,19 +487,11 @@ namespace UniAI.Editor
 
             try
             {
-                // 环境变量覆盖
-                var apiKey = entry.ApiKey;
-                if (!string.IsNullOrEmpty(entry.EnvVarName))
-                {
-                    var envKey = Environment.GetEnvironmentVariable(entry.EnvVarName);
-                    if (!string.IsNullOrEmpty(envKey)) apiKey = envKey;
-                }
-
                 var testEntry = new ProviderEntry
                 {
                     Id = entry.Id, Name = entry.Name, Protocol = entry.Protocol,
-                    ApiKey = apiKey, BaseUrl = entry.BaseUrl, Model = entry.Model,
-                    ApiVersion = entry.ApiVersion
+                    ApiKey = entry.GetEffectiveApiKey(), BaseUrl = entry.BaseUrl,
+                    Model = entry.Model, ApiVersion = entry.ApiVersion
                 };
 
                 var client = AIClient.Create(testEntry, _config.General);
@@ -555,10 +527,7 @@ namespace UniAI.Editor
 
         private bool HasApiKey(ProviderEntry entry)
         {
-            if (!string.IsNullOrEmpty(entry.ApiKey)) return true;
-            if (!string.IsNullOrEmpty(entry.EnvVarName))
-                return !string.IsNullOrEmpty(Environment.GetEnvironmentVariable(entry.EnvVarName));
-            return false;
+            return !string.IsNullOrEmpty(entry.GetEffectiveApiKey());
         }
 
         private Color GetDotColor(string providerId)

@@ -47,13 +47,14 @@ namespace UniAI
         /// </summary>
         public bool HasToolCalls => ToolCalls?.Count > 0;
 
-        public static AIResponse Success(string text, TokenUsage usage = null, string stopReason = null, string rawResponse = null) => new()
+        public static AIResponse Success(string text, TokenUsage usage = null, string stopReason = null, string rawResponse = null, List<AIToolCall> toolCalls = null) => new()
         {
             IsSuccess = true,
             Text = text,
             Usage = usage,
             StopReason = stopReason,
-            RawResponse = rawResponse
+            RawResponse = rawResponse,
+            ToolCalls = toolCalls
         };
 
         public static AIResponse Fail(string error, string rawResponse = null) => new()

@@ -11,7 +11,7 @@ namespace UniAI
     internal class SSEDownloadHandler : DownloadHandlerScript
     {
         private readonly Channel<string> _channel;
-        private string _buffer = "";
+        private readonly StringBuilder _buffer = new();
 
         internal SSEDownloadHandler(Channel<string> channel) : base(new byte[4096])
         {
@@ -21,16 +21,16 @@ namespace UniAI
         protected override bool ReceiveData(byte[] data, int dataLength)
         {
             var text = Encoding.UTF8.GetString(data, 0, dataLength);
-            _buffer += text;
+            _buffer.Append(text);
 
             // 按行切分，将完整行写入 channel
             while (true)
             {
-                int newlineIndex = _buffer.IndexOf('\n');
+                int newlineIndex = IndexOfNewline(_buffer);
                 if (newlineIndex < 0) break;
 
-                var line = _buffer[..newlineIndex].TrimEnd('\r');
-                _buffer = _buffer[(newlineIndex + 1)..];
+                var line = _buffer.ToString(0, newlineIndex).TrimEnd('\r');
+                _buffer.Remove(0, newlineIndex + 1);
 
                 _channel.Writer.TryWrite(line);
             }
@@ -43,13 +43,22 @@ namespace UniAI
             // 处理剩余 buffer
             if (_buffer.Length > 0)
             {
-                _channel.Writer.TryWrite(_buffer.TrimEnd('\r'));
-                _buffer = "";
+                _channel.Writer.TryWrite(_buffer.ToString().TrimEnd('\r'));
+                _buffer.Clear();
             }
 
             _channel.Writer.TryComplete();
         }
 
         protected override float GetProgress() => 0f;
+
+        private static int IndexOfNewline(StringBuilder sb)
+        {
+            for (int i = 0; i < sb.Length; i++)
+            {
+                if (sb[i] == '\n') return i;
+            }
+            return -1;
+        }
     }
 }

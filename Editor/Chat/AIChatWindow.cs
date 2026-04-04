@@ -86,6 +86,7 @@ namespace UniAI.Editor.Chat
         private GUIStyle _contextToggleOnStyle;
         private GUIStyle _contextToggleOffStyle;
         private GUIStyle _toolCallStyle;
+        private GUIStyle _toolCallErrorStyle;
         private bool _stylesReady;
 
         // ─── Provider Cache ───
@@ -100,6 +101,23 @@ namespace UniAI.Editor.Chat
         {
             var w = GetWindow<AIChatWindow>("UniAI 对话");
             w.minSize = new Vector2(640, 400);
+        }
+
+        public static void OpenWithAgent(AgentDefinition agent)
+        {
+            var w = GetWindow<AIChatWindow>("UniAI 对话");
+            w.minSize = new Vector2(640, 400);
+            if (agent == null || w._availableAgents == null) return;
+            for (int i = 0; i < w._availableAgents.Count; i++)
+            {
+                if (w._availableAgents[i] == agent)
+                {
+                    w._selectedAgentIndex = i;
+                    w.CreateNewSession();
+                    w.EnsureRunner();
+                    break;
+                }
+            }
         }
 
         // ─── Lifecycle ───

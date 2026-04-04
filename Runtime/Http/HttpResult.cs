@@ -5,10 +5,10 @@ namespace UniAI
     /// </summary>
     internal class HttpResult
     {
-        public bool IsSuccess { get; set; }
-        public long StatusCode { get; set; }
-        public string Body { get; set; }
-        public string Error { get; set; }
+        public bool IsSuccess { get; private set; }
+        public long StatusCode { get; private set; }
+        public string Body { get; private set; }
+        public string Error { get; private set; }
 
         internal static HttpResult Success(long statusCode, string body) => new()
         {

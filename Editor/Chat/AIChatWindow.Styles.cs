@@ -132,6 +132,12 @@ namespace UniAI.Editor.Chat
                 padding = new RectOffset(4, 4, 2, 2)
             };
             _toolCallStyle.normal.textColor = new Color(0.6f, 0.8f, 0.65f);
+
+            _toolCallErrorStyle = new GUIStyle(EditorStyles.miniLabel)
+            {
+                wordWrap = true
+            };
+            _toolCallErrorStyle.normal.textColor = new Color(0.95f, 0.5f, 0.45f);
         }
 
         // ─── Drawing Helpers ───

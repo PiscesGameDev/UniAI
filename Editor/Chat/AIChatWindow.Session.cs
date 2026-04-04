@@ -92,13 +92,7 @@ namespace UniAI.Editor.Chat
                 _selectedProviderIndex = 0;
 
             var entry = _config.Providers[_selectedProviderIndex];
-
-            if (!string.IsNullOrEmpty(entry.EnvVarName))
-            {
-                var envKey = Environment.GetEnvironmentVariable(entry.EnvVarName);
-                if (!string.IsNullOrEmpty(envKey))
-                    entry.ApiKey = envKey;
-            }
+            entry.ApiKey = entry.GetEffectiveApiKey();
 
             if (string.IsNullOrEmpty(entry.ApiKey))
             {

@@ -269,7 +269,7 @@ namespace UniAI.Editor.Chat
                 var resultDisplay = msg.ToolResult.Length > 200
                     ? msg.ToolResult.Substring(0, 200) + "..."
                     : msg.ToolResult;
-                var resultStyle = msg.IsToolError ? EditorStyles.miniLabel : EditorStyles.miniLabel;
+                var resultStyle = msg.IsToolError ? _toolCallErrorStyle : EditorStyles.miniLabel;
                 GUILayout.Label($"  Result: {resultDisplay}", resultStyle, GUILayout.MaxWidth(maxContentWidth));
             }
 

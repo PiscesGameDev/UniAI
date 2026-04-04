@@ -12,146 +12,29 @@ namespace UniAI.Providers.Claude
     /// <summary>
     /// Claude Messages API 实现
     /// </summary>
-    public class ClaudeProvider : IAIProvider
+    public class ClaudeProvider : ProviderBase
     {
-        public string Name => "Claude";
+        public override string Name => "Claude";
 
         private readonly ClaudeConfig _config;
-        private readonly int _timeoutSeconds;
 
         public ClaudeProvider(ClaudeConfig config, int timeoutSeconds = 60)
+            : base(timeoutSeconds)
         {
             _config = config;
-            _timeoutSeconds = timeoutSeconds;
         }
 
-        public async UniTask<AIResponse> SendAsync(AIRequest request, CancellationToken ct = default)
+        protected override string BuildUrl() => $"{_config.BaseUrl.TrimEnd('/')}/v1/messages";
+
+        protected override Dictionary<string, string> BuildHeaders() => new()
         {
-            var url = $"{_config.BaseUrl.TrimEnd('/')}/v1/messages";
-            var body = BuildRequestBody(request, stream: false);
-            var json = JsonConvert.SerializeObject(body, Formatting.None, _serializerSettings);
-            var headers = BuildHeaders();
+            { "x-api-key", _config.ApiKey },
+            { "anthropic-version", _config.ApiVersion }
+        };
 
-            AILogger.Verbose($"Claude SendAsync model={body.Model}");
+        protected override string GetModelFromBody(object body) => ((ClaudeRequest)body).Model;
 
-            var result = await AIHttpClient.PostJsonAsync(url, json, headers, _timeoutSeconds, ct);
-
-            if (!result.IsSuccess)
-                return ParseError(result);
-
-            return ParseResponse(result.Body);
-        }
-
-        public IUniTaskAsyncEnumerable<AIStreamChunk> StreamAsync(AIRequest request, CancellationToken ct = default)
-        {
-            return UniTaskAsyncEnumerable.Create<AIStreamChunk>(async (writer, token) =>
-            {
-                using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct, token);
-                var linkedToken = cts.Token;
-
-                var url = $"{_config.BaseUrl.TrimEnd('/')}/v1/messages";
-                var body = BuildRequestBody(request, stream: true);
-                var json = JsonConvert.SerializeObject(body, Formatting.None, _serializerSettings);
-                var headers = BuildHeaders();
-
-                AILogger.Verbose($"Claude StreamAsync model={body.Model}");
-
-                var parser = new SSEParser();
-
-                // 流式 Tool 调用累积状态
-                string _currentToolId = null;
-                string _currentToolName = null;
-                string _toolJsonAccumulator = "";
-
-                await foreach (var line in AIHttpClient.PostStreamAsync(url, json, headers, linkedToken))
-                {
-                    var evt = parser.ParseLine(line);
-                    if (evt == null) continue;
-
-                    if (evt.Data == null || evt.Data == "[DONE]") continue;
-
-                    try
-                    {
-                        var baseEvent = JsonConvert.DeserializeObject<ClaudeStreamEvent>(evt.Data);
-
-                        switch (baseEvent?.Type)
-                        {
-                            case "content_block_start":
-                            {
-                                var blockStart = JsonConvert.DeserializeObject<ClaudeContentBlockStart>(evt.Data);
-                                if (blockStart?.ContentBlock?.Type == "tool_use")
-                                {
-                                    _currentToolId = blockStart.ContentBlock.Id;
-                                    _currentToolName = blockStart.ContentBlock.Name;
-                                    _toolJsonAccumulator = "";
-                                }
-                                break;
-                            }
-                            case "content_block_delta":
-                            {
-                                var delta = JsonConvert.DeserializeObject<ClaudeContentBlockDelta>(evt.Data);
-                                if (delta?.Delta?.Type == "text_delta")
-                                {
-                                    await writer.YieldAsync(new AIStreamChunk { DeltaText = delta.Delta.Text });
-                                }
-                                else if (delta?.Delta?.Type == "input_json_delta")
-                                {
-                                    var jsonDelta = JsonConvert.DeserializeObject<ClaudeInputJsonDelta>(
-                                        JsonConvert.SerializeObject(delta.Delta));
-                                    if (jsonDelta?.PartialJson != null)
-                                        _toolJsonAccumulator += jsonDelta.PartialJson;
-                                }
-                                break;
-                            }
-                            case "content_block_stop":
-                            {
-                                if (_currentToolId != null)
-                                {
-                                    await writer.YieldAsync(new AIStreamChunk
-                                    {
-                                        ToolCall = new AIToolCall
-                                        {
-                                            Id = _currentToolId,
-                                            Name = _currentToolName,
-                                            Arguments = _toolJsonAccumulator
-                                        }
-                                    });
-                                    _currentToolId = null;
-                                    _currentToolName = null;
-                                    _toolJsonAccumulator = "";
-                                }
-                                break;
-                            }
-                            case "message_delta":
-                            {
-                                var msgDelta = JsonConvert.DeserializeObject<ClaudeMessageDelta>(evt.Data);
-                                await writer.YieldAsync(new AIStreamChunk
-                                {
-                                    IsComplete = true,
-                                    Usage = msgDelta?.Usage != null ? new TokenUsage
-                                    {
-                                        OutputTokens = msgDelta.Usage.OutputTokens
-                                    } : null
-                                });
-                                break;
-                            }
-                            case "error":
-                            {
-                                var err = JsonConvert.DeserializeObject<ClaudeErrorResponse>(evt.Data);
-                                AILogger.Error($"Stream error: {err?.Error?.Message}");
-                                break;
-                            }
-                        }
-                    }
-                    catch (Exception e)
-                    {
-                        AILogger.Warning($"Failed to parse stream event: {e.Message}");
-                    }
-                }
-            });
-        }
-
-        private ClaudeRequest BuildRequestBody(AIRequest request, bool stream)
+        protected override object BuildRequestBody(AIRequest request, bool stream)
         {
             var claudeMessages = new List<ClaudeMessage>();
 
@@ -263,13 +146,114 @@ namespace UniAI.Providers.Claude
             return claudeRequest;
         }
 
-        private Dictionary<string, string> BuildHeaders() => new()
+        public override IUniTaskAsyncEnumerable<AIStreamChunk> StreamAsync(AIRequest request, CancellationToken ct = default)
         {
-            { "x-api-key", _config.ApiKey },
-            { "anthropic-version", _config.ApiVersion }
-        };
+            return UniTaskAsyncEnumerable.Create<AIStreamChunk>(async (writer, token) =>
+            {
+                using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct, token);
+                var linkedToken = cts.Token;
 
-        private static AIResponse ParseResponse(string json)
+                var url = BuildUrl();
+                var body = (ClaudeRequest)BuildRequestBody(request, stream: true);
+                var json = JsonConvert.SerializeObject(body, Formatting.None, SerializerSettings);
+                var headers = BuildHeaders();
+
+                AILogger.Verbose($"Claude StreamAsync model={body.Model}");
+
+                var parser = new SSEParser();
+
+                // 流式 Tool 调用累积状态
+                string currentToolId = null;
+                string currentToolName = null;
+                string toolJsonAccumulator = "";
+
+                await foreach (var line in AIHttpClient.PostStreamAsync(url, json, headers, linkedToken))
+                {
+                    var evt = parser.ParseLine(line);
+                    if (evt == null) continue;
+
+                    if (evt.Data == null || evt.Data == "[DONE]") continue;
+
+                    try
+                    {
+                        var baseEvent = JsonConvert.DeserializeObject<ClaudeStreamEvent>(evt.Data);
+
+                        switch (baseEvent?.Type)
+                        {
+                            case "content_block_start":
+                            {
+                                var blockStart = JsonConvert.DeserializeObject<ClaudeContentBlockStart>(evt.Data);
+                                if (blockStart?.ContentBlock?.Type == "tool_use")
+                                {
+                                    currentToolId = blockStart.ContentBlock.Id;
+                                    currentToolName = blockStart.ContentBlock.Name;
+                                    toolJsonAccumulator = "";
+                                }
+                                break;
+                            }
+                            case "content_block_delta":
+                            {
+                                var delta = JsonConvert.DeserializeObject<ClaudeContentBlockDelta>(evt.Data);
+                                if (delta?.Delta?.Type == "text_delta")
+                                {
+                                    await writer.YieldAsync(new AIStreamChunk { DeltaText = delta.Delta.Text });
+                                }
+                                else if (delta?.Delta?.Type == "input_json_delta")
+                                {
+                                    if (delta.Delta.PartialJson != null)
+                                        toolJsonAccumulator += delta.Delta.PartialJson;
+                                }
+                                break;
+                            }
+                            case "content_block_stop":
+                            {
+                                if (currentToolId != null)
+                                {
+                                    await writer.YieldAsync(new AIStreamChunk
+                                    {
+                                        ToolCall = new AIToolCall
+                                        {
+                                            Id = currentToolId,
+                                            Name = currentToolName,
+                                            Arguments = toolJsonAccumulator
+                                        }
+                                    });
+                                    currentToolId = null;
+                                    currentToolName = null;
+                                    toolJsonAccumulator = "";
+                                }
+                                break;
+                            }
+                            case "message_delta":
+                            {
+                                var msgDelta = JsonConvert.DeserializeObject<ClaudeMessageDelta>(evt.Data);
+                                await writer.YieldAsync(new AIStreamChunk
+                                {
+                                    IsComplete = true,
+                                    Usage = msgDelta?.Usage != null ? new TokenUsage
+                                    {
+                                        OutputTokens = msgDelta.Usage.OutputTokens
+                                    } : null
+                                });
+                                break;
+                            }
+                            case "error":
+                            {
+                                var err = JsonConvert.DeserializeObject<ClaudeErrorResponse>(evt.Data);
+                                AILogger.Error($"Stream error: {err?.Error?.Message}");
+                                break;
+                            }
+                        }
+                    }
+                    catch (Exception e)
+                    {
+                        AILogger.Warning($"Failed to parse stream event: {e.Message}");
+                    }
+                }
+            });
+        }
+
+        protected override AIResponse ParseResponse(string json)
         {
             try
             {
@@ -299,7 +283,7 @@ namespace UniAI.Providers.Claude
                     }
                 }
 
-                var response = AIResponse.Success(
+                return AIResponse.Success(
                     text,
                     resp.Usage != null ? new TokenUsage
                     {
@@ -307,10 +291,9 @@ namespace UniAI.Providers.Claude
                         OutputTokens = resp.Usage.OutputTokens
                     } : null,
                     resp.StopReason,
-                    json
+                    json,
+                    toolCalls
                 );
-                response.ToolCalls = toolCalls;
-                return response;
             }
             catch (Exception e)
             {
@@ -319,25 +302,16 @@ namespace UniAI.Providers.Claude
             }
         }
 
-        private static AIResponse ParseError(HttpResult result)
+        protected override string TryParseErrorBody(string body)
         {
-            string errorMsg = result.Error;
-            if (!string.IsNullOrEmpty(result.Body))
+            try
             {
-                try
-                {
-                    var err = JsonConvert.DeserializeObject<ClaudeErrorResponse>(result.Body);
-                    if (err?.Error != null)
-                        errorMsg = $"{err.Error.Type}: {err.Error.Message}";
-                }
-                catch { /* use original error */ }
+                var err = JsonConvert.DeserializeObject<ClaudeErrorResponse>(body);
+                if (err?.Error != null)
+                    return $"{err.Error.Type}: {err.Error.Message}";
             }
-            return AIResponse.Fail($"HTTP {result.StatusCode}: {errorMsg}", result.Body);
+            catch { /* use original error */ }
+            return null;
         }
-
-        private static readonly JsonSerializerSettings _serializerSettings = new()
-        {
-            NullValueHandling = NullValueHandling.Ignore
-        };
     }
 }

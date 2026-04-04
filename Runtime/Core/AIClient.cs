@@ -36,7 +36,6 @@ namespace UniAI
             var entry = config.GetActiveProvider()
                 ?? throw new InvalidOperationException("No provider configured in AIConfig.");
 
-            AILogger.LogLevel = config.General.LogLevel;
             return Create(entry, config.General);
         }
 

@@ -96,6 +96,7 @@ namespace UniAI.Providers.Claude
     {
         [JsonProperty("type")] public string Type;
         [JsonProperty("text")] public string Text;
+        [JsonProperty("partial_json")] public string PartialJson;
     }
 
     [Serializable]
@@ -172,10 +173,4 @@ namespace UniAI.Providers.Claude
         [JsonProperty("name")] public string Name;
     }
 
-    [Serializable]
-    internal class ClaudeInputJsonDelta
-    {
-        [JsonProperty("type")] public string Type;
-        [JsonProperty("partial_json")] public string PartialJson;
-    }
 }

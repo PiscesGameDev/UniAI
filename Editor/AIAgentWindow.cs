@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using System.IO;
+using UniAI.Editor.Chat;
 using UnityEditor;
 using UnityEngine;
 
@@ -13,14 +14,10 @@ namespace UniAI.Editor
         private const float LeftPanelWidth = 200f;
         private const float LabelWidth = 100f;
         private const float Pad = 10f;
+        private const float SystemPromptHeight = 400f;
         private const string DefaultAgentDir = "Assets/UniAI/Agents";
 
-        // Colors (与 AISettingsWindow 一致)
-        private static readonly Color _leftPanelBg = new(0.18f, 0.18f, 0.18f);
-        private static readonly Color _itemBg = new(0.24f, 0.24f, 0.24f);
-        private static readonly Color _itemSelectedBg = new(0.30f, 0.30f, 0.33f);
-        private static readonly Color _separatorColor = new(0.12f, 0.12f, 0.12f);
-        private static readonly Color _sectionBg = new(0.21f, 0.21f, 0.21f);
+        // Colors
         private static readonly Color _builtinColor = new(0.55f, 0.55f, 0.55f);
 
         // State
@@ -75,8 +72,8 @@ namespace UniAI.Editor
             EnsureStyles();
 
             // Left panel bg + separator
-            EditorGUI.DrawRect(new Rect(0, 0, LeftPanelWidth, position.height), _leftPanelBg);
-            EditorGUI.DrawRect(new Rect(LeftPanelWidth, 0, 1, position.height), _separatorColor);
+            EditorGUI.DrawRect(new Rect(0, 0, LeftPanelWidth, position.height), EditorGUIHelper.LeftPanelBg);
+            EditorGUI.DrawRect(new Rect(LeftPanelWidth, 0, 1, position.height), EditorGUIHelper.SeparatorColor);
 
             // Left panel
             GUILayout.BeginArea(new Rect(0, 0, LeftPanelWidth, position.height));
@@ -133,7 +130,7 @@ namespace UniAI.Editor
             var rect = EditorGUILayout.BeginHorizontal(GUILayout.Height(32));
 
             if (rect.width > 1)
-                EditorGUI.DrawRect(rect, isSelected ? _itemSelectedBg : _itemBg);
+                EditorGUI.DrawRect(rect, isSelected ? EditorGUIHelper.ItemSelectedBg : EditorGUIHelper.ItemBg);
 
             GUILayout.Space(Pad);
 
@@ -201,30 +198,15 @@ namespace UniAI.Editor
 
         private void DrawDefaultAgentInfo(AgentDefinition agent)
         {
-            DrawSection(() =>
-            {
-                GUILayout.Label("默认助手 (内置)", _sectionTitleStyle);
-                GUILayout.Space(8);
-
-                EditorGUI.BeginDisabledGroup(true);
-
-                DrawReadonlyField("名称", agent.AgentName);
-                DrawReadonlyField("Temperature", agent.Temperature.ToString("F1"));
-                DrawReadonlyField("Max Tokens", agent.MaxTokens.ToString());
-                DrawReadonlyField("Max Turns", agent.MaxTurns.ToString());
-
-                GUILayout.Space(4);
-                GUILayout.Label("System Prompt:", EditorStyles.boldLabel);
-                EditorGUILayout.TextArea(agent.SystemPrompt ?? "(无)", GUILayout.MinHeight(60));
-
-                EditorGUI.EndDisabledGroup();
-
-                GUILayout.Space(8);
-                EditorGUILayout.HelpBox("内置默认 Agent 不可编辑。它是无 Tool 的通用聊天助手，所有对话默认使用。", MessageType.Info);
-            });
+            DrawAgentDetail(agent, true);
         }
 
         private void DrawAgentEditor(AgentDefinition agent)
+        {
+            DrawAgentDetail(agent, false);
+        }
+
+        private void DrawAgentDetail(AgentDefinition agent, bool isReadonly)
         {
             // 确保 SerializedObject
             if (_serializedAgent == null || _serializedAgent.targetObject != agent)
@@ -233,14 +215,17 @@ namespace UniAI.Editor
             _serializedAgent.Update();
 
             // Header
+            string headerLabel = isReadonly ? "默认助手 (内置)" : $"{agent.AgentName ?? agent.name} 配置";
             EditorGUILayout.BeginHorizontal();
             GUILayout.Space(Pad);
-            GUILayout.Label($"{agent.AgentName ?? agent.name} 配置", _sectionTitleStyle);
+            GUILayout.Label(headerLabel, _sectionTitleStyle);
             GUILayout.FlexibleSpace();
             GUILayout.Space(Pad);
             EditorGUILayout.EndHorizontal();
 
             GUILayout.Space(8);
+
+            EditorGUI.BeginDisabledGroup(isReadonly);
 
             // 基本信息 Section
             DrawSection(() =>
@@ -254,7 +239,7 @@ namespace UniAI.Editor
                 GUILayout.Space(4);
                 GUILayout.Label("System Prompt:", EditorStyles.boldLabel);
                 var promptProp = _serializedAgent.FindProperty("_systemPrompt");
-                EditorGUILayout.PropertyField(promptProp, GUIContent.none, GUILayout.MinHeight(80));
+                EditorGUILayout.PropertyField(promptProp, GUIContent.none, GUILayout.MinHeight(isReadonly ? 60 : SystemPromptHeight));
             });
 
             GUILayout.Space(8);
@@ -265,21 +250,18 @@ namespace UniAI.Editor
                 GUILayout.Label("参数设置", _sectionTitleStyle);
                 GUILayout.Space(6);
 
-                // Temperature
                 var tempProp = _serializedAgent.FindProperty("_temperature");
                 EditorGUILayout.BeginHorizontal();
                 EditorGUILayout.LabelField("Temperature", GUILayout.Width(LabelWidth));
                 tempProp.floatValue = EditorGUILayout.Slider(tempProp.floatValue, 0f, 1f);
                 EditorGUILayout.EndHorizontal();
 
-                // MaxTokens
                 var maxTokensProp = _serializedAgent.FindProperty("_maxTokens");
                 EditorGUILayout.BeginHorizontal();
                 EditorGUILayout.LabelField("Max Tokens", GUILayout.Width(LabelWidth));
                 maxTokensProp.intValue = EditorGUILayout.IntField(maxTokensProp.intValue);
                 EditorGUILayout.EndHorizontal();
 
-                // MaxTurns
                 var maxTurnsProp = _serializedAgent.FindProperty("_maxTurns");
                 EditorGUILayout.BeginHorizontal();
                 EditorGUILayout.LabelField("Max Turns", GUILayout.Width(LabelWidth));
@@ -299,27 +281,27 @@ namespace UniAI.Editor
                 EditorGUILayout.PropertyField(toolsProp, new GUIContent("Tools"), true);
             });
 
+            EditorGUI.EndDisabledGroup();
+
             _serializedAgent.ApplyModifiedProperties();
+
+            if (isReadonly)
+            {
+                GUILayout.Space(8);
+                EditorGUILayout.BeginHorizontal();
+                GUILayout.Space(Pad);
+                EditorGUILayout.HelpBox("内置默认 Agent 不可编辑。它是无 Tool 的通用聊天助手，所有对话默认使用。", MessageType.Info);
+                GUILayout.Space(Pad);
+                EditorGUILayout.EndHorizontal();
+            }
 
             GUILayout.Space(12);
 
             // 底部操作
             EditorGUILayout.BeginHorizontal();
-            GUILayout.Space(Pad);
-
-            if (GUILayout.Button("在 Project 中定位", GUILayout.Height(26), GUILayout.Width(140)))
-            {
-                EditorGUIUtility.PingObject(agent);
-                Selection.activeObject = agent;
-            }
-
             GUILayout.FlexibleSpace();
-
-            var oldColor = GUI.backgroundColor;
-            GUI.backgroundColor = new Color(0.9f, 0.3f, 0.3f);
-            if (GUILayout.Button("删除 Agent", GUILayout.Height(26), GUILayout.Width(100)))
-                DeleteAgent(agent);
-            GUI.backgroundColor = oldColor;
+            if (GUILayout.Button("开启对话", GUILayout.Height(28), GUILayout.Width(120)))
+                OpenChatWithAgent(agent);
 
             GUILayout.Space(Pad);
             EditorGUILayout.EndHorizontal();
@@ -331,17 +313,7 @@ namespace UniAI.Editor
 
         private void DrawSection(System.Action drawContent)
         {
-            EditorGUILayout.BeginHorizontal();
-            GUILayout.Space(Pad);
-            var r = EditorGUILayout.BeginVertical();
-            if (r.width > 1)
-                EditorGUI.DrawRect(new Rect(r.x, r.y, r.width, r.height), _sectionBg);
-            GUILayout.Space(8);
-            drawContent();
-            GUILayout.Space(8);
-            EditorGUILayout.EndVertical();
-            GUILayout.Space(Pad);
-            EditorGUILayout.EndHorizontal();
+            EditorGUIHelper.DrawSection(Pad, drawContent);
         }
 
         private void DrawPropertyField(string label, string propertyName)
@@ -350,14 +322,6 @@ namespace UniAI.Editor
             EditorGUILayout.BeginHorizontal();
             EditorGUILayout.LabelField(label, GUILayout.Width(LabelWidth));
             EditorGUILayout.PropertyField(prop, GUIContent.none);
-            EditorGUILayout.EndHorizontal();
-        }
-
-        private void DrawReadonlyField(string label, string value)
-        {
-            EditorGUILayout.BeginHorizontal();
-            EditorGUILayout.LabelField(label, GUILayout.Width(LabelWidth));
-            EditorGUILayout.LabelField(value);
             EditorGUILayout.EndHorizontal();
         }
 
@@ -420,6 +384,11 @@ namespace UniAI.Editor
             RefreshAgentList();
             _serializedAgent = null;
             Repaint();
+        }
+
+        private void OpenChatWithAgent(AgentDefinition agent)
+        {
+            AIChatWindow.OpenWithAgent(agent);
         }
 
         private void ShowAgentContextMenu(int index)

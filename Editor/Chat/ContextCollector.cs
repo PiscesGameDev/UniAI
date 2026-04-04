@@ -144,7 +144,7 @@ namespace UniAI.Editor.Chat
             return string.Join("/", parts);
         }
 
-        // ─── Console Log Reflection ───
+        // ─── Console Log Reflection (cached) ───
 
         private struct LogEntry
         {
@@ -152,53 +152,63 @@ namespace UniAI.Editor.Chat
             public string Type;
         }
 
+        private static bool _reflectionCached;
+        private static Type _logEntriesType;
+        private static Type _logEntryType;
+        private static MethodInfo _getCount;
+        private static MethodInfo _startGetting;
+        private static MethodInfo _getEntry;
+        private static MethodInfo _endGetting;
+        private static FieldInfo _messageField;
+        private static FieldInfo _modeField;
+
+        private static bool EnsureReflectionCache()
+        {
+            if (_reflectionCached) return _logEntriesType != null;
+            _reflectionCached = true;
+
+            _logEntriesType = Type.GetType("UnityEditor.LogEntries, UnityEditor");
+            if (_logEntriesType == null) return false;
+
+            _getCount = _logEntriesType.GetMethod("GetCount", BindingFlags.Public | BindingFlags.Static);
+            _startGetting = _logEntriesType.GetMethod("StartGettingEntries", BindingFlags.Public | BindingFlags.Static);
+            _getEntry = _logEntriesType.GetMethod("GetEntryInternal", BindingFlags.Public | BindingFlags.Static);
+            _endGetting = _logEntriesType.GetMethod("EndGettingEntries", BindingFlags.Public | BindingFlags.Static);
+
+            _logEntryType = Type.GetType("UnityEditor.LogEntry, UnityEditor");
+            if (_logEntryType != null)
+            {
+                _messageField = _logEntryType.GetField("message", BindingFlags.Public | BindingFlags.Instance);
+                _modeField = _logEntryType.GetField("mode", BindingFlags.Public | BindingFlags.Instance);
+            }
+
+            return true;
+        }
+
         private static List<LogEntry> GetConsoleErrors(int maxCount)
         {
             var entries = new List<LogEntry>();
             try
             {
-                // 反射 UnityEditor.LogEntries
-                var logEntriesType = Type.GetType("UnityEditor.LogEntries, UnityEditor");
-                if (logEntriesType == null) return entries;
-
-                var getCount = logEntriesType.GetMethod("GetCount",
-                    BindingFlags.Public | BindingFlags.Static);
-                var startGetting = logEntriesType.GetMethod("StartGettingEntries",
-                    BindingFlags.Public | BindingFlags.Static);
-                var getEntry = logEntriesType.GetMethod("GetEntryInternal",
-                    BindingFlags.Public | BindingFlags.Static);
-                var endGetting = logEntriesType.GetMethod("EndGettingEntries",
-                    BindingFlags.Public | BindingFlags.Static);
-
-                if (getCount == null || startGetting == null || endGetting == null)
+                if (!EnsureReflectionCache()) return entries;
+                if (_getCount == null || _startGetting == null || _endGetting == null || _logEntryType == null)
                     return entries;
 
-                int count = (int)getCount.Invoke(null, null);
+                int count = (int)_getCount.Invoke(null, null);
                 if (count == 0) return entries;
 
-                startGetting.Invoke(null, null);
+                _startGetting.Invoke(null, null);
 
                 try
                 {
-                    // LogEntry struct
-                    var logEntryType = Type.GetType("UnityEditor.LogEntry, UnityEditor");
-                    if (logEntryType == null) return entries;
-
-                    var messageField = logEntryType.GetField("message",
-                        BindingFlags.Public | BindingFlags.Instance);
-                    var modeField = logEntryType.GetField("mode",
-                        BindingFlags.Public | BindingFlags.Instance);
-
-                    // 从最后读起（最新的条目）
                     int start = Mathf.Max(0, count - maxCount);
                     for (int i = start; i < count; i++)
                     {
-                        var entryObj = Activator.CreateInstance(logEntryType);
-                        if (getEntry != null)
-                            getEntry.Invoke(null, new[] { i, entryObj });
+                        var entryObj = Activator.CreateInstance(_logEntryType);
+                        _getEntry?.Invoke(null, new[] { i, entryObj });
 
-                        string message = messageField?.GetValue(entryObj) as string ?? "";
-                        int mode = modeField != null ? (int)modeField.GetValue(entryObj) : 0;
+                        string message = _messageField?.GetValue(entryObj) as string ?? "";
+                        int mode = _modeField != null ? (int)_modeField.GetValue(entryObj) : 0;
 
                         // mode flags: 1=Error, 2=Assert, 4=Log, 8=Fatal, 16=DontPreprocess,
                         //             32=LogLevelLog, 64=LogLevelWarning, 128=LogLevelError
@@ -207,7 +217,6 @@ namespace UniAI.Editor.Chat
 
                         if (!isError && !isWarning) continue;
 
-                        // 截断过长消息
                         if (message.Length > 300)
                             message = message.Substring(0, 300) + "...";
 
@@ -220,7 +229,7 @@ namespace UniAI.Editor.Chat
                 }
                 finally
                 {
-                    endGetting.Invoke(null, null);
+                    _endGetting.Invoke(null, null);
                 }
             }
             catch (Exception e)
