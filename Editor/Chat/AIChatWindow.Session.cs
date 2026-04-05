@@ -63,14 +63,19 @@ namespace UniAI.Editor.Chat
             }
 
             var agent = GetSelectedAgent();
-            _runner = new AIAgentRunner(_client, agent);
+            _runner = agent != null
+                ? (IConversationRunner)new AIAgentRunner(_client, agent)
+                : new ChatRunner(_client);
         }
 
+        /// <summary>
+        /// 当前选中的 Agent；返回 null 表示纯 Chat 模式
+        /// </summary>
         private AgentDefinition GetSelectedAgent()
         {
             if (_availableAgents == null || _availableAgents.Count == 0)
-                return AgentManager.DefaultAgent;
-            if (_selectedAgentIndex >= _availableAgents.Count)
+                return null;
+            if (_selectedAgentIndex < 0 || _selectedAgentIndex >= _availableAgents.Count)
                 _selectedAgentIndex = 0;
             return _availableAgents[_selectedAgentIndex];
         }
@@ -78,7 +83,7 @@ namespace UniAI.Editor.Chat
         private string GetSelectedAgentId()
         {
             var agent = GetSelectedAgent();
-            return agent == AgentManager.DefaultAgent ? "" : agent.name;
+            return agent == null ? "" : agent.name;
         }
 
         private void EnsureClient()

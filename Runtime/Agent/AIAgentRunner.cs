@@ -10,7 +10,7 @@ namespace UniAI
     /// Agent 运行器 — 封装 Tool 调用循环
     /// 无 Tool 时等价于直接 Chat（一轮即结束）
     /// </summary>
-    public class AIAgentRunner
+    public class AIAgentRunner : IConversationRunner
     {
         private readonly AIClient _client;
         private readonly AgentDefinition _definition;
@@ -34,9 +34,9 @@ namespace UniAI
         }
 
         /// <summary>
-        /// 非流式运行：返回最终结果
+        /// 非流式运行：返回最终结果。可选 requestOverride 覆盖 AgentDefinition 默认值
         /// </summary>
-        public async UniTask<AgentResult> RunAsync(List<AIMessage> messages, CancellationToken ct = default)
+        public async UniTask<AgentResult> RunAsync(List<AIMessage> messages, AIRequest requestOverride = null, CancellationToken ct = default)
         {
             var workingMessages = new List<AIMessage>(messages);
             var totalUsage = new TokenUsage();
@@ -46,7 +46,7 @@ namespace UniAI
             {
                 ct.ThrowIfCancellationRequested();
 
-                var request = BuildRequest(workingMessages);
+                var request = BuildRequest(workingMessages, requestOverride);
                 var response = await _client.SendAsync(request, ct);
 
                 if (!response.IsSuccess)
@@ -76,24 +76,24 @@ namespace UniAI
         }
 
         /// <summary>
-        /// 流式运行：yield AgentEvent
+        /// 流式运行：yield AgentEvent。可选 requestOverride 覆盖 AgentDefinition 默认值
         /// </summary>
-        public IUniTaskAsyncEnumerable<AgentEvent> RunStreamAsync(List<AIMessage> messages, CancellationToken ct = default)
+        public IUniTaskAsyncEnumerable<AgentEvent> RunStreamAsync(List<AIMessage> messages, AIRequest requestOverride = null, CancellationToken ct = default)
         {
             // 无 Tool 时直接转换 Provider 流，避免额外的 UniTaskAsyncEnumerable.Create 嵌套
             if (!_definition.HasTools)
-                return RunStreamSimple(messages, ct);
+                return RunStreamSimple(messages, requestOverride, ct);
 
-            return RunStreamWithTools(messages, ct);
+            return RunStreamWithTools(messages, requestOverride, ct);
         }
 
         /// <summary>
         /// 简单流式（无 Tool）：直接将 Provider 的 AIStreamChunk 转换为 AgentEvent，
         /// 不额外包裹 UniTaskAsyncEnumerable.Create，减少嵌套层数
         /// </summary>
-        private IUniTaskAsyncEnumerable<AgentEvent> RunStreamSimple(List<AIMessage> messages, CancellationToken ct)
+        private IUniTaskAsyncEnumerable<AgentEvent> RunStreamSimple(List<AIMessage> messages, AIRequest requestOverride, CancellationToken ct)
         {
-            var request = BuildRequest(new List<AIMessage>(messages));
+            var request = BuildRequest(new List<AIMessage>(messages), requestOverride);
             return _client.StreamAsync(request, ct)
                 .Select(ChunkToEvent)
                 .Where(evt => evt != null);
@@ -114,7 +114,7 @@ namespace UniAI
         /// <summary>
         /// 带 Tool 的流式运行：需要 UniTaskAsyncEnumerable.Create 包裹以实现多轮循环
         /// </summary>
-        private IUniTaskAsyncEnumerable<AgentEvent> RunStreamWithTools(List<AIMessage> messages, CancellationToken ct)
+        private IUniTaskAsyncEnumerable<AgentEvent> RunStreamWithTools(List<AIMessage> messages, AIRequest requestOverride, CancellationToken ct)
         {
             return UniTaskAsyncEnumerable.Create<AgentEvent>(async (writer, token) =>
             {
@@ -129,7 +129,7 @@ namespace UniAI
                 {
                     linkedToken.ThrowIfCancellationRequested();
 
-                    var request = BuildRequest(workingMessages);
+                    var request = BuildRequest(workingMessages, requestOverride);
                     var responseText = "";
                     var toolCalls = new List<AIToolCall>();
                     TokenUsage turnUsage = null;
@@ -211,14 +211,14 @@ namespace UniAI
             });
         }
 
-        private AIRequest BuildRequest(List<AIMessage> messages)
+        private AIRequest BuildRequest(List<AIMessage> messages, AIRequest overrides = null)
         {
             var request = new AIRequest
             {
-                SystemPrompt = _definition.SystemPrompt,
+                SystemPrompt = overrides?.SystemPrompt ?? _definition.SystemPrompt,
                 Messages = messages,
-                Temperature = _definition.Temperature,
-                MaxTokens = _definition.MaxTokens
+                Temperature = overrides != null ? overrides.Temperature : _definition.Temperature,
+                MaxTokens = overrides?.MaxTokens > 0 ? overrides.MaxTokens : _definition.MaxTokens
             };
 
             if (_toolDefs.Count > 0)

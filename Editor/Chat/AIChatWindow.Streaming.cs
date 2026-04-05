@@ -64,7 +64,7 @@ namespace UniAI.Editor.Chat
                 }
 
                 var ct = _streamCts.Token;
-                await foreach (var evt in _runner.RunStreamAsync(aiMessages, ct))
+                await foreach (var evt in _runner.RunStreamAsync(aiMessages, ct: ct))
                 {
                     if (ct.IsCancellationRequested) break;
 
@@ -81,6 +81,7 @@ namespace UniAI.Editor.Chat
                             {
                                 Role = AIRole.Assistant,
                                 IsToolCall = true,
+                                ToolUseId = evt.ToolCall?.Id,
                                 ToolName = evt.ToolCall?.Name ?? "unknown",
                                 ToolArguments = evt.ToolCall?.Arguments ?? "",
                                 Content = $"调用工具: {evt.ToolCall?.Name}",
@@ -150,18 +151,46 @@ namespace UniAI.Editor.Chat
         private List<AIMessage> BuildAIMessages()
         {
             var messages = new List<AIMessage>();
+            AIMessage pendingAssistant = null;
 
             foreach (var msg in _activeSession.Messages)
             {
                 if (msg.IsStreaming && string.IsNullOrEmpty(msg.Content))
                     continue;
-                if (msg.IsToolCall)
-                    continue; // Tool 调用消息是 UI 展示用，不作为对话消息发送
 
-                var aiMsg = msg.Role == AIRole.User
-                    ? AIMessage.User(msg.Content)
-                    : AIMessage.Assistant(msg.Content);
-                messages.Add(aiMsg);
+                if (msg.IsToolCall)
+                {
+                    if (pendingAssistant == null)
+                    {
+                        pendingAssistant = new AIMessage { Role = AIRole.Assistant, Contents = new List<AIContent>() };
+                        messages.Add(pendingAssistant);
+                    }
+                    pendingAssistant.Contents.Add(new AIToolUseContent
+                    {
+                        Id = msg.ToolUseId,
+                        Name = msg.ToolName,
+                        Arguments = msg.ToolArguments
+                    });
+
+                    if (!string.IsNullOrEmpty(msg.ToolResult))
+                    {
+                        messages.Add(AIMessage.ToolResult(msg.ToolUseId, msg.ToolResult, msg.IsToolError));
+                    }
+                    continue;
+                }
+
+                pendingAssistant = null;
+
+                if (msg.Role == AIRole.User)
+                {
+                    messages.Add(AIMessage.User(msg.Content));
+                }
+                else
+                {
+                    var assistantMsg = AIMessage.Assistant(msg.Content);
+                    messages.Add(assistantMsg);
+                    pendingAssistant = assistantMsg;
+                }
             }
 
             return messages;

@@ -19,6 +19,7 @@ namespace UniAI.Editor.Chat
         /// Tool 调用消息类型（仅当 IsToolCall 为 true 时有效）
         /// </summary>
         public bool IsToolCall;
+        public string ToolUseId;
         public string ToolName;
         public string ToolArguments;
         public string ToolResult;

@@ -44,7 +44,7 @@ namespace UniAI.Editor.Chat
 
         private AIConfig _config;
         private AIClient _client;
-        private AIAgentRunner _runner;
+        private IConversationRunner _runner;
         private ChatHistory _history;
         private ChatSession _activeSession;
         private string _inputText = "";
@@ -119,8 +119,18 @@ namespace UniAI.Editor.Chat
         {
             var w = GetWindow<AIChatWindow>("UniAI 对话");
             w.minSize = new Vector2(640, 400);
-            if (agent == null || w._availableAgents == null) return;
-            for (int i = 0; i < w._availableAgents.Count; i++)
+            if (w._availableAgents == null) return;
+
+            // null 或内置默认 Agent → 纯 Chat（index 0）
+            if (agent == null || agent == AgentManager.DefaultAgent)
+            {
+                w._selectedAgentIndex = 0;
+                w.CreateNewSession();
+                w.EnsureRunner();
+                return;
+            }
+
+            for (int i = 1; i < w._availableAgents.Count; i++)
             {
                 if (w._availableAgents[i] == agent)
                 {
@@ -227,8 +237,15 @@ namespace UniAI.Editor.Chat
 
         private void RebuildAgentCache()
         {
-            _availableAgents = AgentManager.GetAllAgents();
-            _agentNames = AgentManager.GetAgentNames(_availableAgents);
+            // index 0 = null（纯 Chat），index 1+ = 项目中自定义 AgentDefinition
+            var agents = AgentManager.GetAllAgents();
+            _availableAgents = new List<AgentDefinition>(agents.Count + 1) { null };
+            _availableAgents.AddRange(agents);
+
+            _agentNames = new string[_availableAgents.Count];
+            _agentNames[0] = "Chat";
+            for (int i = 0; i < agents.Count; i++)
+                _agentNames[i + 1] = agents[i].AgentName ?? agents[i].name;
         }
     }
 }

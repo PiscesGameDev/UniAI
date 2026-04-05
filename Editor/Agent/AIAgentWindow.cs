@@ -54,6 +54,8 @@ namespace UniAI.Editor
         private void RefreshAgentList()
         {
             _agents = AgentManager.GetAllAgents();
+            // AIAgentWindow 需要在列表顶部展示内置默认 Agent（只读预览）
+            _agents.Insert(0, AgentManager.DefaultAgent);
             if (_selectedIndex >= _agents.Count)
                 _selectedIndex = Mathf.Max(0, _agents.Count - 1);
             _serializedAgent = null;

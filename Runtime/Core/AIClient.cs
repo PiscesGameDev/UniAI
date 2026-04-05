@@ -141,5 +141,31 @@ namespace UniAI
         {
             return _provider.StreamAsync(request, ct);
         }
+
+        /// <summary>
+        /// 便捷 Chat：直接发送单条消息获取完整响应，不经过 Agent
+        /// </summary>
+        public UniTask<AIResponse> ChatAsync(string userMessage, string systemPrompt = null, CancellationToken ct = default)
+        {
+            var request = new AIRequest
+            {
+                SystemPrompt = systemPrompt,
+                Messages = { AIMessage.User(userMessage) }
+            };
+            return SendAsync(request, ct);
+        }
+
+        /// <summary>
+        /// 便捷 Chat：流式响应
+        /// </summary>
+        public IUniTaskAsyncEnumerable<AIStreamChunk> ChatStreamAsync(string userMessage, string systemPrompt = null, CancellationToken ct = default)
+        {
+            var request = new AIRequest
+            {
+                SystemPrompt = systemPrompt,
+                Messages = { AIMessage.User(userMessage) }
+            };
+            return StreamAsync(request, ct);
+        }
     }
 }
