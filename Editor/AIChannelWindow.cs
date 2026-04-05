@@ -59,11 +59,11 @@ namespace UniAI.Editor
             public string Error;
         }
 
-        [MenuItem("Window/UniAI/渠道管理")]
-        [MenuItem("Tools/UniAI/渠道管理")]
+        [MenuItem("Window/UniAI/Channel")]
+        [MenuItem("Tools/UniAI/Channel")]
         public static void Open()
         {
-            var w = GetWindow<AIChannelWindow>("渠道管理");
+            var w = GetWindow<AIChannelWindow>("UniAI Channel");
             w.minSize = new Vector2(720, 460);
         }
 

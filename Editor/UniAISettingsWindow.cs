@@ -19,11 +19,11 @@ namespace UniAI.Editor
         private GUIStyle _sectionTitleStyle;
         private bool _stylesReady;
 
-        [MenuItem("Window/UniAI/设置")]
-        [MenuItem("Tools/UniAI/设置")]
+        [MenuItem("Window/UniAI/Settings")]
+        [MenuItem("Tools/UniAI/Settings")]
         public static void Open()
         {
-            var w = GetWindow<UniAISettingsWindow>("UniAI 设置");
+            var w = GetWindow<UniAISettingsWindow>("UniAI Settings");
             w.minSize = new Vector2(400, 300);
         }
 
