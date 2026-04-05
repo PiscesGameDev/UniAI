@@ -314,14 +314,17 @@ UniAI/
 │       ├── SSEDownloadHandler.cs # SSE 增量下载处理器
 │       └── SSEParser.cs         # SSE 协议解析器
 ├── Editor/
-│   ├── AIConfigManager.cs       # 配置持久化
-│   ├── EditorPreferences.cs     # 编辑器偏好（ScriptableSingleton）
-│   ├── AIChannelWindow.cs       # 渠道管理窗口
-│   ├── AIAgentWindow.cs         # Agent 管理窗口
-│   ├── UniAISettingsWindow.cs   # 设置窗口
-│   ├── AgentManager.cs          # Agent 资产扫描 + 内置默认 Agent
-│   ├── AgentDefinitionEditor.cs # Agent 自定义 Inspector
 │   ├── EditorGUIHelper.cs       # 编辑器 GUI 工具
+│   ├── Setting/
+│   │   ├── AIConfigManager.cs       # 配置持久化
+│   │   ├── EditorPreferences.cs     # 编辑器偏好（ScriptableSingleton）
+│   │   └── UniAISettingsWindow.cs   # 设置窗口
+│   ├── Channel/
+│   │   └── AIChannelWindow.cs       # 渠道管理窗口
+│   ├── Agent/
+│   │   ├── AIAgentWindow.cs         # Agent 管理窗口
+│   │   ├── AgentManager.cs          # Agent 资产扫描 + 内置默认 Agent
+│   │   └── AgentDefinitionEditor.cs # Agent 自定义 Inspector
 │   ├── Chat/
 │   │   ├── AIChatWindow*.cs     # 对话窗口（partial class）
 │   │   ├── ChatSession.cs       # 会话模型

@@ -48,6 +48,7 @@ SSEDownloadHandler + SSEParser（SSE 协议层）
 | `UniAISettings` | `Runtime/Core/UniAISettings.cs` | 运行时 ScriptableObject 配置，提供单例访问 |
 | `ChannelEntry` | `Runtime/Core/AIConfig.cs` | 单个渠道配置（含 Enabled 开关） |
 | `ChannelPresets` | `Runtime/Core/AIConfig.cs` | 内置预设（Claude/OpenAI/Gemini/DeepSeek） |
+| `ModelListService` | `Runtime/Core/ModelListService.cs` | 从 Provider API 获取可用模型列表（支持 OpenAI + Claude 分页） |
 | `AILogger` | `Runtime/Core/AILogger.cs` | 内部日志，支持级别控制和 API Key 脱敏 |
 
 ### 3.2 Runtime - 模型
@@ -99,12 +100,14 @@ SSEDownloadHandler + SSEParser（SSE 协议层）
 
 | 类 | 路径 | 职责 |
 |----|------|------|
-| `AIConfigManager` | `Editor/AIConfigManager.cs` | 配置持久化（读写 UniAISettings SO + EditorPreferences，环境变量覆盖） |
-| `EditorPreferences` | `Editor/EditorPreferences.cs` | ScriptableSingleton，编辑器偏好持久化（侧边栏状态、上次选模型） + 环境变量静态映射 |
-| `AIChannelWindow` | `Editor/AISettingsWindow.cs` | 渠道管理窗口（双面板: 渠道列表 + 详情，支持 Enabled 开关和获取模型列表） |
-| `UniAISettingsWindow` | `Editor/UniAISettingsWindow.cs` | 设置窗口（运行时参数: Timeout/LogLevel + 编辑器参数: Sidebar/MaxHistory） |
-| `ModelListService` | `Editor/ModelListService.cs` | 从 Provider API 获取可用模型列表（支持 OpenAI + Claude 分页） |
-| `AgentManager` | `Editor/AgentManager.cs` | Agent 资产扫描 + 内置默认 Agent（无 Tool，通用聊天助手） |
+| `AIConfigManager` | `Editor/Setting/AIConfigManager.cs` | 配置持久化（读写 UniAISettings SO + EditorPreferences，环境变量覆盖） |
+| `EditorPreferences` | `Editor/Setting/EditorPreferences.cs` | ScriptableSingleton，编辑器偏好持久化（侧边栏状态、上次选模型） + 环境变量静态映射 |
+| `UniAISettingsWindow` | `Editor/Setting/UniAISettingsWindow.cs` | 设置窗口（运行时参数: Timeout/LogLevel + 编辑器参数: Sidebar/MaxHistory） |
+| `AIChannelWindow` | `Editor/Channel/AIChannelWindow.cs` | 渠道管理窗口（双面板: 渠道列表 + 详情，支持 Enabled 开关和获取模型列表） |
+| `AIAgentWindow` | `Editor/Agent/AIAgentWindow.cs` | Agent 管理窗口 |
+| `AgentManager` | `Editor/Agent/AgentManager.cs` | Agent 资产扫描 + 内置默认 Agent（无 Tool，通用聊天助手） |
+| `AgentDefinitionEditor` | `Editor/Agent/AgentDefinitionEditor.cs` | Agent 自定义 Inspector |
+| `EditorGUIHelper` | `Editor/EditorGUIHelper.cs` | 编辑器 GUI 工具 |
 | `AIChatWindow` | `Editor/Chat/AIChatWindow*.cs` | AI 对话窗口（partial class，支持 Agent 选择 + Tool 调用渲染） |
 | `ChatSession` | `Editor/Chat/ChatSession.cs` | 会话模型 + `ChatMessage` |
 | `ChatHistory` | `Editor/Chat/ChatHistory.cs` | 会话历史持久化（`ProjectSettings/UniAI/History/`） |

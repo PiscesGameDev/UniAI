@@ -39,6 +39,10 @@ namespace UniAI.Editor
         private readonly Dictionary<string, bool> _fetchingModels = new();
         private readonly Dictionary<string, ModelListResult> _fetchedModels = new();
 
+        // Fetched available models list (keyed by provider Id), persists until next fetch
+        private readonly Dictionary<string, List<ModelInfo>> _availableModels = new();
+        private readonly Dictionary<string, Vector2> _availableModelsScroll = new();
+
         // Icons
         private Texture2D _eyeOpenIcon;
         private Texture2D _eyeCloseIcon;
@@ -489,6 +493,64 @@ namespace UniAI.Editor
                 EditorGUILayout.LabelField($"⚠ {fetchResult.Error}", _errorStyle);
             }
 
+            // Available models list (persistent after fetch)
+            if (_availableModels.TryGetValue(entry.Id, out var available) && available.Count > 0)
+            {
+                GUILayout.Space(6);
+                EditorGUILayout.BeginHorizontal();
+                GUILayout.Label("可用模型", EditorStyles.boldLabel);
+                GUILayout.FlexibleSpace();
+                if (GUILayout.Button("全部添加", EditorStyles.miniButton, GUILayout.Width(56)))
+                {
+                    entry.Models ??= new List<string>();
+                    foreach (var m in available)
+                    {
+                        if (!entry.Models.Contains(m.Id))
+                            entry.Models.Add(m.Id);
+                    }
+                    AIConfigManager.SaveConfig(_config);
+                    _availableModels.Remove(entry.Id);
+                }
+                if (GUILayout.Button("收起", EditorStyles.miniButton, GUILayout.Width(40)))
+                {
+                    _availableModels.Remove(entry.Id);
+                }
+                EditorGUILayout.EndHorizontal();
+
+                GUILayout.Space(2);
+
+                if (!_availableModelsScroll.ContainsKey(entry.Id))
+                    _availableModelsScroll[entry.Id] = Vector2.zero;
+
+                var scroll = _availableModelsScroll[entry.Id];
+                float listHeight = Mathf.Min(available.Count * 22f, 160f);
+                scroll = EditorGUILayout.BeginScrollView(scroll, GUILayout.Height(listHeight));
+
+                var existingModels = new HashSet<string>(entry.Models ?? new List<string>());
+                foreach (var model in available)
+                {
+                    bool alreadyAdded = existingModels.Contains(model.Id);
+
+                    EditorGUILayout.BeginHorizontal();
+                    EditorGUI.BeginDisabledGroup(alreadyAdded);
+                    if (GUILayout.Button(alreadyAdded ? "✔" : "+", EditorStyles.miniButton, GUILayout.Width(22), GUILayout.Height(18)))
+                    {
+                        entry.Models ??= new List<string>();
+                        if (!entry.Models.Contains(model.Id))
+                        {
+                            entry.Models.Add(model.Id);
+                            AIConfigManager.SaveConfig(_config);
+                        }
+                    }
+                    EditorGUI.EndDisabledGroup();
+                    GUILayout.Label(model.Label, _modelNameStyle, GUILayout.Height(18));
+                    EditorGUILayout.EndHorizontal();
+                }
+
+                EditorGUILayout.EndScrollView();
+                _availableModelsScroll[entry.Id] = scroll;
+            }
+
             GUILayout.Space(6);
 
             // Test all models button
@@ -599,6 +661,7 @@ namespace UniAI.Editor
         {
             _fetchingModels[entry.Id] = true;
             _fetchedModels.Remove(entry.Id);
+            _availableModels.Remove(entry.Id);
             Repaint();
 
             try
@@ -606,10 +669,11 @@ namespace UniAI.Editor
                 var apiKey = EditorPreferences.GetEffectiveApiKey(entry);
                 var timeout = _config.General?.TimeoutSeconds ?? 30;
                 var result = await ModelListService.FetchModelsAsync(entry, apiKey, timeout);
+
                 _fetchedModels[entry.Id] = result;
 
                 if (result.IsSuccess && result.Models.Count > 0)
-                    ShowModelSelectionMenu(entry, result.Models);
+                    _availableModels[entry.Id] = result.Models;
                 else if (result.IsSuccess)
                     _fetchedModels[entry.Id] = ModelListResult.Fail("未获取到任何模型。");
             }
@@ -620,37 +684,6 @@ namespace UniAI.Editor
 
             _fetchingModels[entry.Id] = false;
             Repaint();
-        }
-
-        private void ShowModelSelectionMenu(ChannelEntry entry, List<ModelInfo> models)
-        {
-            var existingModels = new HashSet<string>(entry.Models ?? new List<string>());
-            var menu = new GenericMenu();
-
-            foreach (var model in models)
-            {
-                bool alreadyAdded = existingModels.Contains(model.Id);
-                if (alreadyAdded)
-                {
-                    menu.AddDisabledItem(new GUIContent($"✔ {model.Label}"));
-                }
-                else
-                {
-                    var m = model;
-                    menu.AddItem(new GUIContent(m.Label), false, () =>
-                    {
-                        entry.Models ??= new List<string>();
-                        if (!entry.Models.Contains(m.Id))
-                        {
-                            entry.Models.Add(m.Id);
-                            AIConfigManager.SaveConfig(_config);
-                            Repaint();
-                        }
-                    });
-                }
-            }
-
-            menu.ShowAsContext();
         }
 
         private void AddModelToEntry(ChannelEntry entry)
@@ -753,6 +786,8 @@ namespace UniAI.Editor
                 _modelInput.Remove(entry.Id);
                 _fetchingModels.Remove(entry.Id);
                 _fetchedModels.Remove(entry.Id);
+                _availableModels.Remove(entry.Id);
+                _availableModelsScroll.Remove(entry.Id);
                 _config.Providers.RemoveAt(index);
                 if (_selectedIndex >= _config.Providers.Count)
                     _selectedIndex = Mathf.Max(0, _config.Providers.Count - 1);

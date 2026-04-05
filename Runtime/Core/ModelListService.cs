@@ -43,13 +43,25 @@ namespace UniAI
         private static async UniTask<ModelListResult> FetchOpenAIModels(
             string baseUrl, string apiKey, int timeout, CancellationToken ct)
         {
-            var url = $"{baseUrl.TrimEnd('/')}/models";
             var headers = new Dictionary<string, string>
             {
                 { "Authorization", $"Bearer {apiKey}" }
             };
 
+            var trimmedBase = baseUrl.TrimEnd('/');
+            var url = $"{trimmedBase}/models";
+
             var result = await AIHttpClient.GetAsync(url, headers, timeout, ct);
+
+            // If failed and baseUrl ends with a version path (e.g. /v1), retry without it
+            if (!result.IsSuccess && System.Text.RegularExpressions.Regex.IsMatch(trimmedBase, @"/v\d+$"))
+            {
+                var rootBase = System.Text.RegularExpressions.Regex.Replace(trimmedBase, @"/v\d+$", "");
+                var fallbackUrl = $"{rootBase}/models";
+                AILogger.Info($"[ModelList] Retrying without version path: {fallbackUrl}");
+                result = await AIHttpClient.GetAsync(fallbackUrl, headers, timeout, ct);
+            }
+
             if (!result.IsSuccess)
                 return ModelListResult.Fail(result.Error ?? $"HTTP {result.StatusCode}");
 
