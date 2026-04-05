@@ -145,75 +145,101 @@ namespace UniAI.Editor.Chat
 
             bool isUser = msg.Role == AIRole.User;
             Color bgColor = isUser ? _userMsgBg : _assistantMsgBg;
-            float maxContentWidth = areaWidth - MSG_HORIZONTAL_PAD * 2 - 32;
+            float maxBubbleWidth = areaWidth * MSG_MAX_WIDTH_RATIO;
+            float maxContentWidth = maxBubbleWidth - 16; // bubble padding
 
             EditorGUILayout.BeginVertical();
             GUILayout.Space(6);
 
+            // ─── Header row: Avatar + Name ───
             EditorGUILayout.BeginHorizontal();
             GUILayout.Space(MSG_HORIZONTAL_PAD);
 
             if (isUser)
             {
-                GUILayout.Label("◉", _userRoleLabelStyle, GUILayout.Width(16), GUILayout.Height(18));
-                GUILayout.Space(4);
-                GUILayout.Label("你", _userRoleLabelStyle);
+                // Right-aligned header: avatar only
+                GUILayout.FlexibleSpace();
+                var avatarRect = GUILayoutUtility.GetRect(AVATAR_SIZE, AVATAR_SIZE, GUILayout.Width(AVATAR_SIZE), GUILayout.Height(AVATAR_SIZE));
+                DrawAvatar(avatarRect, _userAvatar, new Color(0.3f, 0.45f, 0.7f), "U");
             }
             else
             {
+                // Left-aligned header: avatar only
                 if (msg.IsStreaming)
                 {
                     EnsureSpinnerIcons();
-                    GUILayout.Label(_spinnerIcons[_spinnerFrame], GUILayout.Width(16), GUILayout.Height(18));
+                    GUILayout.Label(_spinnerIcons[_spinnerFrame], GUILayout.Width(AVATAR_SIZE), GUILayout.Height(AVATAR_SIZE));
                 }
                 else
                 {
-                    GUILayout.Label("⭐", _assistantRoleLabelStyle, GUILayout.Width(16), GUILayout.Height(18));
+                    var avatarRect = GUILayoutUtility.GetRect(AVATAR_SIZE, AVATAR_SIZE, GUILayout.Width(AVATAR_SIZE), GUILayout.Height(AVATAR_SIZE));
+                    DrawAvatar(avatarRect, _aiAvatar, new Color(0.35f, 0.6f, 0.4f), "AI");
                 }
-                GUILayout.Space(4);
-                GUILayout.Label("助手", _assistantRoleLabelStyle);
 
                 if (msg.IsStreaming)
                 {
                     GUILayout.Space(6);
                     GUILayout.Label("思考中...", EditorStyles.miniLabel);
                 }
+
+                GUILayout.FlexibleSpace();
             }
 
-            GUILayout.FlexibleSpace();
+            GUILayout.Space(MSG_HORIZONTAL_PAD);
             EditorGUILayout.EndHorizontal();
 
-            GUILayout.Space(3);
+            GUILayout.Space(8);
 
+            // ─── Bubble row ───
             EditorGUILayout.BeginHorizontal();
-            GUILayout.Space(MSG_HORIZONTAL_PAD);
-
-            var contentRect = EditorGUILayout.BeginVertical();
-            if (contentRect.width > 1)
-            {
-                var bubbleRect = new Rect(
-                    contentRect.x - 8,
-                    contentRect.y - 4,
-                    contentRect.width + 16,
-                    contentRect.height + 8);
-                DrawRoundedRect(bubbleRect, bgColor, MSG_BUBBLE_RADIUS);
-            }
-
-            GUILayout.Space(2);
 
             if (isUser)
             {
+                // Right-aligned bubble
+                GUILayout.FlexibleSpace();
+
+                var contentRect = EditorGUILayout.BeginVertical(GUILayout.MaxWidth(maxBubbleWidth));
+                if (contentRect.width > 1)
+                {
+                    var bubbleRect = new Rect(
+                        contentRect.x - 8,
+                        contentRect.y - 4,
+                        contentRect.width + 16,
+                        contentRect.height + 8);
+                    DrawAsymmetricBubble(bubbleRect, bgColor, MSG_BUBBLE_RADIUS, 2f, true);
+                }
+
+                GUILayout.Space(2);
                 GUILayout.Label(msg.Content, _userMsgStyle, GUILayout.MaxWidth(maxContentWidth));
+                GUILayout.Space(2);
+                EditorGUILayout.EndVertical();
+
+                GUILayout.Space(MSG_HORIZONTAL_PAD);
             }
             else
             {
+                // Left-aligned bubble
+                GUILayout.Space(MSG_HORIZONTAL_PAD);
+
+                var contentRect = EditorGUILayout.BeginVertical(GUILayout.MaxWidth(maxBubbleWidth));
+                if (contentRect.width > 1)
+                {
+                    var bubbleRect = new Rect(
+                        contentRect.x - 8,
+                        contentRect.y - 4,
+                        contentRect.width + 16,
+                        contentRect.height + 8);
+                    DrawAsymmetricBubble(bubbleRect, bgColor, MSG_BUBBLE_RADIUS, 2f, false);
+                }
+
+                GUILayout.Space(2);
                 MarkdownRenderer.Draw(msg.Content ?? "", maxContentWidth);
+                GUILayout.Space(2);
+                EditorGUILayout.EndVertical();
+
+                GUILayout.FlexibleSpace();
             }
 
-            GUILayout.Space(2);
-            EditorGUILayout.EndVertical();
-
-            GUILayout.Space(MSG_HORIZONTAL_PAD);
             EditorGUILayout.EndHorizontal();
 
             GUILayout.Space(6);

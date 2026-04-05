@@ -47,10 +47,10 @@ namespace UniAI.Editor.Chat
                 padding = new RectOffset(6, 6, 4, 4)
             };
 
-            _userRoleLabelStyle = new GUIStyle(EditorStyles.boldLabel) { fontSize = 11 };
+            _userRoleLabelStyle = new GUIStyle(EditorStyles.boldLabel) { fontSize = 10 };
             _userRoleLabelStyle.normal.textColor = _userRoleColor;
 
-            _assistantRoleLabelStyle = new GUIStyle(EditorStyles.boldLabel) { fontSize = 11 };
+            _assistantRoleLabelStyle = new GUIStyle(EditorStyles.boldLabel) { fontSize = 10 };
             _assistantRoleLabelStyle.normal.textColor = _assistantRoleColor;
 
             _groupStyle = new GUIStyle(EditorStyles.miniLabel)
@@ -145,8 +145,8 @@ namespace UniAI.Editor.Chat
         private static void EnsureSpinnerIcons()
         {
             if (_spinnerIcons != null) return;
-            _spinnerIcons = new GUIContent[SPINNER_FRAME_COUNT];
-            for (int i = 0; i < SPINNER_FRAME_COUNT; i++)
+            _spinnerIcons = new GUIContent[SpinnerFrameCount];
+            for (int i = 0; i < SpinnerFrameCount; i++)
                 _spinnerIcons[i] = EditorGUIUtility.IconContent($"WaitSpin{i:D2}");
         }
 
@@ -158,6 +158,58 @@ namespace UniAI.Editor.Chat
             EditorGUI.DrawRect(new Rect(rect.x + radius, rect.yMax - 1, rect.width - radius * 2, 1), color);
             EditorGUI.DrawRect(new Rect(rect.x, rect.y + radius, 1, rect.height - radius * 2), color);
             EditorGUI.DrawRect(new Rect(rect.xMax - 1, rect.y + radius, 1, rect.height - radius * 2), color);
+        }
+
+        /// <summary>
+        /// Draw a bubble with asymmetric rounded corners.
+        /// For user (isUser=true): small radius bottom-right (pointing to avatar on right).
+        /// For AI (isUser=false): small radius top-left (pointing to avatar on left).
+        /// </summary>
+        private static void DrawAsymmetricBubble(Rect rect, Color color, float radiusLarge, float radiusSmall, bool isUser)
+        {
+            // Fill the inner area
+            var inner = new Rect(rect.x + 1, rect.y + 1, rect.width - 2, rect.height - 2);
+            EditorGUI.DrawRect(inner, color);
+
+            // Top edge
+            float topLeft = isUser ? radiusLarge : radiusSmall;
+            float topRight = radiusLarge;
+            EditorGUI.DrawRect(new Rect(rect.x + topLeft, rect.y, rect.width - topLeft - topRight, 1), color);
+
+            // Bottom edge
+            float bottomLeft = radiusLarge;
+            float bottomRight = isUser ? radiusSmall : radiusLarge;
+            EditorGUI.DrawRect(new Rect(rect.x + bottomLeft, rect.yMax - 1, rect.width - bottomLeft - bottomRight, 1), color);
+
+            // Left edge
+            float leftTop = isUser ? radiusLarge : radiusSmall;
+            float leftBottom = radiusLarge;
+            EditorGUI.DrawRect(new Rect(rect.x, rect.y + leftTop, 1, rect.height - leftTop - leftBottom), color);
+
+            // Right edge
+            float rightTop = radiusLarge;
+            float rightBottom = isUser ? radiusSmall : radiusLarge;
+            EditorGUI.DrawRect(new Rect(rect.xMax - 1, rect.y + rightTop, 1, rect.height - rightTop - rightBottom), color);
+        }
+
+        private static void DrawAvatar(Rect rect, Texture2D avatar, Color fallbackBg, string fallbackChar)
+        {
+            if (avatar != null)
+            {
+                GUI.DrawTexture(rect, avatar, ScaleMode.ScaleToFit);
+            }
+            else
+            {
+                // Draw a colored circle with initial letter
+                EditorGUI.DrawRect(rect, fallbackBg);
+                var style = new GUIStyle(EditorStyles.boldLabel)
+                {
+                    alignment = TextAnchor.MiddleCenter,
+                    fontSize = 12
+                };
+                style.normal.textColor = Color.white;
+                GUI.Label(rect, fallbackChar, style);
+            }
         }
 
         private static void DrawRectBorder(Rect rect, Color color)

@@ -26,6 +26,16 @@ namespace UniAI.Editor
         /// </summary>
         [SerializeField] private int _maxHistorySessions = 50;
 
+        /// <summary>
+        /// 用户头像自定义
+        /// </summary>
+        [SerializeField] private Texture2D _userAvatar;
+
+        /// <summary>
+        /// AI 头像自定义
+        /// </summary>
+        [SerializeField] private Texture2D _aiAvatar;
+
         // ─── 公开属性 ───
 
         internal string LastSelectedModelId
@@ -45,6 +55,13 @@ namespace UniAI.Editor
             get => _maxHistorySessions;
             set => _maxHistorySessions = value;
         }
+
+        internal Texture2D UserAvatar
+        {
+            get => _userAvatar;
+            set => _userAvatar = value;
+        }
+        
 
         // ─── 环境变量映射（按预设 ID，跟随 AI 供应商） ───
 

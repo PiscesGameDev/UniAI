@@ -19,6 +19,8 @@ namespace UniAI.Editor.Chat
         private const float PAD = 8f;
         private const float MSG_HORIZONTAL_PAD = 16f;
         private const float MSG_BUBBLE_RADIUS = 6f;
+        private const float AVATAR_SIZE = 24f;
+        private const float MSG_MAX_WIDTH_RATIO = 0.82f;
 
         // ─── Colors ───
 
@@ -66,8 +68,16 @@ namespace UniAI.Editor.Chat
         // Spinner state
         private double _spinnerStartTime;
         private int _spinnerFrame;
-        private const int SPINNER_FRAME_COUNT = 12;
+        private const int SpinnerFrameCount = 12;
         private static GUIContent[] _spinnerIcons;
+
+        // ─── Avatar ───
+
+        private Texture2D _userAvatar;
+        private Texture2D _aiAvatar;
+        private const string IconsDir = "Assets/UniAI/Editor/Icons";
+        private const string DefaultUserAvatarPath = IconsDir + "/avatar-user.png";
+        private const string DefaultAIAvatarPath = IconsDir + "/avatar-ai.png";
 
         // ─── Styles ───
 
@@ -137,6 +147,7 @@ namespace UniAI.Editor.Chat
 
             RebuildModelCache();
             RebuildAgentCache();
+            LoadAvatars();
             EnsureRunner();
             EditorApplication.update += OnEditorUpdate;
         }
@@ -151,7 +162,7 @@ namespace UniAI.Editor.Chat
         {
             if (_isStreaming)
             {
-                int frame = (int)((EditorApplication.timeSinceStartup - _spinnerStartTime) * 8) % SPINNER_FRAME_COUNT;
+                int frame = (int)((EditorApplication.timeSinceStartup - _spinnerStartTime) * 8) % SpinnerFrameCount;
                 if (frame != _spinnerFrame)
                 {
                     _spinnerFrame = frame;
@@ -188,6 +199,28 @@ namespace UniAI.Editor.Chat
             GUILayout.EndArea();
 
             HandleInputShortcuts();
+        }
+
+        // ─── Avatar Loading ───
+
+        private void LoadAvatars()
+        {
+            var prefs = AIConfigManager.Prefs;
+            _userAvatar = LoadAvatarTexture(prefs.UserAvatar, DefaultUserAvatarPath);
+            _aiAvatar = LoadAvatarTexture(null, DefaultAIAvatarPath);
+        }
+
+        private static Texture2D LoadAvatarTexture(Texture2D customTex, string defaultPath)
+        {
+            // 1. Try custom texture from preferences
+            if (customTex != null) return customTex;
+
+            // 2. Try default icon in Icons folder
+            var defaultTex = AssetDatabase.LoadAssetAtPath<Texture2D>(defaultPath);
+            if (defaultTex != null) return defaultTex;
+
+            // 3. Fallback: generate a simple placeholder
+            return null;
         }
 
         // ─── Agent Cache ───
