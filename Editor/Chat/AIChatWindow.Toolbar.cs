@@ -7,7 +7,7 @@ namespace UniAI.Editor.Chat
     {
         private void DrawToolbar()
         {
-            var toolbarRect = new Rect(0, 0, position.width, TOOLBAR_HEIGHT);
+            var toolbarRect = new Rect(0, 5, position.width, TOOLBAR_HEIGHT);
             EditorGUI.DrawRect(toolbarRect, _toolbarBg);
             EditorGUI.DrawRect(new Rect(0, TOOLBAR_HEIGHT - 1, position.width, 1), _separatorColor);
 

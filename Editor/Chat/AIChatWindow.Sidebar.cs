@@ -41,16 +41,6 @@ namespace UniAI.Editor.Chat
             }
 
             EditorGUILayout.EndScrollView();
-
-            GUILayout.FlexibleSpace();
-
-            EditorGUILayout.BeginHorizontal();
-            GUILayout.Space(PAD);
-            if (GUILayout.Button("◀ 收起", EditorStyles.miniButton, GUILayout.Height(20)))
-                _showSidebar = false;
-            GUILayout.Space(PAD);
-            EditorGUILayout.EndHorizontal();
-            GUILayout.Space(PAD);
         }
 
         private void DrawSessionItem(ChatSession session, bool isActive)

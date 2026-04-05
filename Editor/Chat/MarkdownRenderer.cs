@@ -15,7 +15,6 @@ namespace UniAI.Editor.Chat
         private static GUIStyle _h2Style;
         private static GUIStyle _h3Style;
         private static GUIStyle _codeBlockStyle;
-        private static GUIStyle _inlineCodeStyle;
         private static GUIStyle _codeLabelStyle;
         private static GUIStyle _copyBtnStyle;
         private static GUIStyle _copiedLabelStyle;
@@ -23,11 +22,7 @@ namespace UniAI.Editor.Chat
 
         private static readonly Color _codeBlockBg = new(0.10f, 0.10f, 0.10f);
         private static readonly Color _codeHeaderBg = new(0.14f, 0.14f, 0.14f);
-        private static readonly Color _inlineCodeBg = new(0.18f, 0.18f, 0.18f);
         private static readonly Color _copiedFlashColor = new(0.3f, 0.85f, 0.4f);
-
-        private static Texture2D _codeBlockBgTex;
-        private static Texture2D _inlineCodeBgTex;
 
         // "Copied!" toast state
         private static string _copiedBlockId;
@@ -272,21 +267,10 @@ namespace UniAI.Editor.Chat
 
         // ─── Styles ───
 
-        private static Texture2D MakeTex(Color col)
-        {
-            var tex = new Texture2D(1, 1, TextureFormat.RGBA32, false);
-            tex.SetPixel(0, 0, col);
-            tex.Apply();
-            return tex;
-        }
-
         private static void EnsureStyles()
         {
             if (_stylesReady) return;
             _stylesReady = true;
-
-            _codeBlockBgTex = MakeTex(_codeBlockBg);
-            _inlineCodeBgTex = MakeTex(_inlineCodeBg);
 
             _normalStyle = new GUIStyle(EditorStyles.label)
             {
@@ -325,14 +309,6 @@ namespace UniAI.Editor.Chat
                 fontSize = 12,
                 padding = new RectOffset(4, 4, 0, 0)
             };
-
-            _inlineCodeStyle = new GUIStyle(EditorStyles.label)
-            {
-                font = GetMonoFont(),
-                fontSize = 12,
-                richText = false
-            };
-            _inlineCodeStyle.normal.background = _inlineCodeBgTex;
 
             _codeLabelStyle = new GUIStyle(EditorStyles.miniLabel)
             {

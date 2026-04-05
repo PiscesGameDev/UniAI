@@ -65,8 +65,7 @@ namespace UniAI
                     {
                         models.Add(new ModelInfo
                         {
-                            Id = id,
-                            OwnedBy = item["owned_by"]?.ToString()
+                            Id = id
                         });
                     }
                 }
@@ -135,7 +134,6 @@ namespace UniAI
     {
         public string Id;
         public string DisplayName;
-        public string OwnedBy;
 
         public string Label => !string.IsNullOrEmpty(DisplayName) ? $"{DisplayName} ({Id})" : Id;
     }

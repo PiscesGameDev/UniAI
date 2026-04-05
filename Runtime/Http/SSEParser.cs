@@ -71,14 +71,5 @@ namespace UniAI
 
             return null;
         }
-
-        /// <summary>
-        /// 重置解析器状态
-        /// </summary>
-        internal void Reset()
-        {
-            _currentEventType = null;
-            _currentData = null;
-        }
     }
 }

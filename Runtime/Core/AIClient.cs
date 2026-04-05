@@ -14,7 +14,6 @@ namespace UniAI
     public class AIClient
     {
         private readonly IAIProvider _provider;
-        private readonly string _modelOverride;
 
         /// <summary>
         /// 当前 Provider 名称
@@ -24,10 +23,9 @@ namespace UniAI
         /// <summary>
         /// 使用指定 Provider 创建客户端
         /// </summary>
-        public AIClient(IAIProvider provider, string modelOverride = null)
+        public AIClient(IAIProvider provider)
         {
             _provider = provider ?? throw new ArgumentNullException(nameof(provider));
-            _modelOverride = modelOverride;
         }
 
         /// <summary>
@@ -75,12 +73,12 @@ namespace UniAI
                 throw new InvalidOperationException($"No provider with API key found for model '{modelId}'.");
 
             if (innerProviders.Count == 1)
-                return new AIClient(innerProviders[0], modelId);
+                return new AIClient(innerProviders[0]);
 
             var fallback = new FallbackProvider(innerProviders);
 
             AILogger.Info($"AIClient created with {innerProviders.Count} fallback providers for model: {modelId}");
-            return new AIClient(fallback, modelId);
+            return new AIClient(fallback);
         }
 
         /// <summary>
@@ -94,10 +92,9 @@ namespace UniAI
 
             var provider = CreateProvider(entry, modelId, general);
 
-            AILogger.LogLevel = general.LogLevel;
             AILogger.Info($"AIClient created with provider: {entry.Name} ({entry.Protocol}), model: {modelId}");
 
-            return new AIClient(provider, modelId);
+            return new AIClient(provider);
         }
 
         /// <summary>
@@ -134,8 +131,6 @@ namespace UniAI
         /// </summary>
         public UniTask<AIResponse> SendAsync(AIRequest request, CancellationToken ct = default)
         {
-            if (!string.IsNullOrEmpty(_modelOverride) && string.IsNullOrEmpty(request.Model))
-                request.Model = _modelOverride;
             return _provider.SendAsync(request, ct);
         }
 
@@ -144,8 +139,6 @@ namespace UniAI
         /// </summary>
         public IUniTaskAsyncEnumerable<AIStreamChunk> StreamAsync(AIRequest request, CancellationToken ct = default)
         {
-            if (!string.IsNullOrEmpty(_modelOverride) && string.IsNullOrEmpty(request.Model))
-                request.Model = _modelOverride;
             return _provider.StreamAsync(request, ct);
         }
     }

@@ -73,7 +73,7 @@ namespace UniAI
             agent.name = "DefaultAgent";
             agent._agentName = "默认助手";
             agent._systemPrompt =
-                "您是一位乐于助人的 Unity 游戏开发助手. " +
+                "你是一位乐于助人的 Unity 游戏开发助手. " +
                 "请提供简洁明了的答案. 当展示代码时，请使用 C# 和 Unity 最佳实践.";
             agent._temperature = 0.7f;
             agent._maxTokens = 4096;

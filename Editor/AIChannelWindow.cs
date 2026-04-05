@@ -529,9 +529,10 @@ namespace UniAI.Editor
                 color = _orangeDot;
             }
 
-            var style = new GUIStyle(EditorStyles.miniLabel);
-            style.normal.textColor = color;
-            GUILayout.Label(label, style, GUILayout.Width(width));
+            var oldColor = GUI.contentColor;
+            GUI.contentColor = color;
+            GUILayout.Label(label, EditorStyles.miniLabel, GUILayout.Width(width));
+            GUI.contentColor = oldColor;
         }
 
         // ────────────────────────────── Model Testing ──────────────────────────────

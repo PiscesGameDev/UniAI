@@ -1,8 +1,3 @@
-using System;
-using System.Collections.Generic;
-using System.IO;
-using Newtonsoft.Json;
-using Newtonsoft.Json.Linq;
 using UnityEditor;
 using UnityEngine;
 
@@ -10,14 +5,12 @@ namespace UniAI.Editor
 {
     /// <summary>
     /// AI 配置管理器
-    /// 读写 UniAISettings SO + EditorPreferences，支持从旧 JSON 格式迁移
+    /// 读写 UniAISettings SO
     /// </summary>
     public static class AIConfigManager
     {
         private const string SettingsAssetPath = "Assets/Resources/UniAI/UniAISettings.asset";
-        private const string OldSettingsPath = "UserSettings/UniAISettings.json";
-        private const string EditorPrefsKey = "UniAI_Config";
-
+        
         /// <summary>
         /// 编辑器偏好（ScriptableSingleton）
         /// </summary>
@@ -30,6 +23,9 @@ namespace UniAI.Editor
         {
             var settings = LoadOrCreateSettings();
             var config = settings.ToConfig();
+
+            // 应用日志级别
+            AILogger.LogLevel = config.General.LogLevel;
 
             // 环境变量覆盖 API Key
             foreach (var provider in config.Providers)
@@ -71,6 +67,9 @@ namespace UniAI.Editor
             EditorUtility.SetDirty(settings);
             AssetDatabase.SaveAssets();
 
+            // 应用日志级别
+            AILogger.LogLevel = config.General.LogLevel;
+
             // 恢复环境变量覆盖的 Key（内存中保持有效值）
             foreach (var provider in config.Providers)
             {
@@ -111,14 +110,10 @@ namespace UniAI.Editor
 
         private static UniAISettings LoadOrCreateSettings()
         {
-            // 优先从 AssetDatabase 加载
+            // 从 AssetDatabase 加载
             var settings = AssetDatabase.LoadAssetAtPath<UniAISettings>(SettingsAssetPath);
             if (settings != null) return settings;
-
-            // 尝试从旧 JSON 迁移
-            settings = TryMigrateFromJson();
-            if (settings != null) return settings;
-
+            
             // 创建默认
             return CreateDefaultSettings();
         }
@@ -135,82 +130,7 @@ namespace UniAI.Editor
             Debug.Log("[UniAI] Created default UniAISettings asset.");
             return settings;
         }
-
-        // ─── 旧 JSON 迁移 ───
-
-        private static UniAISettings TryMigrateFromJson()
-        {
-            // 尝试从旧 JSON 文件读取
-            AIConfig oldConfig = null;
-
-            if (File.Exists(OldSettingsPath))
-            {
-                try
-                {
-                    var json = File.ReadAllText(OldSettingsPath);
-                    oldConfig = JsonConvert.DeserializeObject<AIConfig>(json);
-                }
-                catch (Exception e)
-                {
-                    Debug.LogWarning($"[UniAI] Failed to read old config: {e.Message}");
-                }
-            }
-
-            // 也检查 EditorPrefs 备份
-            if (oldConfig == null)
-            {
-                var prefsJson = EditorPrefs.GetString(EditorPrefsKey, "");
-                if (!string.IsNullOrEmpty(prefsJson))
-                {
-                    try { oldConfig = JsonConvert.DeserializeObject<AIConfig>(prefsJson); } catch { }
-                }
-            }
-
-            if (oldConfig == null || oldConfig.Providers.Count == 0)
-                return null;
-
-            // 迁移 Models（旧 Model → Models）
-            MigrateModelsFromJson(oldConfig);
-
-            // 创建 SO
-            var settings = ScriptableObject.CreateInstance<UniAISettings>();
-            settings.Providers.AddRange(oldConfig.Providers);
-            settings.General.TimeoutSeconds = oldConfig.General.TimeoutSeconds;
-            settings.General.LogLevel = oldConfig.General.LogLevel;
-
-            EnsureResourcesDir();
-            AssetDatabase.CreateAsset(settings, SettingsAssetPath);
-            AssetDatabase.SaveAssets();
-
-            Debug.Log("[UniAI] Migrated config from JSON to ScriptableObject.");
-            return settings;
-        }
-
-        private static void MigrateModelsFromJson(AIConfig config)
-        {
-            if (!File.Exists(OldSettingsPath)) return;
-
-            try
-            {
-                var rawJson = File.ReadAllText(OldSettingsPath);
-                var root = JObject.Parse(rawJson);
-                var providersArray = root["Providers"] as JArray;
-                if (providersArray == null) return;
-
-                for (int i = 0; i < providersArray.Count && i < config.Providers.Count; i++)
-                {
-                    var providerJson = providersArray[i] as JObject;
-                    var provider = config.Providers[i];
-
-                    if (provider.Models.Count > 0) continue;
-
-                    var oldModel = providerJson?["Model"]?.ToString();
-                    if (!string.IsNullOrEmpty(oldModel))
-                        provider.Models = new List<string> { oldModel };
-                }
-            }
-            catch { /* ignore migration errors */ }
-        }
+        
 
         private static void EnsureResourcesDir()
         {

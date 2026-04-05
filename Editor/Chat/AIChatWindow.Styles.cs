@@ -9,20 +9,20 @@ namespace UniAI.Editor.Chat
 
         private static readonly (string Label, string Icon, ContextCollector.ContextSlot Slot, string Message)[] _quickActions =
         {
-            ("解释", "⚡", ContextCollector.ContextSlot.Selection, "Explain the selected object's scripts in detail."),
-            ("优化", "⚒", ContextCollector.ContextSlot.Selection, "Suggest optimizations for the selected hierarchy."),
-            ("注释", "✍", ContextCollector.ContextSlot.Selection, "Generate XML doc comments for the selected code."),
-            ("修错", "⚙", ContextCollector.ContextSlot.Console, "Analyze and fix the console errors.")
+            ("解释", "⚡", ContextCollector.ContextSlot.Selection, "详细解释所选对象的脚本."),
+            ("优化", "⚒", ContextCollector.ContextSlot.Selection, "为所选层级结构提供性能优化建议."),
+            ("注释", "✍", ContextCollector.ContextSlot.Selection, "为所选代码生成 XML 文档注释."),
+            ("修错", "⚙", ContextCollector.ContextSlot.Console, "分析并修复控制台错误.")
         };
 
         // ─── Guide Cards Data ───
 
         private static readonly (string Title, string Desc, ContextCollector.ContextSlot Slot, string Message)[] _guideCards =
         {
-            ("编写单例脚本", "生成线程安全的 MonoBehaviour 单例模板", ContextCollector.ContextSlot.None, "Write a thread-safe MonoBehaviour singleton base class with lazy initialization."),
-            ("分析选中对象", "解读选中 GameObject 的组件结构", ContextCollector.ContextSlot.Selection, "Explain the selected object's scripts and component setup in detail."),
-            ("修复控制台报错", "读取并修复最近的控制台错误", ContextCollector.ContextSlot.Console, "Analyze and fix the console errors."),
-            ("优化层级结构", "为选中的层级结构提供性能优化建议", ContextCollector.ContextSlot.Selection, "Suggest optimizations for the selected hierarchy, including draw call batching and component efficiency.")
+            ("编写单例脚本", "生成线程安全的 MonoBehaviour 单例模板", ContextCollector.ContextSlot.None, "编写一个线程安全的 MonoBehaviour 单例基类，并支持延迟初始化."),
+            ("分析选中对象", "解读选中 GameObject 的组件结构", ContextCollector.ContextSlot.Selection, "详细解释所选对象的脚本和组件设置."),
+            ("修复控制台报错", "读取并修复最近的控制台错误", ContextCollector.ContextSlot.Console, "分析并修复控制台中的错误信息."),
+            ("优化层级结构", "为选中的层级结构提供性能优化建议", ContextCollector.ContextSlot.Selection, "为所选的层级结构提供性能优化建议，包括绘制调用批处理和组件效率优化.")
         };
 
         // ─── Styles ───

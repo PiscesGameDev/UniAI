@@ -24,6 +24,7 @@ namespace UniAI.Editor.Chat
             string modelId = _currentModelId ?? "";
             _activeSession = ChatSession.Create(modelId);
             _activeSession.AgentId = GetSelectedAgentId();
+            _history.Save(_activeSession);
             _chatScroll = Vector2.zero;
             GUI.FocusControl("ChatInput");
             Repaint();

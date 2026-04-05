@@ -12,7 +12,8 @@ namespace UniAI.Editor.Chat
             float textH = INPUT_MIN_HEIGHT;
             if (!string.IsNullOrEmpty(_inputText))
             {
-                float calcH = _inputStyle.CalcHeight(new GUIContent(_inputText), width - PAD * 2 - 68);
+                // 与 DrawInputArea 中的 CalcHeight 保持一致: PAD*2 + 加号按钮(22+4) + 发送按钮(4+60) + PAD
+                float calcH = _inputStyle.CalcHeight(new GUIContent(_inputText), width - PAD * 2 - 90);
                 textH = Mathf.Clamp(calcH, INPUT_MIN_HEIGHT, INPUT_MAX_HEIGHT);
             }
             return 6 + actionBarH + 2 + textH + 8 + 6;
@@ -66,7 +67,7 @@ namespace UniAI.Editor.Chat
             float inputH = INPUT_MIN_HEIGHT;
             if (!string.IsNullOrEmpty(_inputText))
             {
-                float calcH = _inputStyle.CalcHeight(new GUIContent(_inputText), width - PAD * 2 - 68 - 30);
+                float calcH = _inputStyle.CalcHeight(new GUIContent(_inputText), width - PAD * 2 - 90);
                 inputH = Mathf.Clamp(calcH, INPUT_MIN_HEIGHT, INPUT_MAX_HEIGHT);
             }
             _inputText = EditorGUILayout.TextArea(_inputText, _inputStyle,

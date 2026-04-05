@@ -220,6 +220,7 @@ namespace UniAI
 
         /// <summary>
         /// 所有可用预设（用于 Add Provider 菜单）
+        /// 每次调用返回新实例，调用方可安全修改
         /// </summary>
         public static ChannelEntry[] All => new[] { Claude(), OpenAI(), Gemini(), DeepSeek() };
     }

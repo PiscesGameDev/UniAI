@@ -64,11 +64,13 @@ namespace UniAI.Providers
                 for (int i = 0; i < _providers.Count; i++)
                 {
                     linkedToken.ThrowIfCancellationRequested();
+                    bool hasYielded = false;
 
                     try
                     {
                         await foreach (var chunk in _providers[i].StreamAsync(request, linkedToken))
                         {
+                            hasYielded = true;
                             await writer.YieldAsync(chunk);
                         }
 
@@ -78,12 +80,19 @@ namespace UniAI.Providers
                     catch (OperationCanceledException) { throw; }
                     catch (Exception e)
                     {
-                        AILogger.Warning($"FallbackProvider stream: provider[{i}] ({_providers[i].Name}) failed: {e.Message}, trying next...");
-                        // 继续尝试下一个 provider
+                        if (hasYielded)
+                        {
+                            // 已经向消费者输出了部分数据，不能切换 Provider（会导致响应拼接错乱）
+                            AILogger.Error($"FallbackProvider stream: provider[{i}] ({_providers[i].Name}) failed mid-stream: {e.Message}");
+                            await writer.YieldAsync(new AIStreamChunk { IsComplete = true });
+                            return;
+                        }
+
+                        AILogger.Warning($"FallbackProvider stream: provider[{i}] ({_providers[i].Name}) failed before streaming: {e.Message}, trying next...");
                     }
                 }
 
-                // 所有 Provider 都失败
+                // 所有 Provider 都失败（均在流开始前失败）
                 await writer.YieldAsync(new AIStreamChunk
                 {
                     IsComplete = true

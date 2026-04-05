@@ -34,7 +34,6 @@ namespace UniAI.Editor.Chat
         public string Title;
         public long CreatedAt;
         public long UpdatedAt;
-        public string ProviderId;
         public string AgentId;
         public string ModelId;
         public List<ChatMessage> Messages = new();

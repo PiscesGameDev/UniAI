@@ -61,7 +61,7 @@ namespace UniAI.Editor
         /// </summary>
         internal static string GetEnvVarName(string channelId)
         {
-            return _presetEnvVars.TryGetValue(channelId, out var name) ? name : null;
+            return _presetEnvVars.GetValueOrDefault(channelId);
         }
 
         /// <summary>
