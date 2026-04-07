@@ -5,14 +5,17 @@ using UnityEngine;
 namespace UniAI.Editor
 {
     /// <summary>
-    /// UniAI 设置窗口 — 集中管理运行时参数和编辑器偏好
+    /// 设置 Tab — 滚动表单：运行时设置 + 编辑器偏好 + Tool 设置
     /// </summary>
-    public class UniAISettingsWindow : EditorWindow
+    internal class SettingsTab : ManagerTab
     {
-        private const float LabelWidth = 140f;
-        private const float Pad = 16f;
+        public override string TabName => "设置";
+        public override string TabIcon => "⚙";
+        public override int Order => 2;
 
-        private AIConfig _config;
+        private const float LABEL_WIDTH = 140f;
+        private const float PAD = 16f;
+
         private Vector2 _scroll;
 
         // Styles
@@ -20,49 +23,35 @@ namespace UniAI.Editor
         private GUIStyle _sectionTitleStyle;
         private bool _stylesReady;
 
-        [MenuItem("Window/UniAI/Settings")]
-        [MenuItem("Tools/UniAI/Settings")]
-        public static void Open()
+        public override void EnsureStyles()
         {
-            var w = GetWindow<UniAISettingsWindow>("UniAI Settings");
-            w.minSize = new Vector2(400, 300);
+            if (_stylesReady) return;
+            _stylesReady = true;
+
+            _titleStyle = new GUIStyle(EditorStyles.boldLabel) { fontSize = 16 };
+            _sectionTitleStyle = new GUIStyle(EditorStyles.boldLabel) { fontSize = 13 };
         }
 
-        private void OnEnable()
+        public override void OnGUI(float width, float height)
         {
-            _config = AIConfigManager.LoadConfig();
-        }
-
-        private void OnGUI()
-        {
-            if (_config == null) _config = AIConfigManager.LoadConfig();
-            EnsureStyles();
-
             _scroll = EditorGUILayout.BeginScrollView(_scroll);
-            GUILayout.Space(Pad);
+            GUILayout.Space(PAD);
 
-            // Title
             EditorGUILayout.BeginHorizontal();
-            GUILayout.Space(Pad);
+            GUILayout.Space(PAD);
             GUILayout.Label("UniAI 设置", _titleStyle);
             EditorGUILayout.EndHorizontal();
 
             GUILayout.Space(16);
 
-            // Runtime settings
-            EditorGUIHelper.DrawSection(Pad, DrawRuntimeSettings);
+            EditorGUIHelper.DrawSection(PAD, DrawRuntimeSettings);
 
             GUILayout.Space(12);
 
-            // Editor settings
-            EditorGUIHelper.DrawSection(Pad, DrawEditorSettings);
+            EditorGUIHelper.DrawSection(PAD, DrawEditorSettings);
 
             GUILayout.FlexibleSpace();
-
-            // Bottom bar
-            DrawBottomBar();
-
-            GUILayout.Space(Pad);
+            GUILayout.Space(PAD);
             EditorGUILayout.EndScrollView();
         }
 
@@ -73,13 +62,13 @@ namespace UniAI.Editor
             GUILayout.Space(8);
 
             EditorGUILayout.BeginHorizontal();
-            EditorGUILayout.LabelField("请求超时 (秒)", GUILayout.Width(LabelWidth));
-            _config.General.TimeoutSeconds = EditorGUILayout.IntSlider(_config.General.TimeoutSeconds, 10, 300);
+            EditorGUILayout.LabelField("请求超时 (秒)", GUILayout.Width(LABEL_WIDTH));
+            Config.General.TimeoutSeconds = EditorGUILayout.IntSlider(Config.General.TimeoutSeconds, 10, 300);
             EditorGUILayout.EndHorizontal();
 
             EditorGUILayout.BeginHorizontal();
-            EditorGUILayout.LabelField("日志级别", GUILayout.Width(LabelWidth));
-            _config.General.LogLevel = (AILogLevel)EditorGUILayout.EnumPopup(_config.General.LogLevel);
+            EditorGUILayout.LabelField("日志级别", GUILayout.Width(LABEL_WIDTH));
+            Config.General.LogLevel = (AILogLevel)EditorGUILayout.EnumPopup(Config.General.LogLevel);
             EditorGUILayout.EndHorizontal();
         }
 
@@ -92,7 +81,7 @@ namespace UniAI.Editor
             GUILayout.Space(8);
 
             EditorGUILayout.BeginHorizontal();
-            EditorGUILayout.LabelField("侧边栏默认展开", GUILayout.Width(LabelWidth));
+            EditorGUILayout.LabelField("侧边栏默认展开", GUILayout.Width(LABEL_WIDTH));
             var newSidebar = EditorGUILayout.Toggle(prefs.ShowSidebar);
             if (newSidebar != prefs.ShowSidebar)
                 prefs.ShowSidebar = newSidebar;
@@ -101,7 +90,7 @@ namespace UniAI.Editor
             // 默认上下文槽位
             var currentSlots = (ContextCollector.ContextSlot)prefs.DefaultContextSlots;
             EditorGUILayout.BeginHorizontal();
-            EditorGUILayout.LabelField("默认上下文", GUILayout.Width(LabelWidth));
+            EditorGUILayout.LabelField("默认上下文", GUILayout.Width(LABEL_WIDTH));
             DrawContextSlotToggle(ref currentSlots, ContextCollector.ContextSlot.Selection, "选中对象");
             DrawContextSlotToggle(ref currentSlots, ContextCollector.ContextSlot.Console, "控制台");
             DrawContextSlotToggle(ref currentSlots, ContextCollector.ContextSlot.Project, "工程资源");
@@ -110,21 +99,20 @@ namespace UniAI.Editor
                 prefs.DefaultContextSlots = (int)currentSlots;
 
             EditorGUILayout.BeginHorizontal();
-            EditorGUILayout.LabelField("历史会话上限", GUILayout.Width(LabelWidth));
+            EditorGUILayout.LabelField("历史会话上限", GUILayout.Width(LABEL_WIDTH));
             var newMax = EditorGUILayout.IntField(prefs.MaxHistorySessions);
             if (newMax != prefs.MaxHistorySessions)
                 prefs.MaxHistorySessions = Mathf.Clamp(newMax, 5, 500);
             EditorGUILayout.EndHorizontal();
 
             EditorGUILayout.BeginHorizontal();
-            EditorGUILayout.LabelField("Agent 创建目录", GUILayout.Width(LabelWidth));
+            EditorGUILayout.LabelField("Agent 创建目录", GUILayout.Width(LABEL_WIDTH));
             EditorGUILayout.TextField(prefs.AgentDirectory);
             if (GUILayout.Button("选择", GUILayout.Width(60)))
             {
                 string path = EditorUtility.OpenFolderPanel("选择 Agent 创建目录", "Assets", "");
                 if (!string.IsNullOrEmpty(path))
                 {
-                    // 转换为相对路径
                     if (path.StartsWith(Application.dataPath))
                     {
                         path = "Assets" + path.Substring(Application.dataPath.Length);
@@ -141,14 +129,14 @@ namespace UniAI.Editor
             GUILayout.Space(8);
 
             EditorGUILayout.BeginHorizontal();
-            EditorGUILayout.LabelField("用户头像", GUILayout.Width(LabelWidth));
+            EditorGUILayout.LabelField("用户头像", GUILayout.Width(LABEL_WIDTH));
             var newUserAvatar = (Texture2D)EditorGUILayout.ObjectField(prefs.UserAvatar, typeof(Texture2D), false);
             if (newUserAvatar != prefs.UserAvatar)
                 prefs.UserAvatar = newUserAvatar;
             EditorGUILayout.EndHorizontal();
 
             EditorGUILayout.BeginHorizontal();
-            EditorGUILayout.LabelField("AI 默认头像", GUILayout.Width(LabelWidth));
+            EditorGUILayout.LabelField("AI 默认头像", GUILayout.Width(LABEL_WIDTH));
             var newAiAvatar = (Texture2D)EditorGUILayout.ObjectField(prefs.AiAvatar, typeof(Texture2D), false);
             if (newAiAvatar != prefs.AiAvatar)
                 prefs.AiAvatar = newAiAvatar;
@@ -162,51 +150,25 @@ namespace UniAI.Editor
             GUILayout.Space(8);
 
             EditorGUILayout.BeginHorizontal();
-            EditorGUILayout.LabelField("Tool 超时 (秒)", GUILayout.Width(LabelWidth));
+            EditorGUILayout.LabelField("Tool 超时 (秒)", GUILayout.Width(LABEL_WIDTH));
             var newTimeout = EditorGUILayout.Slider(prefs.ToolTimeout, 5f, 120f);
             if (!Mathf.Approximately(newTimeout, prefs.ToolTimeout))
                 prefs.ToolTimeout = newTimeout;
             EditorGUILayout.EndHorizontal();
 
             EditorGUILayout.BeginHorizontal();
-            EditorGUILayout.LabelField("最大输出字符数", GUILayout.Width(LabelWidth));
+            EditorGUILayout.LabelField("最大输出字符数", GUILayout.Width(LABEL_WIDTH));
             var newMaxChars = EditorGUILayout.IntField(prefs.ToolMaxOutputChars);
             if (newMaxChars != prefs.ToolMaxOutputChars)
                 prefs.ToolMaxOutputChars = Mathf.Clamp(newMaxChars, 5000, 200000);
             EditorGUILayout.EndHorizontal();
 
             EditorGUILayout.BeginHorizontal();
-            EditorGUILayout.LabelField("搜索最大匹配数", GUILayout.Width(LabelWidth));
+            EditorGUILayout.LabelField("搜索最大匹配数", GUILayout.Width(LABEL_WIDTH));
             var newMaxMatches = EditorGUILayout.IntField(prefs.SearchMaxMatches);
             if (newMaxMatches != prefs.SearchMaxMatches)
                 prefs.SearchMaxMatches = Mathf.Clamp(newMaxMatches, 10, 1000);
             EditorGUILayout.EndHorizontal();
-        }
-
-        private void DrawBottomBar()
-        {
-            EditorGUILayout.BeginHorizontal();
-            GUILayout.Space(Pad);
-            GUILayout.FlexibleSpace();
-
-            if (GUILayout.Button("保存", GUILayout.Height(28), GUILayout.Width(80)))
-            {
-                AIConfigManager.SaveConfig(_config);
-                AIConfigManager.SavePrefs();
-                ShowNotification(new GUIContent("设置已保存"));
-            }
-
-            GUILayout.Space(Pad);
-            EditorGUILayout.EndHorizontal();
-        }
-
-        private void EnsureStyles()
-        {
-            if (_stylesReady) return;
-            _stylesReady = true;
-
-            _titleStyle = new GUIStyle(EditorStyles.boldLabel) { fontSize = 16 };
-            _sectionTitleStyle = new GUIStyle(EditorStyles.boldLabel) { fontSize = 13 };
         }
 
         private static void DrawContextSlotToggle(ref ContextCollector.ContextSlot slots, ContextCollector.ContextSlot flag, string label)

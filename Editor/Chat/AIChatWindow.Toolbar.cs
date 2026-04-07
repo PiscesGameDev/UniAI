@@ -67,7 +67,7 @@ namespace UniAI.Editor.Chat
             GUILayout.Space(8);
 
             if (GUILayout.Button("⚙", EditorStyles.miniButton, GUILayout.Width(24), GUILayout.Height(22)))
-                AIChannelWindow.Open();
+                UniAIManagerWindow.OpenChannel();
 
             GUILayout.Space(PAD);
             EditorGUILayout.EndHorizontal();
@@ -102,7 +102,7 @@ namespace UniAI.Editor.Chat
                     menu.AddDisabledItem(new GUIContent("暂无 Agent（可在 Agent 管理器中创建）"));
 
                 menu.AddSeparator("");
-                menu.AddItem(new GUIContent("管理 Agent..."), false, () => AIAgentWindow.Open());
+                menu.AddItem(new GUIContent("管理 Agent..."), false, () => UniAIManagerWindow.OpenAgent());
                 menu.ShowAsContext();
             }
         }

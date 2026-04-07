@@ -18,7 +18,6 @@ namespace UniAI.Editor.Tools
     public class RuntimeQueryTool : AIToolAsset
     {
         private const int MAX_RESULTS = 50;
-        private const int MAX_DEPTH = 3;
         private const BindingFlags INSTANCE_FLAGS = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance;
 
         public override UniTask<string> ExecuteAsync(string arguments, CancellationToken ct)

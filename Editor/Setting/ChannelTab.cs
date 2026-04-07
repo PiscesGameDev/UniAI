@@ -8,14 +8,18 @@ using UnityEngine;
 namespace UniAI.Editor
 {
     /// <summary>
-    /// UniAI 渠道管理窗口 — 双面板布局，左侧渠道列表，右侧渠道配置 + 模型诊断
+    /// 渠道管理 Tab — 双面板布局，左侧渠道列表，右侧渠道配置 + 模型诊断
     /// </summary>
-    public class AIChannelWindow : EditorWindow
+    internal class ChannelTab : ManagerTab
     {
-        private const float LeftPanelWidth = 140f;
-        private const float LabelWidth = 100f;
-        private const float Pad = 10f;
-        private const string IconsDir = "Assets/UniAI/Editor/Icons";
+        public override string TabName => "渠道";
+        public override string TabIcon => "⚡";
+        public override int Order => 0;
+
+        private const float LEFT_PANEL_WIDTH = 140f;
+        private const float LABEL_WIDTH = 100f;
+        private const float PAD = 10f;
+        private const string ICONS_DIR = "Assets/UniAI/Editor/Icons";
 
         // Colors
         private static readonly Color _greenDot = new(0.3f, 0.85f, 0.4f);
@@ -24,7 +28,6 @@ namespace UniAI.Editor
         private static readonly Color _yellowDot = new(0.95f, 0.9f, 0.3f);
 
         // State
-        private AIConfig _config;
         private int _selectedIndex;
         private Vector2 _rightScroll;
 
@@ -39,7 +42,7 @@ namespace UniAI.Editor
         private readonly Dictionary<string, bool> _fetchingModels = new();
         private readonly Dictionary<string, ModelListResult> _fetchedModels = new();
 
-        // Fetched available models list (keyed by provider Id), persists until next fetch
+        // Fetched available models list (keyed by provider Id)
         private readonly Dictionary<string, List<ModelInfo>> _availableModels = new();
         private readonly Dictionary<string, Vector2> _availableModelsScroll = new();
 
@@ -58,49 +61,51 @@ namespace UniAI.Editor
         private class ModelTestResult
         {
             public bool IsTesting;
-            public bool? IsSuccess; // null = 待测
+            public bool? IsSuccess;
             public long LatencyMs;
             public string Error;
         }
 
-        [MenuItem("Window/UniAI/Channel")]
-        [MenuItem("Tools/UniAI/Channel")]
-        public static void Open()
-        {
-            var w = GetWindow<AIChannelWindow>("UniAI Channel");
-            w.minSize = new Vector2(720, 460);
-        }
-
-        private void OnEnable()
-        {
-            _config = AIConfigManager.LoadConfig();
-            _eyeOpenIcon = AssetDatabase.LoadAssetAtPath<Texture2D>($"{IconsDir}/ui-eye-open.png");
-            _eyeCloseIcon = AssetDatabase.LoadAssetAtPath<Texture2D>($"{IconsDir}/ui-eye-close.png");
-        }
-
         private ChannelEntry SelectedEntry =>
-            _config.Providers.Count > 0 && _selectedIndex < _config.Providers.Count
-                ? _config.Providers[_selectedIndex]
+            Config.Providers.Count > 0 && _selectedIndex < Config.Providers.Count
+                ? Config.Providers[_selectedIndex]
                 : null;
 
         private string ModelKey(string channelId, string modelId) => $"{channelId}:{modelId}";
 
-        // ────────────────────────────── OnGUI ──────────────────────────────
-
-        private void OnGUI()
+        protected override void OnInit()
         {
-            if (_config == null) _config = AIConfigManager.LoadConfig();
-            EnsureStyles();
+            _eyeOpenIcon = AssetDatabase.LoadAssetAtPath<Texture2D>($"{ICONS_DIR}/ui-eye-open.png");
+            _eyeCloseIcon = AssetDatabase.LoadAssetAtPath<Texture2D>($"{ICONS_DIR}/ui-eye-close.png");
+        }
 
-            EditorGUI.DrawRect(new Rect(0, 0, LeftPanelWidth, position.height), EditorGUIHelper.LeftPanelBg);
-            EditorGUI.DrawRect(new Rect(LeftPanelWidth, 0, 1, position.height), EditorGUIHelper.SeparatorColor);
+        public override void EnsureStyles()
+        {
+            if (_stylesReady) return;
+            _stylesReady = true;
 
-            GUILayout.BeginArea(new Rect(0, 0, LeftPanelWidth, position.height));
+            _titleStyle = new GUIStyle(EditorStyles.boldLabel) { fontSize = 16 };
+            _channelTitleStyle = new GUIStyle(EditorStyles.boldLabel) { fontSize = 13 };
+
+            _errorStyle = new GUIStyle(EditorStyles.miniLabel) { wordWrap = true };
+            _errorStyle.normal.textColor = _orangeDot;
+
+            _addBtnStyle = new GUIStyle(GUI.skin.button) { alignment = TextAnchor.MiddleCenter };
+            _modelNameStyle = new GUIStyle(EditorStyles.label) { fontSize = 11 };
+        }
+
+        public override void OnGUI(float width, float height)
+        {
+            // Left panel bg + separator
+            EditorGUI.DrawRect(new Rect(0, 0, LEFT_PANEL_WIDTH, height), EditorGUIHelper.LeftPanelBg);
+            EditorGUI.DrawRect(new Rect(LEFT_PANEL_WIDTH, 0, 1, height), EditorGUIHelper.SeparatorColor);
+
+            GUILayout.BeginArea(new Rect(0, 0, LEFT_PANEL_WIDTH, height));
             DrawLeftPanel();
             GUILayout.EndArea();
 
-            float rx = LeftPanelWidth + 1;
-            GUILayout.BeginArea(new Rect(rx, 0, position.width - rx, position.height));
+            float rx = LEFT_PANEL_WIDTH + 1;
+            GUILayout.BeginArea(new Rect(rx, 0, width - rx, height));
             _rightScroll = EditorGUILayout.BeginScrollView(_rightScroll);
             DrawRightPanel();
             EditorGUILayout.EndScrollView();
@@ -111,25 +116,18 @@ namespace UniAI.Editor
 
         private void DrawLeftPanel()
         {
-            GUILayout.Space(Pad);
+            GUILayout.Space(PAD);
 
             EditorGUILayout.BeginHorizontal();
-            GUILayout.Space(Pad);
-            GUILayout.Label("UniAI", _titleStyle);
-            EditorGUILayout.EndHorizontal();
-
-            GUILayout.Space(8);
-
-            EditorGUILayout.BeginHorizontal();
-            GUILayout.Space(Pad);
+            GUILayout.Space(PAD);
             if (GUILayout.Button("添加渠道", _addBtnStyle, GUILayout.Height(26)))
                 ShowAddProviderMenu();
-            GUILayout.Space(Pad);
+            GUILayout.Space(PAD);
             EditorGUILayout.EndHorizontal();
 
             GUILayout.Space(12);
 
-            for (int i = 0; i < _config.Providers.Count; i++)
+            for (int i = 0; i < Config.Providers.Count; i++)
             {
                 DrawProviderItem(i);
                 GUILayout.Space(2);
@@ -140,16 +138,15 @@ namespace UniAI.Editor
 
         private void DrawProviderItem(int index)
         {
-            var entry = _config.Providers[index];
+            var entry = Config.Providers[index];
             bool isSelected = _selectedIndex == index;
             var rect = EditorGUILayout.BeginHorizontal(GUILayout.Height(30));
 
             if (rect.width > 1)
                 EditorGUI.DrawRect(rect, isSelected ? EditorGUIHelper.ItemSelectedBg : EditorGUIHelper.ItemBg);
 
-            GUILayout.Space(Pad + 4);
+            GUILayout.Space(PAD + 4);
 
-            // 用文字明度区分启用/未启用
             var oldColor = GUI.contentColor;
             if (!entry.Enabled)
                 GUI.contentColor = new Color(1f, 1f, 1f, 0.35f);
@@ -170,13 +167,10 @@ namespace UniAI.Editor
                     _selectedIndex = index;
 
                 Event.current.Use();
-                Repaint();
+                Window.Repaint();
             }
         }
 
-        /// <summary>
-        /// 聚合渠道下所有模型的测试状态文本
-        /// </summary>
         private string GetChannelModelStatusText(ChannelEntry entry)
         {
             if (entry.Models == null || entry.Models.Count == 0) return "";
@@ -202,12 +196,12 @@ namespace UniAI.Editor
 
         private void DrawRightPanel()
         {
-            GUILayout.Space(Pad);
+            GUILayout.Space(PAD);
 
             EditorGUILayout.BeginHorizontal();
-            GUILayout.Space(Pad);
+            GUILayout.Space(PAD);
             GUILayout.Label("渠道管理", _titleStyle);
-            GUILayout.Space(Pad);
+            GUILayout.Space(PAD);
             EditorGUILayout.EndHorizontal();
 
             GUILayout.Space(16);
@@ -224,22 +218,18 @@ namespace UniAI.Editor
             }
 
             GUILayout.FlexibleSpace();
-
-            DrawBottomBar();
-
-            GUILayout.Space(Pad);
+            GUILayout.Space(PAD);
         }
 
         private void DrawSection(Action drawContent)
         {
-            EditorGUIHelper.DrawSection(Pad, drawContent);
+            EditorGUIHelper.DrawSection(PAD, drawContent);
         }
 
         private void DrawProviderConfig()
         {
             var entry = SelectedEntry;
 
-            // Title row
             EditorGUILayout.BeginHorizontal();
             GUILayout.Label($"{entry.Name} 渠道配置", _channelTitleStyle);
             GUILayout.FlexibleSpace();
@@ -249,12 +239,12 @@ namespace UniAI.Editor
 
             // Enabled
             EditorGUILayout.BeginHorizontal();
-            EditorGUILayout.LabelField("启用", GUILayout.Width(LabelWidth));
+            EditorGUILayout.LabelField("启用", GUILayout.Width(LABEL_WIDTH));
             var newEnabled = EditorGUILayout.Toggle(entry.Enabled);
             if (newEnabled != entry.Enabled)
             {
                 entry.Enabled = newEnabled;
-                AIConfigManager.SaveConfig(_config);
+                AIConfigManager.SaveConfig(Config);
             }
             EditorGUILayout.EndHorizontal();
 
@@ -262,7 +252,7 @@ namespace UniAI.Editor
 
             // Name
             EditorGUILayout.BeginHorizontal();
-            EditorGUILayout.LabelField("名称", GUILayout.Width(LabelWidth));
+            EditorGUILayout.LabelField("名称", GUILayout.Width(LABEL_WIDTH));
             if (ChannelPresets.IsPresetId(entry.Id))
             {
                 EditorGUI.BeginDisabledGroup(true);
@@ -290,7 +280,7 @@ namespace UniAI.Editor
             // Protocol
             GUILayout.Space(4);
             EditorGUILayout.BeginHorizontal();
-            EditorGUILayout.LabelField("Protocol", GUILayout.Width(LabelWidth));
+            EditorGUILayout.LabelField("Protocol", GUILayout.Width(LABEL_WIDTH));
             if (ChannelPresets.IsPresetId(entry.Id))
             {
                 EditorGUI.BeginDisabledGroup(true);
@@ -322,7 +312,7 @@ namespace UniAI.Editor
             bool isVisible = _showApiKey.Contains(entry.Id);
 
             EditorGUILayout.BeginHorizontal();
-            EditorGUILayout.LabelField("API Key", GUILayout.Width(LabelWidth));
+            EditorGUILayout.LabelField("API Key", GUILayout.Width(LABEL_WIDTH));
 
             if (hasEnv)
             {
@@ -339,7 +329,6 @@ namespace UniAI.Editor
                 entry.ApiKey = EditorGUILayout.PasswordField(entry.ApiKey ?? "");
             }
 
-            // Eye toggle
             if (!hasEnv)
             {
                 var eyeIcon = isVisible ? _eyeOpenIcon : _eyeCloseIcon;
@@ -356,11 +345,10 @@ namespace UniAI.Editor
 
             EditorGUILayout.EndHorizontal();
 
-            // Env var hint
             if (hasEnv)
             {
                 EditorGUILayout.BeginHorizontal();
-                GUILayout.Space(LabelWidth + 4);
+                GUILayout.Space(LABEL_WIDTH + 4);
                 EditorGUILayout.LabelField($"来自环境变量 ${envVarName}", EditorStyles.miniLabel);
                 EditorGUILayout.EndHorizontal();
             }
@@ -369,7 +357,7 @@ namespace UniAI.Editor
         private void DrawTextField(string label, ref string value)
         {
             EditorGUILayout.BeginHorizontal();
-            EditorGUILayout.LabelField(label, GUILayout.Width(LabelWidth));
+            EditorGUILayout.LabelField(label, GUILayout.Width(LABEL_WIDTH));
             value = EditorGUILayout.TextField(value ?? "");
             EditorGUILayout.EndHorizontal();
         }
@@ -392,7 +380,6 @@ namespace UniAI.Editor
 
             bool hasApiKey = HasApiKey(entry);
 
-            // Model list table
             if (entry.Models != null && entry.Models.Count > 0)
             {
                 // Header
@@ -400,7 +387,7 @@ namespace UniAI.Editor
                 GUILayout.Label("模型 ID", EditorStyles.miniLabel, GUILayout.ExpandWidth(true));
                 GUILayout.Label("状态", EditorStyles.miniLabel, GUILayout.Width(50));
                 GUILayout.Label("延迟", EditorStyles.miniLabel, GUILayout.Width(60));
-                GUILayout.Space(96); // test + delete button width
+                GUILayout.Space(96);
                 EditorGUILayout.EndHorizontal();
 
                 EditorGUIHelper.DrawSeparator();
@@ -411,22 +398,17 @@ namespace UniAI.Editor
                     var key = ModelKey(entry.Id, modelId);
                     _modelResults.TryGetValue(key, out var result);
 
-                    // Model row
                     EditorGUILayout.BeginHorizontal();
 
-                    // Model name
                     GUILayout.Label(modelId, _modelNameStyle, GUILayout.ExpandWidth(true));
 
-                    // Status dot + label
                     DrawModelStatus(result, 50);
 
-                    // Latency
                     string latencyText = "---";
                     if (result is { IsTesting: false, IsSuccess: true })
                         latencyText = $"{result.LatencyMs}ms";
                     GUILayout.Label(latencyText, EditorStyles.miniLabel, GUILayout.Width(60));
 
-                    // Test button
                     bool isTesting = result is { IsTesting: true };
                     EditorGUI.BeginDisabledGroup(isTesting || !hasApiKey);
                     if (GUILayout.Button(isTesting ? "..." : "测试", EditorStyles.miniButton, GUILayout.Width(44)))
@@ -435,19 +417,17 @@ namespace UniAI.Editor
                     }
                     EditorGUI.EndDisabledGroup();
 
-                    // Delete button
                     if (GUILayout.Button("✕", EditorStyles.miniButton, GUILayout.Width(22)))
                     {
                         entry.Models.RemoveAt(i);
                         _modelResults.Remove(key);
-                        AIConfigManager.SaveConfig(_config);
+                        AIConfigManager.SaveConfig(Config);
                         GUIUtility.ExitGUI();
                         return;
                     }
 
                     EditorGUILayout.EndHorizontal();
 
-                    // Error detail line
                     if (result is { IsSuccess: false, IsTesting: false } && !string.IsNullOrEmpty(result.Error))
                     {
                         EditorGUILayout.BeginHorizontal();
@@ -493,7 +473,7 @@ namespace UniAI.Editor
                 EditorGUILayout.LabelField($"⚠ {fetchResult.Error}", _errorStyle);
             }
 
-            // Available models list (persistent after fetch)
+            // Available models list
             if (_availableModels.TryGetValue(entry.Id, out var available) && available.Count > 0)
             {
                 GUILayout.Space(6);
@@ -508,7 +488,7 @@ namespace UniAI.Editor
                         if (!entry.Models.Contains(m.Id))
                             entry.Models.Add(m.Id);
                     }
-                    AIConfigManager.SaveConfig(_config);
+                    AIConfigManager.SaveConfig(Config);
                     _availableModels.Remove(entry.Id);
                 }
                 if (GUILayout.Button("收起", EditorStyles.miniButton, GUILayout.Width(40)))
@@ -539,7 +519,7 @@ namespace UniAI.Editor
                         if (!entry.Models.Contains(model.Id))
                         {
                             entry.Models.Add(model.Id);
-                            AIConfigManager.SaveConfig(_config);
+                            AIConfigManager.SaveConfig(Config);
                         }
                     }
                     EditorGUI.EndDisabledGroup();
@@ -603,7 +583,7 @@ namespace UniAI.Editor
         {
             var key = ModelKey(entry.Id, modelId);
             _modelResults[key] = new ModelTestResult { IsTesting = true };
-            Repaint();
+            Window.Repaint();
 
             try
             {
@@ -614,7 +594,7 @@ namespace UniAI.Editor
                     BaseUrl = entry.BaseUrl, Models = entry.Models, ApiVersion = entry.ApiVersion
                 };
 
-                var client = AIClient.Create(testEntry, modelId, _config.General);
+                var client = AIClient.Create(testEntry, modelId, Config.General);
 
                 var sw = Stopwatch.StartNew();
                 var response = await client.SendAsync(new AIRequest
@@ -643,7 +623,7 @@ namespace UniAI.Editor
                 };
             }
 
-            Repaint();
+            Window.Repaint();
         }
 
         private void TestAllModels(ChannelEntry entry)
@@ -662,12 +642,12 @@ namespace UniAI.Editor
             _fetchingModels[entry.Id] = true;
             _fetchedModels.Remove(entry.Id);
             _availableModels.Remove(entry.Id);
-            Repaint();
+            Window.Repaint();
 
             try
             {
                 var apiKey = EditorPreferences.GetEffectiveApiKey(entry);
-                var timeout = _config.General?.TimeoutSeconds ?? 30;
+                var timeout = Config.General?.TimeoutSeconds ?? 30;
                 var result = await ModelListService.FetchModelsAsync(entry, apiKey, timeout);
 
                 _fetchedModels[entry.Id] = result;
@@ -683,7 +663,7 @@ namespace UniAI.Editor
             }
 
             _fetchingModels[entry.Id] = false;
-            Repaint();
+            Window.Repaint();
         }
 
         private void AddModelToEntry(ChannelEntry entry)
@@ -694,26 +674,8 @@ namespace UniAI.Editor
 
             entry.Models.Add(input);
             _modelInput[entry.Id] = "";
-            AIConfigManager.SaveConfig(_config);
-            Repaint();
-        }
-
-        // ─── Bottom Bar ───
-
-        private void DrawBottomBar()
-        {
-            EditorGUILayout.BeginHorizontal();
-            GUILayout.Space(Pad);
-            GUILayout.FlexibleSpace();
-
-            if (GUILayout.Button("保存", GUILayout.Height(28), GUILayout.Width(80)))
-            {
-                AIConfigManager.SaveConfig(_config);
-                ShowNotification(new GUIContent("配置已保存"));
-            }
-
-            GUILayout.Space(Pad);
-            EditorGUILayout.EndHorizontal();
+            AIConfigManager.SaveConfig(Config);
+            Window.Repaint();
         }
 
         // ────────────────────────────── Add / Remove Provider ──────────────────────────────
@@ -721,7 +683,7 @@ namespace UniAI.Editor
         private void ShowAddProviderMenu()
         {
             var menu = new GenericMenu();
-            var existingIds = new HashSet<string>(_config.Providers.Select(p => p.Id));
+            var existingIds = new HashSet<string>(Config.Providers.Select(p => p.Id));
 
             foreach (var preset in ChannelPresets.All)
             {
@@ -734,9 +696,9 @@ namespace UniAI.Editor
                     var p = preset;
                     menu.AddItem(new GUIContent(preset.Name), false, () =>
                     {
-                        _config.Providers.Add(p);
-                        _selectedIndex = _config.Providers.Count - 1;
-                        Repaint();
+                        Config.Providers.Add(p);
+                        _selectedIndex = Config.Providers.Count - 1;
+                        Window.Repaint();
                     });
                 }
             }
@@ -745,7 +707,7 @@ namespace UniAI.Editor
             menu.AddItem(new GUIContent("自定义 (OpenAI 兼容)"), false, () =>
             {
                 var id = $"custom_{DateTime.Now.Ticks}";
-                _config.Providers.Add(new ChannelEntry
+                Config.Providers.Add(new ChannelEntry
                 {
                     Id = id,
                     Name = "Custom",
@@ -753,8 +715,8 @@ namespace UniAI.Editor
                     BaseUrl = "https://",
                     Models = new List<string>()
                 });
-                _selectedIndex = _config.Providers.Count - 1;
-                Repaint();
+                _selectedIndex = Config.Providers.Count - 1;
+                Window.Repaint();
             });
 
             menu.ShowAsContext();
@@ -762,23 +724,21 @@ namespace UniAI.Editor
 
         private void ShowProviderContextMenu(int index)
         {
-            var entry = _config.Providers[index];
+            var entry = Config.Providers[index];
             var menu = new GenericMenu();
 
-            // 启用/禁用
             var toggleLabel = entry.Enabled ? "禁用" : "启用";
             menu.AddItem(new GUIContent(toggleLabel), false, () =>
             {
                 entry.Enabled = !entry.Enabled;
-                AIConfigManager.SaveConfig(_config);
-                Repaint();
+                AIConfigManager.SaveConfig(Config);
+                Window.Repaint();
             });
 
             menu.AddSeparator("");
 
             menu.AddItem(new GUIContent($"移除「{entry.Name}」"), false, () =>
             {
-                // Clean up model results for this channel
                 var keysToRemove = _modelResults.Keys.Where(k => k.StartsWith(entry.Id + ":")).ToList();
                 foreach (var k in keysToRemove) _modelResults.Remove(k);
 
@@ -788,10 +748,10 @@ namespace UniAI.Editor
                 _fetchedModels.Remove(entry.Id);
                 _availableModels.Remove(entry.Id);
                 _availableModelsScroll.Remove(entry.Id);
-                _config.Providers.RemoveAt(index);
-                if (_selectedIndex >= _config.Providers.Count)
-                    _selectedIndex = Mathf.Max(0, _config.Providers.Count - 1);
-                Repaint();
+                Config.Providers.RemoveAt(index);
+                if (_selectedIndex >= Config.Providers.Count)
+                    _selectedIndex = Mathf.Max(0, Config.Providers.Count - 1);
+                Window.Repaint();
             });
             menu.ShowAsContext();
         }
@@ -801,22 +761,6 @@ namespace UniAI.Editor
         private bool HasApiKey(ChannelEntry entry)
         {
             return !string.IsNullOrEmpty(AIConfigManager.GetEffectiveApiKey(entry));
-        }
-
-
-        private void EnsureStyles()
-        {
-            if (_stylesReady) return;
-            _stylesReady = true;
-
-            _titleStyle = new GUIStyle(EditorStyles.boldLabel) { fontSize = 16 };
-            _channelTitleStyle = new GUIStyle(EditorStyles.boldLabel) { fontSize = 13 };
-
-            _errorStyle = new GUIStyle(EditorStyles.miniLabel) { wordWrap = true };
-            _errorStyle.normal.textColor = _orangeDot;
-
-            _addBtnStyle = new GUIStyle(GUI.skin.button) { alignment = TextAnchor.MiddleCenter };
-            _modelNameStyle = new GUIStyle(EditorStyles.label) { fontSize = 11 };
         }
     }
 }

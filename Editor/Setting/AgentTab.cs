@@ -6,12 +6,16 @@ using UnityEngine;
 namespace UniAI.Editor
 {
     /// <summary>
-    /// Agent 管理窗口 — 双面板布局，左侧 Agent 列表，右侧配置详情
+    /// Agent 管理 Tab — 双面板布局，左侧 Agent 列表，右侧配置详情
     /// </summary>
-    public class AIAgentWindow : EditorWindow
+    internal class AgentTab : ManagerTab
     {
-        private const float LeftPanelWidth = 200f;
-        private const float Pad = 10f;
+        public override string TabName => "Agent";
+        public override string TabIcon => "♟";
+        public override int Order => 1;
+
+        private const float LEFT_PANEL_WIDTH = 200f;
+        private const float PAD = 10f;
 
         // State
         private List<AgentDefinition> _agents;
@@ -21,63 +25,48 @@ namespace UniAI.Editor
         private UnityEditor.Editor _cachedEditor;
 
         // Styles
-        private GUIStyle _titleStyle;
         private GUIStyle _sectionTitleStyle;
         private GUIStyle _agentLabelStyle;
         private GUIStyle _addBtnStyle;
         private bool _stylesReady;
-
-        [MenuItem("Window/UniAI/Agents")]
-        [MenuItem("Tools/UniAI/Agents")]
-        public static void Open()
-        {
-            var w = GetWindow<AIAgentWindow>("Agents");
-            w.minSize = new Vector2(640, 400);
-        }
-
-        private void OnEnable()
-        {
-            RefreshAgentList();
-        }
-
-        private void OnDisable()
-        {
-            if (_cachedEditor != null) DestroyImmediate(_cachedEditor);
-        }
-
-        private void RefreshAgentList()
-        {
-            _agents = AgentManager.GetAllAgents();
-            if (_selectedIndex >= _agents.Count)
-                _selectedIndex = Mathf.Max(0, _agents.Count - 1);
-            _serializedAgent = null;
-            if (_cachedEditor != null) DestroyImmediate(_cachedEditor);
-            _cachedEditor = null;
-        }
 
         private AgentDefinition SelectedAgent =>
             _agents != null && _agents.Count > 0 && _selectedIndex < _agents.Count
                 ? _agents[_selectedIndex]
                 : null;
 
-        // ────────────────────────────── OnGUI ──────────────────────────────
-
-        private void OnGUI()
+        protected override void OnInit()
         {
-            EnsureStyles();
+            RefreshAgentList();
+        }
 
+        public override void OnDestroy()
+        {
+            if (_cachedEditor != null) Object.DestroyImmediate(_cachedEditor);
+        }
+
+        public override void EnsureStyles()
+        {
+            if (_stylesReady) return;
+            _stylesReady = true;
+
+            _sectionTitleStyle = new GUIStyle(EditorStyles.boldLabel) { fontSize = 13 };
+            _agentLabelStyle = new GUIStyle(EditorStyles.label) { fontSize = 12, alignment = TextAnchor.MiddleLeft };
+            _addBtnStyle = new GUIStyle(GUI.skin.button) { alignment = TextAnchor.MiddleCenter };
+        }
+
+        public override void OnGUI(float width, float height)
+        {
             // Left panel bg + separator
-            EditorGUI.DrawRect(new Rect(0, 0, LeftPanelWidth, position.height), EditorGUIHelper.LeftPanelBg);
-            EditorGUI.DrawRect(new Rect(LeftPanelWidth, 0, 1, position.height), EditorGUIHelper.SeparatorColor);
+            EditorGUI.DrawRect(new Rect(0, 0, LEFT_PANEL_WIDTH, height), EditorGUIHelper.LeftPanelBg);
+            EditorGUI.DrawRect(new Rect(LEFT_PANEL_WIDTH, 0, 1, height), EditorGUIHelper.SeparatorColor);
 
-            // Left panel
-            GUILayout.BeginArea(new Rect(0, 0, LeftPanelWidth, position.height));
+            GUILayout.BeginArea(new Rect(0, 0, LEFT_PANEL_WIDTH, height));
             DrawLeftPanel();
             GUILayout.EndArea();
 
-            // Right panel
-            float rx = LeftPanelWidth + 1;
-            GUILayout.BeginArea(new Rect(rx, 0, position.width - rx, position.height));
+            float rx = LEFT_PANEL_WIDTH + 1;
+            GUILayout.BeginArea(new Rect(rx, 0, width - rx, height));
             _rightScroll = EditorGUILayout.BeginScrollView(_rightScroll);
             DrawRightPanel();
             EditorGUILayout.EndScrollView();
@@ -88,20 +77,13 @@ namespace UniAI.Editor
 
         private void DrawLeftPanel()
         {
-            GUILayout.Space(Pad);
+            GUILayout.Space(PAD);
 
             EditorGUILayout.BeginHorizontal();
-            GUILayout.Space(Pad);
-            GUILayout.Label("UniAI Agents", _titleStyle);
-            EditorGUILayout.EndHorizontal();
-
-            GUILayout.Space(8);
-
-            EditorGUILayout.BeginHorizontal();
-            GUILayout.Space(Pad);
+            GUILayout.Space(PAD);
             if (GUILayout.Button("+ 新建 Agent", _addBtnStyle, GUILayout.Height(26)))
                 CreateNewAgent();
-            GUILayout.Space(Pad);
+            GUILayout.Space(PAD);
             EditorGUILayout.EndHorizontal();
 
             GUILayout.Space(12);
@@ -126,9 +108,8 @@ namespace UniAI.Editor
             if (rect.width > 1)
                 EditorGUI.DrawRect(rect, isSelected ? EditorGUIHelper.ItemSelectedBg : EditorGUIHelper.ItemBg);
 
-            GUILayout.Space(Pad);
+            GUILayout.Space(PAD);
 
-            // 图标
             if (agent.Icon != null)
             {
                 var iconRect = GUILayoutUtility.GetRect(20, 32, GUILayout.Width(20), GUILayout.Height(32));
@@ -137,7 +118,6 @@ namespace UniAI.Editor
                 GUILayout.Space(4);
             }
 
-            // Agent 名称
             string displayName = agent.AgentName ?? agent.name;
             GUILayout.Label(displayName, _agentLabelStyle, GUILayout.Height(32));
 
@@ -145,7 +125,6 @@ namespace UniAI.Editor
             GUILayout.Space(6);
             EditorGUILayout.EndHorizontal();
 
-            // 点击选中
             if (Event.current.type == EventType.MouseDown && rect.Contains(Event.current.mousePosition))
             {
                 if (Event.current.button == 1)
@@ -154,12 +133,12 @@ namespace UniAI.Editor
                 {
                     _selectedIndex = index;
                     _serializedAgent = null;
-                    if (_cachedEditor != null) DestroyImmediate(_cachedEditor);
+                    if (_cachedEditor != null) Object.DestroyImmediate(_cachedEditor);
                     _cachedEditor = null;
                 }
 
                 Event.current.Use();
-                Repaint();
+                Window.Repaint();
             }
         }
 
@@ -167,13 +146,13 @@ namespace UniAI.Editor
 
         private void DrawRightPanel()
         {
-            GUILayout.Space(Pad);
+            GUILayout.Space(PAD);
 
             var agent = SelectedAgent;
             if (agent == null)
             {
                 EditorGUILayout.BeginHorizontal();
-                GUILayout.Space(Pad);
+                GUILayout.Space(PAD);
                 GUILayout.Label("点击左侧列表选择 Agent，或点击「+ 新建 Agent」创建新的。");
                 EditorGUILayout.EndHorizontal();
                 return;
@@ -184,24 +163,22 @@ namespace UniAI.Editor
 
         private void DrawAgentEditor(AgentDefinition agent)
         {
-            // Header: 标题 + 开始对话按钮
             EditorGUILayout.BeginHorizontal();
-            GUILayout.Space(Pad);
+            GUILayout.Space(PAD);
             string headerLabel = $"{agent.AgentName ?? agent.name} 配置";
             GUILayout.Label(headerLabel, _sectionTitleStyle);
             GUILayout.FlexibleSpace();
             if (GUILayout.Button("开启对话", GUILayout.Height(24), GUILayout.Width(100)))
                 OpenChatWithAgent(agent);
-            GUILayout.Space(Pad);
+            GUILayout.Space(PAD);
             EditorGUILayout.EndHorizontal();
 
             GUILayout.Space(8);
 
-            // 使用 CustomEditor 绘制
             if (_serializedAgent == null || _serializedAgent.targetObject != agent)
             {
                 _serializedAgent = new SerializedObject(agent);
-                if (_cachedEditor != null) DestroyImmediate(_cachedEditor);
+                if (_cachedEditor != null) Object.DestroyImmediate(_cachedEditor);
                 _cachedEditor = UnityEditor.Editor.CreateEditor(agent);
             }
 
@@ -217,7 +194,6 @@ namespace UniAI.Editor
             var agent = AgentManager.CreateNewAgent(agentDir, "New Agent");
             RefreshAgentList();
 
-            // 选中新创建的 Agent
             for (int i = 0; i < _agents.Count; i++)
             {
                 if (_agents[i] == agent)
@@ -228,7 +204,7 @@ namespace UniAI.Editor
                 }
             }
 
-            Repaint();
+            Window.Repaint();
         }
 
         private void DeleteAgent(AgentDefinition agent)
@@ -244,7 +220,7 @@ namespace UniAI.Editor
 
             RefreshAgentList();
             _serializedAgent = null;
-            Repaint();
+            Window.Repaint();
         }
 
         private void OpenChatWithAgent(AgentDefinition agent)
@@ -255,7 +231,6 @@ namespace UniAI.Editor
         private void ShowAgentContextMenu(int index)
         {
             var agent = _agents[index];
-
             var menu = new GenericMenu();
 
             menu.AddItem(new GUIContent("在 Project 中定位"), false, () =>
@@ -272,18 +247,14 @@ namespace UniAI.Editor
             menu.ShowAsContext();
         }
 
-        // ────────────────────────────── Styles ──────────────────────────────
-
-        private void EnsureStyles()
+        private void RefreshAgentList()
         {
-            if (_stylesReady) return;
-            _stylesReady = true;
-
-            _titleStyle = new GUIStyle(EditorStyles.boldLabel) { fontSize = 16 };
-            _sectionTitleStyle = new GUIStyle(EditorStyles.boldLabel) { fontSize = 13 };
-            _agentLabelStyle = new GUIStyle(EditorStyles.label) { fontSize = 12, alignment = TextAnchor.MiddleLeft };
-
-            _addBtnStyle = new GUIStyle(GUI.skin.button) { alignment = TextAnchor.MiddleCenter };
+            _agents = AgentManager.GetAllAgents();
+            if (_selectedIndex >= _agents.Count)
+                _selectedIndex = Mathf.Max(0, _agents.Count - 1);
+            _serializedAgent = null;
+            if (_cachedEditor != null) Object.DestroyImmediate(_cachedEditor);
+            _cachedEditor = null;
         }
     }
 }

@@ -11,11 +11,14 @@ namespace UniAI.Editor
     {
         // ─── Shared Colors ───
 
+        internal static readonly Color WindowBg = new(0.15f, 0.15f, 0.15f);
+        internal static readonly Color CardBg = new(0.22f, 0.22f, 0.22f);
         internal static readonly Color LeftPanelBg = new(0.18f, 0.18f, 0.18f);
         internal static readonly Color ItemBg = new(0.24f, 0.24f, 0.24f);
         internal static readonly Color ItemSelectedBg = new(0.30f, 0.30f, 0.33f);
         internal static readonly Color SeparatorColor = new(0.12f, 0.12f, 0.12f);
         internal static readonly Color SectionBg = new(0.21f, 0.21f, 0.21f);
+        internal static readonly Color AccentColor = new(0.2f, 0.5f, 0.9f);
 
         // ─── Drawing Helpers ───
 
