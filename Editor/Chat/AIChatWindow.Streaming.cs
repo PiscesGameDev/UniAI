@@ -50,8 +50,17 @@ namespace UniAI.Editor.Chat
             };
             _activeSession.Messages.Add(assistantMsg);
 
+            EditorAgentGuard guard = null;
             try
             {
+                if (_runner is AIAgentRunner { HasTools: true } agentRunner)
+                {
+                    guard = new EditorAgentGuard();
+                    guard.Lock();
+                    foreach (var tool in agentRunner.ToolAssets)
+                        tool.OnFileModified += guard.MarkDirty;
+                }
+
                 var aiMessages = BuildAIMessages();
 
                 // 注入 Unity 上下文到消息列表
@@ -135,6 +144,13 @@ namespace UniAI.Editor.Chat
             }
             finally
             {
+                if (guard != null && _runner is AIAgentRunner agentRunnerCleanup)
+                {
+                    foreach (var tool in agentRunnerCleanup.ToolAssets)
+                        tool.OnFileModified -= guard.MarkDirty;
+                }
+                guard?.Dispose();
+
                 assistantMsg.IsStreaming = false;
                 _isStreaming = false;
                 _streamCts?.Dispose();

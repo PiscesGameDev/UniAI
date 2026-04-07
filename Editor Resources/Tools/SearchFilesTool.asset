@@ -1,0 +1,24 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: c4b8d2e3f5a6179809b2c3d4e5f6a7b8, type: 3}
+  m_Name: SearchFilesTool
+  m_EditorClassIdentifier: UniAI.Editor::UniAI.Editor.Tools.SearchFilesTool
+  _toolName: search_files
+  _description: "Search for a regex pattern in file contents across the project (similar
+    to grep). Returns matching lines with file paths and line numbers. Use this to
+    find where a class, method, or string is used."
+  _parametersSchema: '{"type":"object","properties":{"pattern":{"type":"string","description":"Regex
+    pattern to search for in file contents, e.g. class PlayerController, async.*Task,
+    TODO"},"path":{"type":"string","description":"Directory to search in, relative
+    to project root. Defaults to project root."},"file_pattern":{"type":"string","description":"Glob
+    pattern to filter which files to search, e.g. *.cs, *.json. Defaults to all files."},"ignore_case":{"type":"boolean","description":"Case-insensitive
+    search. Defaults to false."}},"required":["pattern"]}'

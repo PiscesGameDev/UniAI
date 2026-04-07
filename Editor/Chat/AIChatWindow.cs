@@ -53,7 +53,7 @@ namespace UniAI.Editor.Chat
         private bool _showSidebar = true;
         private bool _isStreaming;
         private CancellationTokenSource _streamCts;
-        private ContextCollector.ContextSlot _contextSlots = ContextCollector.ContextSlot.Selection;
+        private ContextCollector.ContextSlot _contextSlots;
         private bool _scrollToBottom;
         private int _selectedModelIndex;
         private string _currentModelId;
@@ -142,6 +142,7 @@ namespace UniAI.Editor.Chat
             var prefs = AIConfigManager.Prefs;
             _showSidebar = prefs.ShowSidebar;
             _currentModelId = prefs.LastSelectedModelId;
+            _contextSlots = (ContextCollector.ContextSlot)prefs.DefaultContextSlots;
 
             RebuildModelCache();
             RebuildAgentCache();
@@ -205,7 +206,23 @@ namespace UniAI.Editor.Chat
         {
             var prefs = AIConfigManager.Prefs;
             _userAvatar = LoadAvatarTexture(prefs.UserAvatar, DefaultUserAvatarPath);
-            _aiAvatar = LoadAvatarTexture(null, DefaultAIAvatarPath);
+            RefreshAIAvatar();
+        }
+
+        /// <summary>
+        /// 刷新 AI 头像：Agent Icon → 用户自定义 → 内置默认
+        /// </summary>
+        private void RefreshAIAvatar()
+        {
+            var agent = FindAgentById(_activeSession?.AgentId);
+            if (agent != null && agent.Icon != null)
+            {
+                _aiAvatar = agent.Icon;
+                return;
+            }
+
+            var prefs = AIConfigManager.Prefs;
+            _aiAvatar = LoadAvatarTexture(prefs.AiAvatar, DefaultAIAvatarPath);
         }
 
         private static Texture2D LoadAvatarTexture(Texture2D customTex, string defaultPath)

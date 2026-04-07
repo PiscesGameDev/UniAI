@@ -8,12 +8,7 @@ namespace UniAI.Editor.Chat
     /// </summary>
     public class ChatHistory
     {
-        private readonly ChatHistoryManager _manager;
-
-        public ChatHistory()
-        {
-            _manager = new ChatHistoryManager(new EditorChatHistoryStorage());
-        }
+        private readonly ChatHistoryManager _manager = new(new EditorChatHistoryStorage());
 
         public IReadOnlyList<ChatSession> Sessions => _manager.Sessions;
 

@@ -1,3 +1,4 @@
+using UniAI.Editor.Chat;
 using UnityEditor;
 using UnityEngine;
 
@@ -97,6 +98,17 @@ namespace UniAI.Editor
                 prefs.ShowSidebar = newSidebar;
             EditorGUILayout.EndHorizontal();
 
+            // 默认上下文槽位
+            var currentSlots = (ContextCollector.ContextSlot)prefs.DefaultContextSlots;
+            EditorGUILayout.BeginHorizontal();
+            EditorGUILayout.LabelField("默认上下文", GUILayout.Width(LabelWidth));
+            DrawContextSlotToggle(ref currentSlots, ContextCollector.ContextSlot.Selection, "选中对象");
+            DrawContextSlotToggle(ref currentSlots, ContextCollector.ContextSlot.Console, "控制台");
+            DrawContextSlotToggle(ref currentSlots, ContextCollector.ContextSlot.Project, "工程资源");
+            EditorGUILayout.EndHorizontal();
+            if ((int)currentSlots != prefs.DefaultContextSlots)
+                prefs.DefaultContextSlots = (int)currentSlots;
+
             EditorGUILayout.BeginHorizontal();
             EditorGUILayout.LabelField("历史会话上限", GUILayout.Width(LabelWidth));
             var newMax = EditorGUILayout.IntField(prefs.MaxHistorySessions);
@@ -125,6 +137,50 @@ namespace UniAI.Editor
                 }
             }
             EditorGUILayout.EndHorizontal();
+
+            GUILayout.Space(8);
+
+            EditorGUILayout.BeginHorizontal();
+            EditorGUILayout.LabelField("用户头像", GUILayout.Width(LabelWidth));
+            var newUserAvatar = (Texture2D)EditorGUILayout.ObjectField(prefs.UserAvatar, typeof(Texture2D), false);
+            if (newUserAvatar != prefs.UserAvatar)
+                prefs.UserAvatar = newUserAvatar;
+            EditorGUILayout.EndHorizontal();
+
+            EditorGUILayout.BeginHorizontal();
+            EditorGUILayout.LabelField("AI 默认头像", GUILayout.Width(LabelWidth));
+            var newAiAvatar = (Texture2D)EditorGUILayout.ObjectField(prefs.AiAvatar, typeof(Texture2D), false);
+            if (newAiAvatar != prefs.AiAvatar)
+                prefs.AiAvatar = newAiAvatar;
+            EditorGUILayout.EndHorizontal();
+
+            EditorGUILayout.LabelField("    Agent 自带 Icon 时优先使用 Agent Icon", EditorStyles.miniLabel);
+
+            GUILayout.Space(12);
+            GUILayout.Label("Tool 设置", _sectionTitleStyle);
+            EditorGUILayout.LabelField("Agent Tool 执行的相关参数。", EditorStyles.miniLabel);
+            GUILayout.Space(8);
+
+            EditorGUILayout.BeginHorizontal();
+            EditorGUILayout.LabelField("Tool 超时 (秒)", GUILayout.Width(LabelWidth));
+            var newTimeout = EditorGUILayout.Slider(prefs.ToolTimeout, 5f, 120f);
+            if (!Mathf.Approximately(newTimeout, prefs.ToolTimeout))
+                prefs.ToolTimeout = newTimeout;
+            EditorGUILayout.EndHorizontal();
+
+            EditorGUILayout.BeginHorizontal();
+            EditorGUILayout.LabelField("最大输出字符数", GUILayout.Width(LabelWidth));
+            var newMaxChars = EditorGUILayout.IntField(prefs.ToolMaxOutputChars);
+            if (newMaxChars != prefs.ToolMaxOutputChars)
+                prefs.ToolMaxOutputChars = Mathf.Clamp(newMaxChars, 5000, 200000);
+            EditorGUILayout.EndHorizontal();
+
+            EditorGUILayout.BeginHorizontal();
+            EditorGUILayout.LabelField("搜索最大匹配数", GUILayout.Width(LabelWidth));
+            var newMaxMatches = EditorGUILayout.IntField(prefs.SearchMaxMatches);
+            if (newMaxMatches != prefs.SearchMaxMatches)
+                prefs.SearchMaxMatches = Mathf.Clamp(newMaxMatches, 10, 1000);
+            EditorGUILayout.EndHorizontal();
         }
 
         private void DrawBottomBar()
@@ -151,6 +207,14 @@ namespace UniAI.Editor
 
             _titleStyle = new GUIStyle(EditorStyles.boldLabel) { fontSize = 16 };
             _sectionTitleStyle = new GUIStyle(EditorStyles.boldLabel) { fontSize = 13 };
+        }
+
+        private static void DrawContextSlotToggle(ref ContextCollector.ContextSlot slots, ContextCollector.ContextSlot flag, string label)
+        {
+            bool isOn = slots.HasFlag(flag);
+            bool newOn = EditorGUILayout.ToggleLeft(label, isOn, GUILayout.Width(70));
+            if (newOn != isOn)
+                slots = newOn ? slots | flag : slots & ~flag;
         }
     }
 }

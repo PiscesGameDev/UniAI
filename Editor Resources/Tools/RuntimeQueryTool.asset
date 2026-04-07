@@ -1,0 +1,27 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: a7b8c9d0e1f2304556a7b8c9d0e1f2a3, type: 3}
+  m_Name: RuntimeQueryTool
+  m_EditorClassIdentifier: UniAI.Editor::UniAI.Editor.Tools.RuntimeQueryTool
+  _toolName: runtime_query
+  _description: "Query runtime game objects and component data during Play Mode.
+    ONLY works when Unity is in Play Mode. Actions: 'scene' lists scene hierarchy,
+    'find' searches GameObjects by name, 'inspect' shows all components and fields
+    on a GameObject, 'component' shows detailed fields/properties of a specific component,
+    'find_type' finds all GameObjects with a specific component type."
+  _parametersSchema: '{"type":"object","properties":{"action":{"type":"string","enum":["scene","find","inspect","component","find_type"],"description":"scene:
+    list scene hierarchy. find: search GameObjects by name. inspect: show all components
+    on a GameObject. component: show detailed fields of a specific component. find_type:
+    find all GameObjects with a component type."},"name":{"type":"string","description":"GameObject
+    name or path for find/inspect/component actions."},"component_type":{"type":"string","description":"Component
+    class name for component/find_type actions, e.g. PlayerController, Rigidbody."},"depth":{"type":"integer","description":"Hierarchy
+    depth for scene action. Default 1."}},"required":["action"]}'

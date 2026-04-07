@@ -1,0 +1,22 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: b3a7c1d2e4f5068798a1b2c3d4e5f6a7, type: 3}
+  m_Name: ListFilesTool
+  m_EditorClassIdentifier: UniAI.Editor::UniAI.Editor.Tools.ListFilesTool
+  _toolName: list_files
+  _description: "List files and directories at the given path. Supports glob patterns
+    (e.g. *.cs, **/*.prefab) for filtering. Use this to explore the project structure
+    and find files before reading them."
+  _parametersSchema: '{"type":"object","properties":{"path":{"type":"string","description":"Directory
+    path relative to project root. Defaults to project root if omitted."},"pattern":{"type":"string","description":"Glob
+    pattern to filter results, e.g. *.cs, **/*.prefab, *.meta"},"recursive":{"type":"boolean","description":"Search
+    subdirectories recursively. Defaults to false unless pattern contains **"}},"required":[]}'

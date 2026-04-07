@@ -17,6 +17,21 @@ namespace UniAI
         private readonly Dictionary<string, AIToolAsset> _toolMap = new();
         private readonly List<AITool> _toolDefs = new();
 
+        /// <summary>
+        /// 是否注册了工具
+        /// </summary>
+        public bool HasTools => _toolDefs.Count > 0;
+
+        /// <summary>
+        /// 已注册的工具资产
+        /// </summary>
+        public IReadOnlyCollection<AIToolAsset> ToolAssets => _toolMap.Values;
+
+        /// <summary>
+        /// 单个 Tool 执行超时时间（秒），0 或负数表示不限制
+        /// </summary>
+        public float ToolTimeoutSeconds { get; set; }
+
         public AIAgentRunner(AIClient client, AgentDefinition definition)
         {
             _client = client ?? throw new ArgumentNullException(nameof(client));
@@ -253,9 +268,26 @@ namespace UniAI
 
             try
             {
-                var result = await tool.ExecuteAsync(toolCall.Arguments, ct);
-                AILogger.Verbose($"Tool '{toolCall.Name}' executed successfully");
-                return (result, false);
+                if (ToolTimeoutSeconds > 0)
+                {
+                    using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+                    cts.CancelAfter(TimeSpan.FromSeconds(ToolTimeoutSeconds));
+                    var result = await tool.ExecuteAsync(toolCall.Arguments, cts.Token);
+                    AILogger.Verbose($"Tool '{toolCall.Name}' executed successfully");
+                    return (result, false);
+                }
+                else
+                {
+                    var result = await tool.ExecuteAsync(toolCall.Arguments, ct);
+                    AILogger.Verbose($"Tool '{toolCall.Name}' executed successfully");
+                    return (result, false);
+                }
+            }
+            catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+            {
+                var error = $"Tool '{toolCall.Name}' timed out after {ToolTimeoutSeconds}s";
+                AILogger.Warning(error);
+                return (error, true);
             }
             catch (Exception e)
             {

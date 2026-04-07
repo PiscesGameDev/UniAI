@@ -41,6 +41,26 @@ namespace UniAI.Editor
         /// </summary>
         [SerializeField] private string _agentDirectory = "Assets/Agents";
 
+        /// <summary>
+        /// Tool 执行超时时间（秒）
+        /// </summary>
+        [SerializeField] private float _toolTimeout = 30f;
+
+        /// <summary>
+        /// Tool 单次返回内容的最大字符数（ReadFile 全文读取等场景）
+        /// </summary>
+        [SerializeField] private int _toolMaxOutputChars = 50000;
+
+        /// <summary>
+        /// SearchFiles 最大匹配数
+        /// </summary>
+        [SerializeField] private int _searchMaxMatches = 100;
+
+        /// <summary>
+        /// 对话窗口默认启用的上下文槽位（ContextSlot 标志位）
+        /// </summary>
+        [SerializeField] private int _defaultContextSlots = 1; // ContextSlot.Selection
+
         // ─── 公开属性 ───
 
         internal string LastSelectedModelId
@@ -67,10 +87,40 @@ namespace UniAI.Editor
             set => _userAvatar = value;
         }
 
+        internal Texture2D AiAvatar
+        {
+            get => _aiAvatar;
+            set => _aiAvatar = value;
+        }
+
         internal string AgentDirectory
         {
             get => string.IsNullOrEmpty(_agentDirectory) ? "Assets/Agents" : _agentDirectory;
             set => _agentDirectory = value;
+        }
+
+        internal float ToolTimeout
+        {
+            get => _toolTimeout > 0 ? _toolTimeout : 30f;
+            set => _toolTimeout = value;
+        }
+
+        internal int ToolMaxOutputChars
+        {
+            get => _toolMaxOutputChars > 0 ? _toolMaxOutputChars : 50000;
+            set => _toolMaxOutputChars = value;
+        }
+
+        internal int SearchMaxMatches
+        {
+            get => _searchMaxMatches > 0 ? _searchMaxMatches : 100;
+            set => _searchMaxMatches = value;
+        }
+
+        internal int DefaultContextSlots
+        {
+            get => _defaultContextSlots;
+            set => _defaultContextSlots = value;
         }
 
         // ─── 环境变量映射（按预设 ID，跟随 AI 供应商） ───

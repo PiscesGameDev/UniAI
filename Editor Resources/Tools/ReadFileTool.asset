@@ -1,0 +1,22 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 97329e15e0c50444d9fa348152244549, type: 3}
+  m_Name: ReadFileTool
+  m_EditorClassIdentifier: UniAI.Editor::UniAI.Editor.Tools.ReadFileTool
+  _toolName: read_file
+  _description: "Read the contents of a file at the given path (relative to project
+    root). Returns the full text content. For large files, use offset and limit to
+    read specific line ranges."
+  _parametersSchema: '{"type":"object","properties":{"path":{"type":"string","description":"File
+    path relative to project root, e.g. Assets/Scripts/MyScript.cs"},"offset":{"type":"integer","description":"Optional:
+    start reading from this line number (1-based, skip lines before this)"},"limit":{"type":"integer","description":"Optional:
+    maximum number of lines to read"}},"required":["path"]}'

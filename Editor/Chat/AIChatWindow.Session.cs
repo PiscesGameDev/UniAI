@@ -31,6 +31,7 @@ namespace UniAI.Editor.Chat
             _history.Save(_activeSession);
             _chatScroll = Vector2.zero;
             EnsureRunner();
+            RefreshAIAvatar();
             GUI.FocusControl("ChatInput");
             Repaint();
         }
@@ -55,8 +56,7 @@ namespace UniAI.Editor.Chat
             }
 
             EnsureRunner();
-
-            // Agent 删除降级检查
+            RefreshAIAvatar();
             if (!string.IsNullOrEmpty(session.AgentId) && FindAgentById(session.AgentId) == null)
             {
                 Debug.LogWarning(
@@ -77,9 +77,16 @@ namespace UniAI.Editor.Chat
             }
 
             var agent = FindAgentById(_activeSession?.AgentId);
-            _runner = agent != null
-                ? new AIAgentRunner(_client, agent)
-                : new ChatRunner(_client);
+            if (agent != null)
+            {
+                var agentRunner = new AIAgentRunner(_client, agent);
+                agentRunner.ToolTimeoutSeconds = EditorPreferences.instance.ToolTimeout;
+                _runner = agentRunner;
+            }
+            else
+            {
+                _runner = new ChatRunner(_client);
+            }
         }
 
         /// <summary>

@@ -1,3 +1,4 @@
+using System;
 using System.Threading;
 using Cysharp.Threading.Tasks;
 using UnityEngine;
@@ -28,6 +29,16 @@ namespace UniAI
         /// 参数的 JSON Schema 字符串
         /// </summary>
         public string ParametersSchema => _parametersSchema;
+
+        /// <summary>
+        /// 文件被修改时触发，外部（如 EditorAgentGuard）可订阅
+        /// </summary>
+        public event Action OnFileModified;
+
+        /// <summary>
+        /// 子类修改了文件后调用，触发 OnFileModified 事件
+        /// </summary>
+        protected void NotifyFileModified() => OnFileModified?.Invoke();
 
         /// <summary>
         /// 转换为 AITool 定义（传给 Provider）
