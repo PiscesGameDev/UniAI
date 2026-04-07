@@ -1,5 +1,5 @@
 using System.Collections.Generic;
-using System.Linq;
+using System.IO;
 using UnityEditor;
 using UnityEngine;
 
@@ -10,30 +10,8 @@ namespace UniAI.Editor
     /// </summary>
     public static class AgentManager
     {
-        private static AgentDefinition _defaultAgent;
-        private const string DefaultAgentIconPath = "Assets/UniAI/Editor/Icons/agent-default.png";
-
         /// <summary>
-        /// 内置默认 Agent（仅供 AIAgentWindow 展示只读预览用；
-        /// 纯 Chat 场景请使用 ChatRunner，不要通过这个 Agent 路由）
-        /// </summary>
-        public static AgentDefinition DefaultAgent
-        {
-            get
-            {
-                if (_defaultAgent != null) return _defaultAgent;
-                _defaultAgent = AgentDefinition.CreateDefault();
-                var icon = AssetDatabase.LoadAssetAtPath<Texture2D>(DefaultAgentIconPath);
-                if (icon != null)
-                {
-                    _defaultAgent.Icon = icon;
-                }
-                return _defaultAgent;
-            }
-        }
-
-        /// <summary>
-        /// 扫描项目中所有 AgentDefinition 资产（不含内置默认 Agent）
+        /// 扫描项目中所有 AgentDefinition 资产
         /// </summary>
         public static List<AgentDefinition> GetAllAgents()
         {
@@ -52,11 +30,42 @@ namespace UniAI.Editor
         }
 
         /// <summary>
-        /// 获取 Agent 显示名称列表
+        /// 创建新的 AgentDefinition 资产
         /// </summary>
-        public static string[] GetAgentNames(List<AgentDefinition> agents)
+        /// <param name="dir"></param>
+        /// <param name="name"></param>
+        /// <returns></returns>
+        public static AgentDefinition CreateNewAgent(string dir, string name)
         {
-            return agents.Select(a => a.AgentName ?? a.name).ToArray();
+            if (!AssetDatabase.IsValidFolder(dir))
+            {
+                string parent = Path.GetDirectoryName(dir)?.Replace('\\', '/');
+                string folder = Path.GetFileName(dir);
+                if (!string.IsNullOrEmpty(parent))
+                    AssetDatabase.CreateFolder(parent, folder);
+            }
+            
+            string path = $"{dir}/{name}.asset";
+            path = AssetDatabase.GenerateUniqueAssetPath(path);
+            
+            var agent = ScriptableObject.CreateInstance<AgentDefinition>();
+            AssetDatabase.CreateAsset(agent, path);
+            AssetDatabase.SaveAssets();
+            return agent;
+        }
+        
+        /// <summary>
+        /// 删除 AgentDefinition 资产
+        /// </summary>
+        /// <param name="agent"></param>
+        public static void DeleteAgent(AgentDefinition agent)
+        {
+            string path = AssetDatabase.GetAssetPath(agent);
+            if (!string.IsNullOrEmpty(path))
+            {
+                AssetDatabase.DeleteAsset(path);
+                AssetDatabase.SaveAssets();
+            }
         }
     }
 }

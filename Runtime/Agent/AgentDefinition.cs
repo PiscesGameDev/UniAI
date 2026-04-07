@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using UnityEngine;
 
@@ -10,6 +11,7 @@ namespace UniAI
     [CreateAssetMenu(menuName = "UniAI/Agent Definition", fileName = "NewAgent")]
     public class AgentDefinition : ScriptableObject
     {
+        [SerializeField] private string _id = Guid.NewGuid().ToString("N");
         [SerializeField] private string _agentName = "助手";
         [SerializeField] private string _description;
         [SerializeField, TextArea(3, 10)] private string _systemPrompt;
@@ -18,6 +20,22 @@ namespace UniAI
         [SerializeField] private int _maxTokens = 4096;
         [SerializeField, Range(1, 50)] private int _maxTurns = 10;
         [SerializeField] private List<AIToolAsset> _tools = new();
+
+        /// <summary>
+        /// Agent 唯一标识符（GUID）
+        /// </summary>
+        public string Id
+        {
+            get
+            {
+                if (!string.IsNullOrEmpty(_id)) return _id;
+                _id = Guid.NewGuid().ToString("N");
+#if UNITY_EDITOR
+                UnityEditor.EditorUtility.SetDirty(this);
+#endif
+                return _id;
+            }
+        }
 
         /// <summary>
         /// Agent 显示名称
@@ -63,22 +81,5 @@ namespace UniAI
         /// 是否包含工具
         /// </summary>
         public bool HasTools => _tools is { Count: > 0 };
-
-        /// <summary>
-        /// 创建内置默认 Agent（无 Tool，通用聊天助手，单轮对话）
-        /// </summary>
-        public static AgentDefinition CreateDefault()
-        {
-            var agent = CreateInstance<AgentDefinition>();
-            agent.name = "DefaultAgent";
-            agent._agentName = "Uni";
-            agent._systemPrompt =
-                "你是一位乐于助人的 Unity 游戏开发助手. " +
-                "请提供简洁明了的答案. 当展示代码时，请使用 C# 和 Unity 最佳实践.";
-            agent._temperature = 0.7f;
-            agent._maxTokens = 4096;
-            agent._maxTurns = 1;
-            return agent;
-        }
     }
 }

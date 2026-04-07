@@ -62,8 +62,6 @@ namespace UniAI.Editor.Chat
         // ─── Agent State ───
 
         private List<AgentDefinition> _availableAgents;
-        private string[] _agentNames;
-        private int _selectedAgentIndex;
 
         // Spinner state
         private double _spinnerStartTime;
@@ -119,27 +117,17 @@ namespace UniAI.Editor.Chat
         {
             var w = GetWindow<AIChatWindow>("UniAI 对话");
             w.minSize = new Vector2(640, 400);
-            if (w._availableAgents == null) return;
 
-            // null 或内置默认 Agent → 纯 Chat（index 0）
-            if (agent == null || agent == AgentManager.DefaultAgent)
+            // null → 纯 Chat
+            if (agent == null)
             {
-                w._selectedAgentIndex = 0;
                 w.CreateNewSession();
-                w.EnsureRunner();
                 return;
             }
 
-            for (int i = 1; i < w._availableAgents.Count; i++)
-            {
-                if (w._availableAgents[i] == agent)
-                {
-                    w._selectedAgentIndex = i;
-                    w.CreateNewSession();
-                    w.EnsureRunner();
-                    break;
-                }
-            }
+            // 确认该 Agent 存在于可用列表中
+            if (w._availableAgents != null && w._availableAgents.Contains(agent))
+                w.CreateNewSession(agent);
         }
 
         // ─── Lifecycle ───
@@ -237,15 +225,7 @@ namespace UniAI.Editor.Chat
 
         private void RebuildAgentCache()
         {
-            // index 0 = null（纯 Chat），index 1+ = 项目中自定义 AgentDefinition
-            var agents = AgentManager.GetAllAgents();
-            _availableAgents = new List<AgentDefinition>(agents.Count + 1) { null };
-            _availableAgents.AddRange(agents);
-
-            _agentNames = new string[_availableAgents.Count];
-            _agentNames[0] = "Chat";
-            for (int i = 0; i < agents.Count; i++)
-                _agentNames[i + 1] = agents[i].AgentName ?? agents[i].name;
+            _availableAgents = AgentManager.GetAllAgents();
         }
     }
 }

@@ -7,6 +7,7 @@ namespace UniAI.Editor
     [CustomEditor(typeof(AgentDefinition))]
     internal class AgentDefinitionEditor : UnityEditor.Editor
     {
+        private SerializedProperty _id;
         private SerializedProperty _agentName;
         private SerializedProperty _description;
         private SerializedProperty _icon;
@@ -27,6 +28,7 @@ namespace UniAI.Editor
 
         private void OnEnable()
         {
+            _id = serializedObject.FindProperty("_id");
             _agentName = serializedObject.FindProperty("_agentName");
             _description = serializedObject.FindProperty("_description");
             _icon = serializedObject.FindProperty("_icon");
@@ -66,9 +68,8 @@ namespace UniAI.Editor
         private void DrawBasicInfo()
         {
             EditorGUILayout.BeginVertical(EditorStyles.helpBox);
-
+            
             EditorGUILayout.BeginHorizontal();
-
             // 左侧：图标
             EditorGUILayout.BeginVertical(GUILayout.Width(68));
             _icon.objectReferenceValue = EditorGUILayout.ObjectField(
@@ -82,6 +83,10 @@ namespace UniAI.Editor
             EditorGUILayout.BeginVertical();
             var oldLabelWidth = EditorGUIUtility.labelWidth;
             EditorGUIUtility.labelWidth = 60;
+            EditorGUI.BeginDisabledGroup(true);
+            EditorGUILayout.PropertyField(_id, new GUIContent("Id"));
+            EditorGUI.EndDisabledGroup();
+            GUILayout.Space(2);
             EditorGUILayout.PropertyField(_agentName, new GUIContent("名称"));
             GUILayout.Space(2);
             EditorGUILayout.PropertyField(_description, new GUIContent("职责描述"));

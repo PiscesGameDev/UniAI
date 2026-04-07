@@ -19,13 +19,18 @@ namespace UniAI.Editor.Chat
 
         // ─── Session Management ───
 
-        private void CreateNewSession()
+        /// <summary>
+        /// 创建新会话，可选传入 AgentDefinition 锁定会话类型
+        /// </summary>
+        /// <param name="agent">null = 纯 Chat 模式；非 null = Agent 模式</param>
+        private void CreateNewSession(AgentDefinition agent = null)
         {
             string modelId = _currentModelId ?? "";
             _activeSession = ChatSession.Create(modelId);
-            _activeSession.AgentId = GetSelectedAgentId();
+            _activeSession.AgentId = agent != null ? agent.Id : "";
             _history.Save(_activeSession);
             _chatScroll = Vector2.zero;
+            EnsureRunner();
             GUI.FocusControl("ChatInput");
             Repaint();
         }
@@ -44,10 +49,19 @@ namespace UniAI.Editor.Chat
                     {
                         _selectedModelIndex = i;
                         _currentModelId = session.ModelId;
-                        EnsureRunner();
                         break;
                     }
                 }
+            }
+
+            EnsureRunner();
+
+            // Agent 删除降级检查
+            if (!string.IsNullOrEmpty(session.AgentId) && FindAgentById(session.AgentId) == null)
+            {
+                Debug.LogWarning(
+                    $"[UniAI Chat] 会话 \"{session.Title}\" 关联的 Agent \"{session.AgentId}\" 已被删除，" +
+                    "该会话将以纯 Chat 模式运行。");
             }
         }
 
@@ -62,28 +76,28 @@ namespace UniAI.Editor.Chat
                 return;
             }
 
-            var agent = GetSelectedAgent();
+            var agent = FindAgentById(_activeSession?.AgentId);
             _runner = agent != null
-                ? (IConversationRunner)new AIAgentRunner(_client, agent)
+                ? new AIAgentRunner(_client, agent)
                 : new ChatRunner(_client);
         }
 
         /// <summary>
-        /// 当前选中的 Agent；返回 null 表示纯 Chat 模式
+        /// 根据 AgentId在已缓存列表中查找 AgentDefinition
+        /// 返回 null 表示纯 Chat 模式，或该 Agent 已被删除
         /// </summary>
-        private AgentDefinition GetSelectedAgent()
+        private AgentDefinition FindAgentById(string agentId)
         {
-            if (_availableAgents == null || _availableAgents.Count == 0)
+            if (string.IsNullOrEmpty(agentId) || _availableAgents == null)
                 return null;
-            if (_selectedAgentIndex < 0 || _selectedAgentIndex >= _availableAgents.Count)
-                _selectedAgentIndex = 0;
-            return _availableAgents[_selectedAgentIndex];
-        }
 
-        private string GetSelectedAgentId()
-        {
-            var agent = GetSelectedAgent();
-            return agent == null ? "" : agent.name;
+            foreach (var agent in _availableAgents)
+            {
+                if (agent != null && agent.Id == agentId)
+                    return agent;
+            }
+
+            return null;
         }
 
         private void EnsureClient()

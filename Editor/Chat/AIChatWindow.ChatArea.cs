@@ -48,6 +48,73 @@ namespace UniAI.Editor.Chat
 
         private void DrawWelcomeState(float width, float height)
         {
+            // 根据会话身份选择展示 Agent 信息或通用欢迎页
+            var agent = FindAgentById(_activeSession?.AgentId);
+            if (agent != null)
+                DrawAgentWelcomeState(agent, width, height);
+            else
+                DrawChatWelcomeState(width, height);
+        }
+
+        /// <summary>
+        /// Agent 模式空状态：显示 Agent Icon + Name + Description
+        /// </summary>
+        private void DrawAgentWelcomeState(AgentDefinition agent, float width, float height)
+        {
+            EditorGUI.DrawRect(new Rect(0, 0, width, height), _chatBg);
+
+            float inputAreaH = CalcInputAreaHeight(width);
+            float welcomeH = height - inputAreaH;
+
+            GUILayout.BeginArea(new Rect(0, 0, width, welcomeH));
+            GUILayout.FlexibleSpace();
+
+            // Agent Icon
+            if (agent.Icon != null)
+            {
+                EditorGUILayout.BeginHorizontal();
+                GUILayout.FlexibleSpace();
+                var iconRect = GUILayoutUtility.GetRect(48, 48, GUILayout.Width(48), GUILayout.Height(48));
+                GUI.DrawTexture(iconRect, agent.Icon, ScaleMode.ScaleToFit);
+                GUILayout.FlexibleSpace();
+                EditorGUILayout.EndHorizontal();
+                GUILayout.Space(8);
+            }
+
+            // Agent Name
+            EditorGUILayout.BeginHorizontal();
+            GUILayout.FlexibleSpace();
+            GUILayout.Label(agent.AgentName ?? agent.name, _welcomeTitleStyle);
+            GUILayout.FlexibleSpace();
+            EditorGUILayout.EndHorizontal();
+
+            // Agent Description
+            if (!string.IsNullOrEmpty(agent.Description))
+            {
+                GUILayout.Space(4);
+                EditorGUILayout.BeginHorizontal();
+                GUILayout.FlexibleSpace();
+                GUILayout.Label(agent.Description, _welcomeSubStyle, GUILayout.MaxWidth(width * 0.7f));
+                GUILayout.FlexibleSpace();
+                EditorGUILayout.EndHorizontal();
+            }
+
+            GUILayout.Space(24);
+            GUILayout.FlexibleSpace();
+            GUILayout.EndArea();
+
+            EditorGUI.DrawRect(new Rect(0, welcomeH, width, 1), _separatorColor);
+
+            GUILayout.BeginArea(new Rect(0, welcomeH + 1, width, inputAreaH - 1));
+            DrawInputArea(width);
+            GUILayout.EndArea();
+        }
+
+        /// <summary>
+        /// 纯 Chat 模式空状态：通用欢迎页 + Guide Cards
+        /// </summary>
+        private void DrawChatWelcomeState(float width, float height)
+        {
             EditorGUI.DrawRect(new Rect(0, 0, width, height), _chatBg);
 
             float inputAreaH = CalcInputAreaHeight(width);

@@ -15,9 +15,6 @@ namespace UniAI.Editor
         private const float Pad = 10f;
         private const string DefaultAgentDir = "Assets/UniAI/Agents";
 
-        // Colors
-        private static readonly Color _builtinColor = new(0.55f, 0.55f, 0.55f);
-
         // State
         private List<AgentDefinition> _agents;
         private int _selectedIndex;
@@ -29,7 +26,6 @@ namespace UniAI.Editor
         private GUIStyle _titleStyle;
         private GUIStyle _sectionTitleStyle;
         private GUIStyle _agentLabelStyle;
-        private GUIStyle _builtinLabelStyle;
         private GUIStyle _addBtnStyle;
         private bool _stylesReady;
 
@@ -54,18 +50,11 @@ namespace UniAI.Editor
         private void RefreshAgentList()
         {
             _agents = AgentManager.GetAllAgents();
-            // AIAgentWindow 需要在列表顶部展示内置默认 Agent（只读预览）
-            _agents.Insert(0, AgentManager.DefaultAgent);
             if (_selectedIndex >= _agents.Count)
                 _selectedIndex = Mathf.Max(0, _agents.Count - 1);
             _serializedAgent = null;
             if (_cachedEditor != null) DestroyImmediate(_cachedEditor);
             _cachedEditor = null;
-        }
-
-        private bool IsDefaultAgent(AgentDefinition agent)
-        {
-            return agent == AgentManager.DefaultAgent;
         }
 
         private AgentDefinition SelectedAgent =>
@@ -134,7 +123,6 @@ namespace UniAI.Editor
         {
             var agent = _agents[index];
             bool isSelected = _selectedIndex == index;
-            bool isDefault = IsDefaultAgent(agent);
             var rect = EditorGUILayout.BeginHorizontal(GUILayout.Height(32));
 
             if (rect.width > 1)
@@ -153,11 +141,7 @@ namespace UniAI.Editor
 
             // Agent 名称
             string displayName = agent.AgentName ?? agent.name;
-            if (isDefault)
-                displayName += " (内置)";
-
-            var style = isDefault ? _builtinLabelStyle : _agentLabelStyle;
-            GUILayout.Label(displayName, style, GUILayout.Height(32));
+            GUILayout.Label(displayName, _agentLabelStyle, GUILayout.Height(32));
 
             GUILayout.FlexibleSpace();
             GUILayout.Space(6);
@@ -166,7 +150,7 @@ namespace UniAI.Editor
             // 点击选中
             if (Event.current.type == EventType.MouseDown && rect.Contains(Event.current.mousePosition))
             {
-                if (Event.current.button == 1 && !isDefault)
+                if (Event.current.button == 1)
                     ShowAgentContextMenu(index);
                 else
                 {
@@ -197,31 +181,15 @@ namespace UniAI.Editor
                 return;
             }
 
-            if (IsDefaultAgent(agent))
-            {
-                DrawDefaultAgentInfo(agent);
-                return;
-            }
-
             DrawAgentEditor(agent);
-        }
-
-        private void DrawDefaultAgentInfo(AgentDefinition agent)
-        {
-            DrawAgentDetail(agent, true);
         }
 
         private void DrawAgentEditor(AgentDefinition agent)
         {
-            DrawAgentDetail(agent, false);
-        }
-
-        private void DrawAgentDetail(AgentDefinition agent, bool isReadonly)
-        {
             // Header: 标题 + 开始对话按钮
             EditorGUILayout.BeginHorizontal();
             GUILayout.Space(Pad);
-            string headerLabel = isReadonly ? "默认助手 (内置)" : $"{agent.AgentName ?? agent.name} 配置";
+            string headerLabel = $"{agent.AgentName ?? agent.name} 配置";
             GUILayout.Label(headerLabel, _sectionTitleStyle);
             GUILayout.FlexibleSpace();
             if (GUILayout.Button("开启对话", GUILayout.Height(24), GUILayout.Width(100)))
@@ -239,48 +207,15 @@ namespace UniAI.Editor
                 _cachedEditor = UnityEditor.Editor.CreateEditor(agent);
             }
 
-            EditorGUI.BeginDisabledGroup(isReadonly);
-
             if (_cachedEditor != null)
                 _cachedEditor.OnInspectorGUI();
-
-            EditorGUI.EndDisabledGroup();
-
-            if (isReadonly)
-            {
-                GUILayout.Space(8);
-                EditorGUILayout.BeginHorizontal();
-                GUILayout.Space(Pad);
-                EditorGUILayout.HelpBox("内置默认 Agent 不可编辑。它是无 Tool 的通用聊天助手，所有对话默认使用。", MessageType.Info);
-                GUILayout.Space(Pad);
-                EditorGUILayout.EndHorizontal();
-            }
-
-            GUILayout.Space(Pad);
         }
 
         // ────────────────────────────── Create / Delete ──────────────────────────────
 
         private void CreateNewAgent()
         {
-            // 确保目录存在
-            if (!AssetDatabase.IsValidFolder(DefaultAgentDir))
-            {
-                string parent = Path.GetDirectoryName(DefaultAgentDir)?.Replace('\\', '/');
-                string folder = Path.GetFileName(DefaultAgentDir);
-                if (!string.IsNullOrEmpty(parent))
-                    AssetDatabase.CreateFolder(parent, folder);
-            }
-
-            // 生成不重复的文件名
-            string baseName = "NewAgent";
-            string path = $"{DefaultAgentDir}/{baseName}.asset";
-            path = AssetDatabase.GenerateUniqueAssetPath(path);
-
-            var agent = CreateInstance<AgentDefinition>();
-            AssetDatabase.CreateAsset(agent, path);
-            AssetDatabase.SaveAssets();
-
+            var agent = AgentManager.CreateNewAgent(DefaultAgentDir, "New Agent");
             RefreshAgentList();
 
             // 选中新创建的 Agent
@@ -299,8 +234,6 @@ namespace UniAI.Editor
 
         private void DeleteAgent(AgentDefinition agent)
         {
-            if (IsDefaultAgent(agent)) return;
-
             string agentName = agent.AgentName ?? agent.name;
             if (!EditorUtility.DisplayDialog(
                     "删除 Agent",
@@ -308,12 +241,7 @@ namespace UniAI.Editor
                     "删除", "取消"))
                 return;
 
-            string path = AssetDatabase.GetAssetPath(agent);
-            if (!string.IsNullOrEmpty(path))
-            {
-                AssetDatabase.DeleteAsset(path);
-                AssetDatabase.SaveAssets();
-            }
+            AgentManager.DeleteAgent(agent);
 
             RefreshAgentList();
             _serializedAgent = null;
@@ -328,7 +256,6 @@ namespace UniAI.Editor
         private void ShowAgentContextMenu(int index)
         {
             var agent = _agents[index];
-            if (IsDefaultAgent(agent)) return;
 
             var menu = new GenericMenu();
 
@@ -356,9 +283,6 @@ namespace UniAI.Editor
             _titleStyle = new GUIStyle(EditorStyles.boldLabel) { fontSize = 16 };
             _sectionTitleStyle = new GUIStyle(EditorStyles.boldLabel) { fontSize = 13 };
             _agentLabelStyle = new GUIStyle(EditorStyles.label) { fontSize = 12, alignment = TextAnchor.MiddleLeft };
-
-            _builtinLabelStyle = new GUIStyle(EditorStyles.label) { fontSize = 12, alignment = TextAnchor.MiddleLeft };
-            _builtinLabelStyle.normal.textColor = _builtinColor;
 
             _addBtnStyle = new GUIStyle(GUI.skin.button) { alignment = TextAnchor.MiddleCenter };
         }

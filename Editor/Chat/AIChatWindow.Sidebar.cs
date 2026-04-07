@@ -50,6 +50,17 @@ namespace UniAI.Editor.Chat
                 EditorGUI.DrawRect(rect, isActive ? _selectedItemBg : Color.clear);
 
             GUILayout.Space(PAD + 4);
+
+            // Agent Icon（16x16）
+            var agent = FindAgentById(session.AgentId);
+            if (agent != null && agent.Icon != null)
+            {
+                var iconRect = GUILayoutUtility.GetRect(16, 16, GUILayout.Width(16), GUILayout.Height(16));
+                iconRect.y += 5; // 垂直居中
+                GUI.DrawTexture(iconRect, agent.Icon, ScaleMode.ScaleToFit);
+                GUILayout.Space(4);
+            }
+
             GUILayout.Label(TruncateTitle(session.Title, 20), _sessionItemStyle, GUILayout.Height(26));
             GUILayout.FlexibleSpace();
             EditorGUILayout.EndHorizontal();
