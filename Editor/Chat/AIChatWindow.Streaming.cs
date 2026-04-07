@@ -76,7 +76,7 @@ namespace UniAI.Editor.Chat
                 if (_contextPipeline != null && _config?.General?.ContextWindow != null)
                 {
                     string systemPrompt = null;
-                    if (_runner is AIAgentRunner agentRunnerCtx)
+                    if (_runner is AIAgentRunner)
                     {
                         var agent = FindAgentById(_activeSession?.AgentId);
                         systemPrompt = agent?.SystemPrompt;
