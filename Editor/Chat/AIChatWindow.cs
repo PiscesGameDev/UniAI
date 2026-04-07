@@ -74,9 +74,6 @@ namespace UniAI.Editor.Chat
 
         private Texture2D _userAvatar;
         private Texture2D _aiAvatar;
-        private const string IconsDir = "Assets/UniAI/Editor/Icons";
-        private const string DefaultUserAvatarPath = IconsDir + "/avatar-user.png";
-        private const string DefaultAIAvatarPath = IconsDir + "/avatar-ai.png";
 
         // ─── Styles ───
 
@@ -160,14 +157,12 @@ namespace UniAI.Editor.Chat
 
         private void OnEditorUpdate()
         {
-            if (_isStreaming)
+            if (!_isStreaming) return;
+            int frame = (int)((EditorApplication.timeSinceStartup - _spinnerStartTime) * 8) % SpinnerFrameCount;
+            if (frame != _spinnerFrame)
             {
-                int frame = (int)((EditorApplication.timeSinceStartup - _spinnerStartTime) * 8) % SpinnerFrameCount;
-                if (frame != _spinnerFrame)
-                {
-                    _spinnerFrame = frame;
-                    Repaint();
-                }
+                _spinnerFrame = frame;
+                Repaint();
             }
         }
 
@@ -206,37 +201,24 @@ namespace UniAI.Editor.Chat
         private void LoadAvatars()
         {
             var prefs = AIConfigManager.Prefs;
-            _userAvatar = LoadAvatarTexture(prefs.UserAvatar, DefaultUserAvatarPath);
+            _userAvatar = prefs.UserAvatar;
             RefreshAIAvatar();
         }
 
         /// <summary>
-        /// 刷新 AI 头像：Agent Icon → 用户自定义 → 内置默认
+        /// 刷新 AI 头像：Agent 对话用 Agent Icon，普通 Chat 用用户自定义头像
         /// </summary>
         private void RefreshAIAvatar()
         {
             var agent = FindAgentById(_activeSession?.AgentId);
-            if (agent != null && agent.Icon != null)
+            if (agent != null)
             {
                 _aiAvatar = agent.Icon;
                 return;
             }
 
             var prefs = AIConfigManager.Prefs;
-            _aiAvatar = LoadAvatarTexture(prefs.AiAvatar, DefaultAIAvatarPath);
-        }
-
-        private static Texture2D LoadAvatarTexture(Texture2D customTex, string defaultPath)
-        {
-            // 1. Try custom texture from preferences
-            if (customTex != null) return customTex;
-
-            // 2. Try default icon in Icons folder
-            var defaultTex = AssetDatabase.LoadAssetAtPath<Texture2D>(defaultPath);
-            if (defaultTex != null) return defaultTex;
-
-            // 3. Fallback: generate a simple placeholder
-            return null;
+            _aiAvatar = prefs.AiAvatar;
         }
 
         // ─── Agent Cache ───
