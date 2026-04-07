@@ -11,10 +11,10 @@ namespace UniAI.Editor.Chat
 
             EditorGUILayout.BeginHorizontal();
             GUILayout.Space(PAD);
-            string newFilter = EditorGUILayout.TextField(_history.SearchFilter,
+            string newFilter = EditorGUILayout.TextField(_controller.History.SearchFilter,
                 _searchFieldStyle, GUILayout.Height(20));
-            if (newFilter != _history.SearchFilter)
-                _history.SearchFilter = newFilter;
+            if (newFilter != _controller.History.SearchFilter)
+                _controller.History.SearchFilter = newFilter;
             GUILayout.Space(PAD);
             EditorGUILayout.EndHorizontal();
 
@@ -22,13 +22,13 @@ namespace UniAI.Editor.Chat
 
             _sidebarScroll = EditorGUILayout.BeginScrollView(_sidebarScroll);
 
-            var groups = _history.GetGroupedSessions();
+            var groups = _controller.History.GetGroupedSessions();
             foreach (var (group, items) in groups)
             {
                 GUILayout.Label(group, _groupStyle);
                 foreach (var session in items)
                 {
-                    bool isActive = _activeSession != null && _activeSession.Id == session.Id;
+                    bool isActive = _controller.ActiveSession != null && _controller.ActiveSession.Id == session.Id;
                     DrawSessionItem(session, isActive);
                 }
                 GUILayout.Space(4);
@@ -52,11 +52,11 @@ namespace UniAI.Editor.Chat
             GUILayout.Space(PAD + 4);
 
             // Agent Icon（16x16）
-            var agent = FindAgentById(session.AgentId);
+            var agent = _controller.FindAgentById(session.AgentId);
             if (agent != null && agent.Icon != null)
             {
                 var iconRect = GUILayoutUtility.GetRect(16, 16, GUILayout.Width(16), GUILayout.Height(16));
-                iconRect.y += 5; // 垂直居中
+                iconRect.y += 5;
                 GUI.DrawTexture(iconRect, agent.Icon, ScaleMode.ScaleToFit);
                 GUILayout.Space(4);
             }
@@ -81,17 +81,12 @@ namespace UniAI.Editor.Chat
             var menu = new GenericMenu();
             menu.AddItem(new GUIContent("删除"), false, () =>
             {
-                if (_activeSession != null && _activeSession.Id == session.Id)
-                    _activeSession = null;
-                _history.Delete(session.Id);
-                Repaint();
+                _controller.DeleteSession(session.Id);
             });
             menu.AddSeparator("");
             menu.AddItem(new GUIContent("删除全部"), false, () =>
             {
-                _activeSession = null;
-                _history.DeleteAll();
-                Repaint();
+                _controller.DeleteAllSessions();
             });
             menu.ShowAsContext();
         }

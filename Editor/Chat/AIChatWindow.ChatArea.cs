@@ -8,7 +8,8 @@ namespace UniAI.Editor.Chat
     {
         private void DrawChatArea(float width, float height)
         {
-            if (_activeSession == null || _activeSession.Messages.Count == 0)
+            var activeSession = _controller.ActiveSession;
+            if (activeSession == null || activeSession.Messages.Count == 0)
             {
                 DrawWelcomeState(width, height);
                 return;
@@ -22,8 +23,7 @@ namespace UniAI.Editor.Chat
             _chatScroll = EditorGUILayout.BeginScrollView(_chatScroll);
 
             GUILayout.Space(PAD);
-            // 使用 for 循环替代 foreach，避免流式过程中 Messages 列表变化导致枚举异常
-            var messages = _activeSession.Messages;
+            var messages = activeSession.Messages;
             for (int i = 0; i < messages.Count; i++)
                 DrawMessage(messages[i], width);
             GUILayout.Space(PAD);
@@ -49,8 +49,7 @@ namespace UniAI.Editor.Chat
 
         private void DrawWelcomeState(float width, float height)
         {
-            // 根据会话身份选择展示 Agent 信息或通用欢迎页
-            var agent = FindAgentById(_activeSession?.AgentId);
+            var agent = _controller.FindAgentById(_controller.ActiveSession?.AgentId);
             if (agent != null)
                 DrawAgentWelcomeState(agent, width, height);
             else
@@ -64,7 +63,6 @@ namespace UniAI.Editor.Chat
         {
             DrawWelcomeLayout(width, height, _ =>
             {
-                // Agent Icon
                 if (agent.Icon != null)
                 {
                     EditorGUILayout.BeginHorizontal();
@@ -76,14 +74,12 @@ namespace UniAI.Editor.Chat
                     GUILayout.Space(8);
                 }
 
-                // Agent Name
                 EditorGUILayout.BeginHorizontal();
                 GUILayout.FlexibleSpace();
                 GUILayout.Label(agent.AgentName ?? agent.name, _welcomeTitleStyle);
                 GUILayout.FlexibleSpace();
                 EditorGUILayout.EndHorizontal();
 
-                // Agent Description
                 if (!string.IsNullOrEmpty(agent.Description))
                 {
                     GUILayout.Space(4);
@@ -223,7 +219,6 @@ namespace UniAI.Editor.Chat
             EditorGUILayout.BeginVertical();
             GUILayout.Space(6);
 
-            // Header: right-aligned avatar
             EditorGUILayout.BeginHorizontal();
             GUILayout.Space(MSG_HORIZONTAL_PAD);
             GUILayout.FlexibleSpace();
@@ -234,7 +229,6 @@ namespace UniAI.Editor.Chat
 
             GUILayout.Space(8);
 
-            // Bubble: right-aligned
             EditorGUILayout.BeginHorizontal();
             GUILayout.FlexibleSpace();
 
@@ -260,7 +254,6 @@ namespace UniAI.Editor.Chat
             EditorGUILayout.BeginVertical();
             GUILayout.Space(6);
 
-            // Header: left-aligned avatar
             EditorGUILayout.BeginHorizontal();
             GUILayout.Space(MSG_HORIZONTAL_PAD);
 
@@ -287,7 +280,6 @@ namespace UniAI.Editor.Chat
 
             GUILayout.Space(8);
 
-            // Bubble: left-aligned
             EditorGUILayout.BeginHorizontal();
             GUILayout.Space(MSG_HORIZONTAL_PAD);
 
@@ -326,7 +318,7 @@ namespace UniAI.Editor.Chat
             GUILayout.Space(4);
 
             EditorGUILayout.BeginHorizontal();
-            GUILayout.Space(MSG_HORIZONTAL_PAD + 20); // 缩进，表示是 assistant 的子操作
+            GUILayout.Space(MSG_HORIZONTAL_PAD + 20);
 
             var contentRect = EditorGUILayout.BeginVertical();
             if (contentRect.width > 1)
@@ -341,7 +333,6 @@ namespace UniAI.Editor.Chat
 
             GUILayout.Space(2);
 
-            // 工具名称行
             string statusIcon = string.IsNullOrEmpty(msg.ToolResult)
                 ? "..."
                 : (msg.IsToolError ? "x" : "v");
@@ -350,7 +341,6 @@ namespace UniAI.Editor.Chat
             EnsureToolCallStyle();
             GUILayout.Label(header, _toolCallStyle, GUILayout.MaxWidth(maxContentWidth));
 
-            // 参数（折叠显示）
             if (!string.IsNullOrEmpty(msg.ToolArguments))
             {
                 var argsDisplay = msg.ToolArguments.Length > 120
@@ -359,7 +349,6 @@ namespace UniAI.Editor.Chat
                 GUILayout.Label($"  Args: {argsDisplay}", EditorStyles.miniLabel, GUILayout.MaxWidth(maxContentWidth));
             }
 
-            // 结果
             if (!string.IsNullOrEmpty(msg.ToolResult))
             {
                 var resultDisplay = msg.ToolResult.Length > 200

@@ -31,23 +31,15 @@ namespace UniAI.Editor.Chat
             GUILayout.Space(12);
 
             // ─── 模型选择 ───
-            if (_modelNames is { Length: > 0 })
+            var modelNames = _controller.ModelNames;
+            if (modelNames is { Length: > 0 })
             {
                 GUILayout.Label("模型:", EditorStyles.miniLabel, GUILayout.Width(36));
-                int newIdx = EditorGUILayout.Popup(_selectedModelIndex, _modelNames,
+                int selectedIndex = _controller.SelectedModelIndex;
+                int newIdx = EditorGUILayout.Popup(selectedIndex, modelNames,
                     GUILayout.Width(180), GUILayout.Height(22));
-                if (newIdx != _selectedModelIndex)
-                {
-                    _selectedModelIndex = newIdx;
-                    _currentModelId = _modelEntries[newIdx].ModelId;
-                    EnsureRunner();
-                    if (_activeSession != null)
-                        _activeSession.ModelId = _currentModelId;
-
-                    // 持久化模型选择
-                    AIConfigManager.Prefs.LastSelectedModelId = _currentModelId;
-                    AIConfigManager.SavePrefs();
-                }
+                if (newIdx != selectedIndex)
+                    _controller.SelectModel(newIdx);
             }
 
             GUILayout.Space(12);
@@ -57,9 +49,10 @@ namespace UniAI.Editor.Chat
 
             GUILayout.FlexibleSpace();
 
-            if (_activeSession != null)
+            var activeSession = _controller.ActiveSession;
+            if (activeSession != null)
             {
-                int totalTokens = _activeSession.TotalInputTokens + _activeSession.TotalOutputTokens;
+                int totalTokens = activeSession.TotalInputTokens + activeSession.TotalOutputTokens;
                 if (totalTokens > 0)
                     GUILayout.Label($"用量: {totalTokens:N0}", _costLabelStyle);
             }
@@ -87,10 +80,11 @@ namespace UniAI.Editor.Chat
             if (GUILayout.Button("▾", EditorStyles.miniButtonRight, GUILayout.Width(20), GUILayout.Height(22)))
             {
                 var menu = new GenericMenu();
-                
-                if (_availableAgents != null)
+                var agents = _controller.AvailableAgents;
+
+                if (agents != null)
                 {
-                    foreach (var agent in _availableAgents)
+                    foreach (var agent in agents)
                     {
                         var captured = agent;
                         string label = agent.AgentName ?? agent.name;
@@ -98,7 +92,7 @@ namespace UniAI.Editor.Chat
                     }
                 }
 
-                if (_availableAgents == null || _availableAgents.Count == 0)
+                if (agents == null || agents.Count == 0)
                     menu.AddDisabledItem(new GUIContent("暂无 Agent（可在 Agent 管理器中创建）"));
 
                 menu.AddSeparator("");
@@ -112,12 +106,11 @@ namespace UniAI.Editor.Chat
         /// </summary>
         private void DrawSessionIdentityLabel()
         {
-            string agentId = _activeSession?.AgentId;
-            var agent = FindAgentById(agentId);
+            string agentId = _controller.ActiveSession?.AgentId;
+            var agent = _controller.FindAgentById(agentId);
 
             if (agent != null)
             {
-                // Agent 模式：显示 Icon + 名称
                 if (agent.Icon != null)
                 {
                     var iconRect = GUILayoutUtility.GetRect(16, 16, GUILayout.Width(16), GUILayout.Height(16));
@@ -127,9 +120,8 @@ namespace UniAI.Editor.Chat
                 }
                 GUILayout.Label(agent.AgentName ?? agent.name, EditorStyles.miniLabel);
             }
-            else if (_activeSession != null && !string.IsNullOrEmpty(agentId))
+            else if (_controller.ActiveSession != null && !string.IsNullOrEmpty(agentId))
             {
-                // Agent 已被删除：显示降级标记
                 GUILayout.Label($"⚠ {agentId}（已删除）", EditorStyles.miniLabel);
             }
             else

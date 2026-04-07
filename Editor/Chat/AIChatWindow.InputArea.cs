@@ -12,7 +12,6 @@ namespace UniAI.Editor.Chat
             float textH = INPUT_MIN_HEIGHT;
             if (!string.IsNullOrEmpty(_inputText))
             {
-                // 与 DrawInputArea 中的 CalcHeight 保持一致: PAD*2 + 加号按钮(22+4) + 发送按钮(4+60) + PAD
                 float calcH = _inputStyle.CalcHeight(new GUIContent(_inputText), width - PAD * 2 - 90);
                 textH = Mathf.Clamp(calcH, INPUT_MIN_HEIGHT, INPUT_MAX_HEIGHT);
             }
@@ -75,7 +74,8 @@ namespace UniAI.Editor.Chat
 
             GUILayout.Space(4);
 
-            if (_isStreaming)
+            bool isStreaming = _controller != null && _controller.IsStreaming;
+            if (isStreaming)
             {
                 if (GUILayout.Button("■ 停止", GUILayout.Width(60), GUILayout.Height(inputH)))
                     CancelStream();
@@ -112,7 +112,8 @@ namespace UniAI.Editor.Chat
             if (Event.current.shift) return;
             if (GUI.GetNameOfFocusedControl() != "ChatInput") return;
 
-            if (!_isStreaming && !string.IsNullOrWhiteSpace(_inputText))
+            bool isStreaming = _controller != null && _controller.IsStreaming;
+            if (!isStreaming && !string.IsNullOrWhiteSpace(_inputText))
             {
                 Event.current.Use();
                 SendMessage();

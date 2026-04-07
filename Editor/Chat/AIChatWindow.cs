@@ -1,5 +1,3 @@
-using System.Collections.Generic;
-using System.Threading;
 using UnityEditor;
 using UnityEngine;
 
@@ -7,6 +5,7 @@ namespace UniAI.Editor.Chat
 {
     /// <summary>
     /// UniAI 对话窗口 — 侧边栏 + 主对话区经典布局
+    /// 纯 UI 层，业务逻辑委托给 ChatWindowController
     /// </summary>
     public partial class AIChatWindow : EditorWindow
     {
@@ -40,29 +39,19 @@ namespace UniAI.Editor.Chat
         private static readonly Color _contextBarBg = new(0.19f, 0.19f, 0.21f);
         private static readonly Color _toolCallBg = new(0.20f, 0.25f, 0.22f);
 
-        // ─── State ───
+        // ─── Controller ───
 
-        private AIConfig _config;
-        private AIClient _client;
-        private IConversationRunner _runner;
-        private ContextPipeline _contextPipeline;
-        private ChatHistoryManager _history;
-        private ChatSession _activeSession;
+        private ChatWindowController _controller;
+
+        // ─── UI State ───
+
         private string _inputText = "";
         private Vector2 _chatScroll;
         private Vector2 _sidebarScroll;
         private bool _showSidebar = true;
-        private bool _isStreaming;
-        private CancellationTokenSource _streamCts;
         private ContextCollector.ContextSlot _contextSlots;
         private bool _scrollToBottom;
-        private int _selectedModelIndex;
-        private string _currentModelId;
         private bool _showActionBar;
-
-        // ─── Agent State ───
-
-        private List<AgentDefinition> _availableAgents;
 
         // Spinner state
         private double _spinnerStartTime;
@@ -96,11 +85,6 @@ namespace UniAI.Editor.Chat
         private GUIStyle _toolCallErrorStyle;
         private bool _stylesReady;
 
-        // ─── Model Cache ───
-
-        private string[] _modelNames;
-        private List<ModelRoute> _modelEntries;
-
         // ─── Menu ───
 
         [MenuItem("Window/UniAI/Chat")]
@@ -116,48 +100,71 @@ namespace UniAI.Editor.Chat
             var w = GetWindow<AIChatWindow>("UniAI 对话");
             w.minSize = new Vector2(640, 400);
 
-            // null → 纯 Chat
             if (agent == null)
             {
-                w.CreateNewSession();
+                w._controller?.CreateNewSession();
                 return;
             }
 
-            // 确认该 Agent 存在于可用列表中
-            if (w._availableAgents != null && w._availableAgents.Contains(agent))
-                w.CreateNewSession(agent);
+            if (w._controller?.AvailableAgents != null)
+            {
+                foreach (var a in w._controller.AvailableAgents)
+                {
+                    if (a == agent)
+                    {
+                        w._controller.CreateNewSession(agent);
+                        return;
+                    }
+                }
+            }
         }
 
         // ─── Lifecycle ───
 
         private void OnEnable()
         {
-            _config = AIConfigManager.LoadConfig();
-            _history = new ChatHistoryManager(new EditorChatHistoryStorage());
-            _history.Load();
+            _controller = new ChatWindowController();
+            _controller.Initialize();
+
+            // 订阅 Controller 事件
+            _controller.OnStateChanged += Repaint;
+            _controller.OnScrollToBottom += () => _scrollToBottom = true;
+            _controller.OnStreamingChanged += OnStreamingChanged;
+            _controller.OnAIAvatarChanged += avatar => _aiAvatar = avatar;
 
             // 恢复编辑器偏好
             var prefs = AIConfigManager.Prefs;
             _showSidebar = prefs.ShowSidebar;
-            _currentModelId = prefs.LastSelectedModelId;
             _contextSlots = (ContextCollector.ContextSlot)prefs.DefaultContextSlots;
 
-            RebuildModelCache();
-            RebuildAgentCache();
             LoadAvatars();
-            EnsureRunner();
             EditorApplication.update += OnEditorUpdate;
         }
 
         private void OnDisable()
         {
-            CancelStream();
+            if (_controller != null)
+            {
+                _controller.OnStateChanged -= Repaint;
+                _controller.OnStreamingChanged -= OnStreamingChanged;
+                _controller.Dispose();
+            }
             EditorApplication.update -= OnEditorUpdate;
+        }
+
+        private void OnStreamingChanged(bool isStreaming)
+        {
+            if (isStreaming)
+            {
+                _spinnerStartTime = EditorApplication.timeSinceStartup;
+                _spinnerFrame = 0;
+            }
+            Repaint();
         }
 
         private void OnEditorUpdate()
         {
-            if (!_isStreaming) return;
+            if (_controller == null || !_controller.IsStreaming) return;
             int frame = (int)((EditorApplication.timeSinceStartup - _spinnerStartTime) * 8) % SpinnerFrameCount;
             if (frame != _spinnerFrame)
             {
@@ -170,7 +177,7 @@ namespace UniAI.Editor.Chat
 
         private void OnGUI()
         {
-            if (_config == null) _config = AIConfigManager.LoadConfig();
+            if (_controller == null) return;
             EnsureStyles();
 
             DrawToolbar();
@@ -205,12 +212,9 @@ namespace UniAI.Editor.Chat
             RefreshAIAvatar();
         }
 
-        /// <summary>
-        /// 刷新 AI 头像：Agent 对话用 Agent Icon，普通 Chat 用用户自定义头像
-        /// </summary>
         private void RefreshAIAvatar()
         {
-            var agent = FindAgentById(_activeSession?.AgentId);
+            var agent = _controller?.FindAgentById(_controller.ActiveSession?.AgentId);
             if (agent != null)
             {
                 _aiAvatar = agent.Icon;
@@ -219,13 +223,6 @@ namespace UniAI.Editor.Chat
 
             var prefs = AIConfigManager.Prefs;
             _aiAvatar = prefs.AiAvatar;
-        }
-
-        // ─── Agent Cache ───
-
-        private void RebuildAgentCache()
-        {
-            _availableAgents = AgentManager.GetAllAgents();
         }
     }
 }

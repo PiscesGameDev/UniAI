@@ -1,0 +1,567 @@
+using System;
+using System.Collections.Generic;
+using System.Threading;
+using Cysharp.Threading.Tasks;
+using UnityEngine;
+
+namespace UniAI.Editor.Chat
+{
+    /// <summary>
+    /// 对话窗口业务控制器 — 管理会话、Client、消息流和上下文
+    /// 与 UI 通过事件/回调通信，不依赖 EditorWindow
+    /// </summary>
+    public class ChatWindowController : IDisposable
+    {
+        // ─── 事件（UI 订阅） ───
+
+        /// <summary>通用状态变更，UI 应调用 Repaint</summary>
+        public event Action OnStateChanged;
+
+        /// <summary>流式状态切换</summary>
+        public event Action<bool> OnStreamingChanged;
+
+        /// <summary>需要滚动到底部</summary>
+        public event Action OnScrollToBottom;
+
+        /// <summary>AI 头像变更</summary>
+        public event Action<Texture2D> OnAIAvatarChanged;
+
+        // ─── 状态（UI 只读访问） ───
+
+        public AIConfig Config => _config;
+        public ChatHistoryManager History => _history;
+        public ChatSession ActiveSession => _activeSession;
+        public bool IsStreaming => _isStreaming;
+        public string CurrentModelId => _currentModelId;
+        public string[] ModelNames => _modelNames;
+        public int SelectedModelIndex => _selectedModelIndex;
+        public IReadOnlyList<AgentDefinition> AvailableAgents => _availableAgents;
+
+        // ─── 内部状态 ───
+
+        private AIConfig _config;
+        private AIClient _client;
+        private IConversationRunner _runner;
+        private ContextPipeline _contextPipeline;
+        private ChatHistoryManager _history;
+        private ChatSession _activeSession;
+        private bool _isStreaming;
+        private CancellationTokenSource _streamCts;
+
+        private int _selectedModelIndex;
+        private string _currentModelId;
+        private string[] _modelNames;
+        private List<ModelRoute> _modelEntries;
+        private List<AgentDefinition> _availableAgents;
+
+        // ─── 初始化 ───
+
+        public void Initialize()
+        {
+            _config = AIConfigManager.LoadConfig();
+            _history = new ChatHistoryManager(new EditorChatHistoryStorage());
+            _history.Load();
+
+            var prefs = AIConfigManager.Prefs;
+            _currentModelId = prefs.LastSelectedModelId;
+
+            RebuildModelCache();
+            RebuildAgentCache();
+            EnsureRunner();
+        }
+
+        // ─── 会话管理 ───
+
+        /// <summary>
+        /// 创建新会话，可选传入 AgentDefinition 锁定会话类型
+        /// </summary>
+        public void CreateNewSession(AgentDefinition agent = null)
+        {
+            string modelId = _currentModelId ?? "";
+            _activeSession = ChatSession.Create(modelId);
+            _activeSession.AgentId = agent != null ? agent.Id : "";
+            _history.Save(_activeSession);
+            EnsureRunner();
+            NotifyAIAvatarChanged();
+            OnStateChanged?.Invoke();
+        }
+
+        public void SwitchToSession(ChatSession session)
+        {
+            _activeSession = session;
+
+            // 恢复 Session 记录的模型选择
+            if (!string.IsNullOrEmpty(session.ModelId) && _modelEntries != null)
+            {
+                for (int i = 0; i < _modelEntries.Count; i++)
+                {
+                    if (_modelEntries[i].ModelId == session.ModelId)
+                    {
+                        _selectedModelIndex = i;
+                        _currentModelId = session.ModelId;
+                        break;
+                    }
+                }
+            }
+
+            EnsureRunner();
+            NotifyAIAvatarChanged();
+
+            if (!string.IsNullOrEmpty(session.AgentId) && FindAgentById(session.AgentId) == null)
+            {
+                Debug.LogWarning(
+                    $"[UniAI Chat] 会话 \"{session.Title}\" 关联的 Agent \"{session.AgentId}\" 已被删除，" +
+                    "该会话将以纯 Chat 模式运行。");
+            }
+
+            OnStateChanged?.Invoke();
+        }
+
+        public void DeleteSession(string sessionId)
+        {
+            if (_activeSession != null && _activeSession.Id == sessionId)
+                _activeSession = null;
+            _history.Delete(sessionId);
+            OnStateChanged?.Invoke();
+        }
+
+        public void DeleteAllSessions()
+        {
+            _activeSession = null;
+            _history.DeleteAll();
+            OnStateChanged?.Invoke();
+        }
+
+        // ─── 模型管理 ───
+
+        public void SelectModel(int index)
+        {
+            if (_modelEntries == null || index < 0 || index >= _modelEntries.Count) return;
+            if (index == _selectedModelIndex) return;
+
+            _selectedModelIndex = index;
+            _currentModelId = _modelEntries[index].ModelId;
+            EnsureRunner();
+
+            if (_activeSession != null)
+                _activeSession.ModelId = _currentModelId;
+
+            AIConfigManager.Prefs.LastSelectedModelId = _currentModelId;
+            AIConfigManager.SavePrefs();
+
+            OnStateChanged?.Invoke();
+        }
+
+        // ─── 消息发送与流式响应 ───
+
+        public void SendMessage(string text, ContextCollector.ContextSlot contextSlots)
+        {
+            if (string.IsNullOrWhiteSpace(text)) return;
+
+            if (_activeSession == null)
+                CreateNewSession();
+            if (_activeSession == null) return;
+
+            _activeSession.Messages.Add(new ChatMessage
+            {
+                Role = AIRole.User,
+                Content = text.Trim(),
+                Timestamp = DateTimeOffset.UtcNow.ToUnixTimeSeconds()
+            });
+            OnScrollToBottom?.Invoke();
+
+            StreamResponseAsync(contextSlots).Forget();
+        }
+
+        public void CancelStream()
+        {
+            _streamCts?.Cancel();
+        }
+
+        private async UniTaskVoid StreamResponseAsync(ContextCollector.ContextSlot contextSlots)
+        {
+            if (_runner == null)
+            {
+                AddErrorMessage("未配置 AI 提供商，请打开设置进行配置。");
+                return;
+            }
+
+            _isStreaming = true;
+            OnStreamingChanged?.Invoke(true);
+            _streamCts = new CancellationTokenSource();
+
+            var assistantMsg = new ChatMessage
+            {
+                Role = AIRole.Assistant,
+                Content = "",
+                IsStreaming = true,
+                Timestamp = DateTimeOffset.UtcNow.ToUnixTimeSeconds()
+            };
+            _activeSession.Messages.Add(assistantMsg);
+
+            EditorAgentGuard guard = null;
+            try
+            {
+                if (_runner is AIAgentRunner { HasTools: true } agentRunner)
+                {
+                    guard = new EditorAgentGuard();
+                    guard.Lock();
+                    foreach (var tool in agentRunner.ToolAssets)
+                        tool.OnFileModified += guard.MarkDirty;
+                }
+
+                var aiMessages = BuildAIMessages();
+
+                // 注入 Unity 上下文到消息列表
+                string context = ContextCollector.Collect(contextSlots);
+                if (!string.IsNullOrEmpty(context))
+                {
+                    aiMessages.Insert(0, AIMessage.User($"[Unity Context]\n{context}"));
+                    aiMessages.Insert(1, AIMessage.Assistant("收到上下文信息，我会结合这些信息回答你的问题。"));
+                }
+
+                // 上下文窗口管理
+                if (_contextPipeline != null && _config?.General?.ContextWindow != null)
+                {
+                    string systemPrompt = null;
+                    if (_runner is AIAgentRunner)
+                    {
+                        var agent = FindAgentById(_activeSession?.AgentId);
+                        systemPrompt = agent?.SystemPrompt;
+                    }
+                    aiMessages = await _contextPipeline.ProcessAsync(
+                        aiMessages, systemPrompt, _currentModelId,
+                        _config.General.ContextWindow, _activeSession, _streamCts.Token);
+                }
+
+                var ct = _streamCts.Token;
+                await foreach (var evt in _runner.RunStreamAsync(aiMessages, ct: ct))
+                {
+                    if (ct.IsCancellationRequested) break;
+
+                    switch (evt.Type)
+                    {
+                        case AgentEventType.TextDelta:
+                            assistantMsg.Content += evt.Text;
+                            OnScrollToBottom?.Invoke();
+                            OnStateChanged?.Invoke();
+                            break;
+
+                        case AgentEventType.ToolCallStart:
+                            _activeSession.Messages.Add(new ChatMessage
+                            {
+                                Role = AIRole.Assistant,
+                                IsToolCall = true,
+                                ToolUseId = evt.ToolCall?.Id,
+                                ToolName = evt.ToolCall?.Name ?? "unknown",
+                                ToolArguments = evt.ToolCall?.Arguments ?? "",
+                                Content = $"调用工具: {evt.ToolCall?.Name}",
+                                Timestamp = DateTimeOffset.UtcNow.ToUnixTimeSeconds()
+                            });
+                            OnScrollToBottom?.Invoke();
+                            OnStateChanged?.Invoke();
+                            break;
+
+                        case AgentEventType.ToolCallResult:
+                        {
+                            for (int i = _activeSession.Messages.Count - 1; i >= 0; i--)
+                            {
+                                var m = _activeSession.Messages[i];
+                                if (m.IsToolCall && m.ToolName == evt.ToolName && string.IsNullOrEmpty(m.ToolResult))
+                                {
+                                    m.ToolResult = evt.ToolResult;
+                                    m.IsToolError = evt.IsToolError;
+                                    break;
+                                }
+                            }
+                            OnScrollToBottom?.Invoke();
+                            OnStateChanged?.Invoke();
+                            break;
+                        }
+
+                        case AgentEventType.TurnComplete:
+                            if (evt.Usage != null)
+                            {
+                                assistantMsg.InputTokens += evt.Usage.InputTokens;
+                                assistantMsg.OutputTokens += evt.Usage.OutputTokens;
+                            }
+                            break;
+
+                        case AgentEventType.Error:
+                            assistantMsg.Content += $"\n\n[错误: {evt.Text}]";
+                            OnStateChanged?.Invoke();
+                            break;
+                    }
+                }
+            }
+            catch (OperationCanceledException)
+            {
+                assistantMsg.Content += "\n\n[已停止]";
+            }
+            catch (Exception e)
+            {
+                assistantMsg.Content += $"\n\n[错误: {e.Message}]";
+                Debug.LogWarning($"[UniAI Chat] Stream error: {e}");
+            }
+            finally
+            {
+                if (guard != null && _runner is AIAgentRunner agentRunnerCleanup)
+                {
+                    foreach (var tool in agentRunnerCleanup.ToolAssets)
+                        tool.OnFileModified -= guard.MarkDirty;
+                }
+                guard?.Dispose();
+
+                assistantMsg.IsStreaming = false;
+                _isStreaming = false;
+                OnStreamingChanged?.Invoke(false);
+                _streamCts?.Dispose();
+                _streamCts = null;
+
+                _history.Save(_activeSession);
+                OnStateChanged?.Invoke();
+
+                if (_activeSession.Messages.Count >= 2 && _activeSession.Title == "新对话")
+                    GenerateTitleAsync().Forget();
+            }
+        }
+
+        // ─── 辅助方法 ───
+
+        public AgentDefinition FindAgentById(string agentId)
+        {
+            if (string.IsNullOrEmpty(agentId) || _availableAgents == null)
+                return null;
+
+            foreach (var agent in _availableAgents)
+            {
+                if (agent != null && agent.Id == agentId)
+                    return agent;
+            }
+
+            return null;
+        }
+
+        public void ExecuteQuickAction(ContextCollector.ContextSlot requiredSlot, string message,
+            ref ContextCollector.ContextSlot contextSlots)
+        {
+            if (requiredSlot != ContextCollector.ContextSlot.None)
+                contextSlots |= requiredSlot;
+
+            if (_activeSession == null)
+                CreateNewSession();
+
+            SendMessage(message, contextSlots);
+        }
+
+        public void ReloadConfig()
+        {
+            _config = AIConfigManager.LoadConfig();
+            RebuildModelCache();
+            RebuildAgentCache();
+            EnsureRunner();
+            OnStateChanged?.Invoke();
+        }
+
+        public void Dispose()
+        {
+            CancelStream();
+        }
+
+        // ─── 内部 ───
+
+        private List<AIMessage> BuildAIMessages()
+        {
+            var messages = new List<AIMessage>();
+            AIMessage pendingAssistant = null;
+
+            foreach (var msg in _activeSession.Messages)
+            {
+                if (msg.IsStreaming && string.IsNullOrEmpty(msg.Content))
+                    continue;
+
+                if (msg.IsToolCall)
+                {
+                    if (pendingAssistant == null)
+                    {
+                        pendingAssistant = new AIMessage { Role = AIRole.Assistant, Contents = new List<AIContent>() };
+                        messages.Add(pendingAssistant);
+                    }
+                    pendingAssistant.Contents.Add(new AIToolUseContent
+                    {
+                        Id = msg.ToolUseId,
+                        Name = msg.ToolName,
+                        Arguments = msg.ToolArguments
+                    });
+
+                    if (!string.IsNullOrEmpty(msg.ToolResult))
+                    {
+                        messages.Add(AIMessage.ToolResult(msg.ToolUseId, msg.ToolResult, msg.IsToolError));
+                    }
+                    continue;
+                }
+
+                pendingAssistant = null;
+
+                if (msg.Role == AIRole.User)
+                {
+                    messages.Add(AIMessage.User(msg.Content));
+                }
+                else
+                {
+                    var assistantMsg = AIMessage.Assistant(msg.Content);
+                    messages.Add(assistantMsg);
+                    pendingAssistant = assistantMsg;
+                }
+            }
+
+            return messages;
+        }
+
+        private void EnsureRunner()
+        {
+            EnsureClient();
+            if (_client == null)
+            {
+                _runner = null;
+                _contextPipeline = null;
+                return;
+            }
+
+            _contextPipeline = new ContextPipeline(_client);
+
+            var agent = FindAgentById(_activeSession?.AgentId);
+            if (agent != null)
+            {
+                var agentRunner = new AIAgentRunner(_client, agent)
+                {
+                    ToolTimeoutSeconds = EditorPreferences.instance.ToolTimeout
+                };
+                _runner = agentRunner;
+            }
+            else
+            {
+                _runner = new ChatRunner(_client);
+            }
+        }
+
+        private void EnsureClient()
+        {
+            if (_modelEntries == null || _modelEntries.Count == 0)
+            {
+                _client = null;
+                return;
+            }
+
+            if (_selectedModelIndex >= _modelEntries.Count)
+                _selectedModelIndex = 0;
+
+            _currentModelId = _modelEntries[_selectedModelIndex].ModelId;
+
+            try
+            {
+                _client = AIClient.Create(_config, _currentModelId);
+            }
+            catch (Exception e)
+            {
+                Debug.LogWarning($"[UniAI Chat] Failed to create client: {e.Message}");
+                _client = null;
+            }
+        }
+
+        private void RebuildModelCache()
+        {
+            _modelEntries = _config.GetAllModels();
+            _modelNames = new string[_modelEntries.Count];
+            for (int i = 0; i < _modelEntries.Count; i++)
+                _modelNames[i] = _modelEntries[i].ModelId;
+
+            if (!string.IsNullOrEmpty(_currentModelId))
+            {
+                for (int i = 0; i < _modelEntries.Count; i++)
+                {
+                    if (_modelEntries[i].ModelId == _currentModelId)
+                    {
+                        _selectedModelIndex = i;
+                        return;
+                    }
+                }
+            }
+
+            _selectedModelIndex = 0;
+            _currentModelId = _modelEntries.Count > 0 ? _modelEntries[0].ModelId : null;
+        }
+
+        private void RebuildAgentCache()
+        {
+            _availableAgents = AgentManager.GetAllAgents();
+        }
+
+        private void AddErrorMessage(string error)
+        {
+            _activeSession?.Messages.Add(new ChatMessage
+            {
+                Role = AIRole.Assistant,
+                Content = $"[错误] {error}",
+                Timestamp = DateTimeOffset.UtcNow.ToUnixTimeSeconds()
+            });
+            OnScrollToBottom?.Invoke();
+            OnStateChanged?.Invoke();
+        }
+
+        private async UniTaskVoid GenerateTitleAsync()
+        {
+            if (_client == null || _activeSession == null) return;
+            if (_activeSession.Messages.Count < 2) return;
+
+            try
+            {
+                string userText = null, assistantText = null;
+                foreach (var msg in _activeSession.Messages)
+                {
+                    if (msg.IsToolCall) continue;
+                    if (msg.Role == AIRole.User && userText == null)
+                        userText = msg.Content;
+                    else if (msg.Role == AIRole.Assistant && assistantText == null && !string.IsNullOrEmpty(msg.Content))
+                        assistantText = msg.Content;
+                    if (userText != null && assistantText != null) break;
+                }
+
+                if (userText == null || assistantText == null) return;
+
+                var titleRequest = new AIRequest
+                {
+                    SystemPrompt = "Generate a short title (max 8 Chinese characters or 4 English words) for this conversation. Reply with ONLY the title, nothing else.",
+                    Messages = new List<AIMessage>
+                    {
+                        AIMessage.User(userText),
+                        AIMessage.Assistant(assistantText)
+                    },
+                    MaxTokens = 32,
+                    Temperature = 0.3f
+                };
+
+                var response = await _client.SendAsync(titleRequest);
+                if (response.IsSuccess && !string.IsNullOrEmpty(response.Text))
+                {
+                    _activeSession.Title = response.Text.Trim().Trim('"', '\'', '\n', '\r');
+                    if (_activeSession.Title.Length > 20)
+                        _activeSession.Title = _activeSession.Title.Substring(0, 20);
+                    _history.Save(_activeSession);
+                    OnStateChanged?.Invoke();
+                }
+            }
+            catch (Exception e)
+            {
+                Debug.LogWarning($"[UniAI Chat] Auto-title failed: {e.Message}");
+            }
+        }
+
+        private void NotifyAIAvatarChanged()
+        {
+            var agent = FindAgentById(_activeSession?.AgentId);
+            Texture2D avatar = agent != null ? agent.Icon : AIConfigManager.Prefs.AiAvatar;
+            OnAIAvatarChanged?.Invoke(avatar);
+        }
+    }
+}
