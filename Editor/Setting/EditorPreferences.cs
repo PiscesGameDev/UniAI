@@ -36,6 +36,11 @@ namespace UniAI.Editor
         /// </summary>
         [SerializeField] private Texture2D _aiAvatar;
 
+        /// <summary>
+        /// Agent 资产默认创建目录
+        /// </summary>
+        [SerializeField] private string _agentDirectory = "Assets/Agents";
+
         // ─── 公开属性 ───
 
         internal string LastSelectedModelId
@@ -61,7 +66,12 @@ namespace UniAI.Editor
             get => _userAvatar;
             set => _userAvatar = value;
         }
-        
+
+        internal string AgentDirectory
+        {
+            get => string.IsNullOrEmpty(_agentDirectory) ? "Assets/Agents" : _agentDirectory;
+            set => _agentDirectory = value;
+        }
 
         // ─── 环境变量映射（按预设 ID，跟随 AI 供应商） ───
 

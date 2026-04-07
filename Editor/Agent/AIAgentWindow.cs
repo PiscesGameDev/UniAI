@@ -13,7 +13,6 @@ namespace UniAI.Editor
     {
         private const float LeftPanelWidth = 200f;
         private const float Pad = 10f;
-        private const string DefaultAgentDir = "Assets/UniAI/Agents";
 
         // State
         private List<AgentDefinition> _agents;
@@ -215,7 +214,8 @@ namespace UniAI.Editor
 
         private void CreateNewAgent()
         {
-            var agent = AgentManager.CreateNewAgent(DefaultAgentDir, "New Agent");
+            string agentDir = AIConfigManager.Prefs.AgentDirectory;
+            var agent = AgentManager.CreateNewAgent(agentDir, "New Agent");
             RefreshAgentList();
 
             // 选中新创建的 Agent

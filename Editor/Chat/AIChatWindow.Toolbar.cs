@@ -31,7 +31,7 @@ namespace UniAI.Editor.Chat
             GUILayout.Space(12);
 
             // ─── 模型选择 ───
-            if (_modelNames != null && _modelNames.Length > 0)
+            if (_modelNames is { Length: > 0 })
             {
                 GUILayout.Label("模型:", EditorStyles.miniLabel, GUILayout.Width(36));
                 int newIdx = EditorGUILayout.Popup(_selectedModelIndex, _modelNames,

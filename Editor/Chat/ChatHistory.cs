@@ -8,11 +8,11 @@ namespace UniAI.Editor.Chat
 {
     /// <summary>
     /// 会话历史持久化管理
-    /// 存储路径: ProjectSettings/UniAI/History/{sessionId}.json
+    /// 存储路径: Library/UniAI/History/{sessionId}.json
     /// </summary>
     public class ChatHistory
     {
-        private const string HISTORY_DIR = "ProjectSettings/UniAI/History";
+        private const string HistoryDir = "Library/UniAI/History";
 
         private readonly List<ChatSession> _sessions = new();
         private string _searchFilter = "";
@@ -28,9 +28,9 @@ namespace UniAI.Editor.Chat
         {
             _sessions.Clear();
 
-            if (!Directory.Exists(HISTORY_DIR)) return;
+            if (!Directory.Exists(HistoryDir)) return;
 
-            foreach (var file in Directory.GetFiles(HISTORY_DIR, "*.json"))
+            foreach (var file in Directory.GetFiles(HistoryDir, "*.json"))
             {
                 try
                 {
@@ -52,8 +52,8 @@ namespace UniAI.Editor.Chat
         {
             session.UpdatedAt = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
 
-            if (!Directory.Exists(HISTORY_DIR))
-                Directory.CreateDirectory(HISTORY_DIR);
+            if (!Directory.Exists(HistoryDir))
+                Directory.CreateDirectory(HistoryDir);
 
             string path = GetPath(session.Id);
             string json = JsonConvert.SerializeObject(session, Formatting.Indented);
@@ -144,6 +144,6 @@ namespace UniAI.Editor.Chat
             }
         }
 
-        private static string GetPath(string sessionId) => $"{HISTORY_DIR}/{sessionId}.json";
+        private static string GetPath(string sessionId) => $"{HistoryDir}/{sessionId}.json";
     }
 }

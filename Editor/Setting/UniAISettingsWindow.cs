@@ -103,6 +103,28 @@ namespace UniAI.Editor
             if (newMax != prefs.MaxHistorySessions)
                 prefs.MaxHistorySessions = Mathf.Clamp(newMax, 5, 500);
             EditorGUILayout.EndHorizontal();
+
+            EditorGUILayout.BeginHorizontal();
+            EditorGUILayout.LabelField("Agent 创建目录", GUILayout.Width(LabelWidth));
+            EditorGUILayout.TextField(prefs.AgentDirectory);
+            if (GUILayout.Button("选择", GUILayout.Width(60)))
+            {
+                string path = EditorUtility.OpenFolderPanel("选择 Agent 创建目录", "Assets", "");
+                if (!string.IsNullOrEmpty(path))
+                {
+                    // 转换为相对路径
+                    if (path.StartsWith(Application.dataPath))
+                    {
+                        path = "Assets" + path.Substring(Application.dataPath.Length);
+                        prefs.AgentDirectory = path;
+                    }
+                    else
+                    {
+                        EditorUtility.DisplayDialog("路径错误", "请选择 Assets 目录下的文件夹", "确定");
+                    }
+                }
+            }
+            EditorGUILayout.EndHorizontal();
         }
 
         private void DrawBottomBar()
