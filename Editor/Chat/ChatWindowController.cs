@@ -321,8 +321,9 @@ namespace UniAI.Editor.Chat
                 _history.Save(_activeSession);
                 OnStateChanged?.Invoke();
 
-                if (_activeSession.Messages.Count >= 2 && _activeSession.Title == "新对话")
-                    GenerateTitleAsync().Forget();
+                if (_activeSession.Messages.Count >= 1 &&
+                    (string.IsNullOrEmpty(_activeSession.Title) || _activeSession.Title == "新对话"))
+                    GenerateTitle();
             }
         }
 
@@ -509,52 +510,25 @@ namespace UniAI.Editor.Chat
             OnStateChanged?.Invoke();
         }
 
-        private async UniTaskVoid GenerateTitleAsync()
+        private void GenerateTitle()
         {
-            if (_client == null || _activeSession == null) return;
-            if (_activeSession.Messages.Count < 2) return;
+            if (_activeSession == null || _activeSession.Messages.Count < 1) return;
 
-            try
+            string userText = null;
+            foreach (var msg in _activeSession.Messages)
             {
-                string userText = null, assistantText = null;
-                foreach (var msg in _activeSession.Messages)
+                if (!msg.IsToolCall && msg.Role == AIRole.User)
                 {
-                    if (msg.IsToolCall) continue;
-                    if (msg.Role == AIRole.User && userText == null)
-                        userText = msg.Content;
-                    else if (msg.Role == AIRole.Assistant && assistantText == null && !string.IsNullOrEmpty(msg.Content))
-                        assistantText = msg.Content;
-                    if (userText != null && assistantText != null) break;
-                }
-
-                if (userText == null || assistantText == null) return;
-
-                var titleRequest = new AIRequest
-                {
-                    SystemPrompt = "Generate a short title (max 8 Chinese characters or 4 English words) for this conversation. Reply with ONLY the title, nothing else.",
-                    Messages = new List<AIMessage>
-                    {
-                        AIMessage.User(userText),
-                        AIMessage.Assistant(assistantText)
-                    },
-                    MaxTokens = 32,
-                    Temperature = 0.3f
-                };
-
-                var response = await _client.SendAsync(titleRequest);
-                if (response.IsSuccess && !string.IsNullOrEmpty(response.Text))
-                {
-                    _activeSession.Title = response.Text.Trim().Trim('"', '\'', '\n', '\r');
-                    if (_activeSession.Title.Length > 20)
-                        _activeSession.Title = _activeSession.Title.Substring(0, 20);
-                    _history.Save(_activeSession);
-                    OnStateChanged?.Invoke();
+                    userText = msg.Content;
+                    break;
                 }
             }
-            catch (Exception e)
-            {
-                Debug.LogWarning($"[UniAI Chat] Auto-title failed: {e.Message}");
-            }
+
+            if (string.IsNullOrEmpty(userText)) return;
+
+            _activeSession.Title = userText.Length <= 15 ? userText : userText.Substring(0, 15) + "…";
+            _history.Save(_activeSession);
+            OnStateChanged?.Invoke();
         }
 
         private void NotifyAIAvatarChanged()
