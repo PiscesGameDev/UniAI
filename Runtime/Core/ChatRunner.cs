@@ -40,7 +40,7 @@ namespace UniAI
         {
             var request = BuildRequest(messages, requestOverride);
             return _client.StreamAsync(request, ct)
-                .Select(ChunkToEvent)
+                .Select(AgentEvent.FromChunk)
                 .Where(evt => evt != null);
         }
 
@@ -53,17 +53,6 @@ namespace UniAI
                 Temperature = overrides?.Temperature ?? 0.7f,
                 MaxTokens = overrides?.MaxTokens > 0 ? overrides.MaxTokens : 4096
             };
-        }
-
-        private static AgentEvent ChunkToEvent(AIStreamChunk chunk)
-        {
-            if (!string.IsNullOrEmpty(chunk.DeltaText))
-                return new AgentEvent { Type = AgentEventType.TextDelta, Text = chunk.DeltaText };
-
-            if (chunk.IsComplete)
-                return new AgentEvent { Type = AgentEventType.TurnComplete, TurnIndex = 0, Usage = chunk.Usage };
-
-            return null;
         }
     }
 }

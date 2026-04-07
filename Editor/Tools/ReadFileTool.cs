@@ -20,14 +20,8 @@ namespace UniAI.Editor.Tools
         public override async UniTask<string> ExecuteAsync(string arguments, CancellationToken ct)
         {
             var args = JsonConvert.DeserializeObject<ReadFileArgs>(arguments);
-            if (args == null || string.IsNullOrEmpty(args.Path))
-                return "Error: Missing required parameter 'path'.";
-
-            string fullPath = Path.GetFullPath(args.Path);
-            string projectRoot = Path.GetFullPath(".");
-
-            if (!fullPath.StartsWith(projectRoot))
-                return "Error: Path is outside the project directory.";
+            if (!ValidateProjectPath(args?.Path, out var fullPath, out var error))
+                return error;
 
             if (!File.Exists(fullPath))
                 return $"Error: File not found: {args.Path}";

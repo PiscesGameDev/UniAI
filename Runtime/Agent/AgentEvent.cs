@@ -72,5 +72,19 @@ namespace UniAI
         /// TurnComplete/Error: Token 用量
         /// </summary>
         public TokenUsage Usage { get; set; }
+
+        /// <summary>
+        /// 将流式 AIStreamChunk 转换为 AgentEvent（无 Tool 场景通用）
+        /// </summary>
+        internal static AgentEvent FromChunk(AIStreamChunk chunk)
+        {
+            if (!string.IsNullOrEmpty(chunk.DeltaText))
+                return new AgentEvent { Type = AgentEventType.TextDelta, Text = chunk.DeltaText };
+
+            if (chunk.IsComplete)
+                return new AgentEvent { Type = AgentEventType.TurnComplete, TurnIndex = 0, Usage = chunk.Usage };
+
+            return null;
+        }
     }
 }

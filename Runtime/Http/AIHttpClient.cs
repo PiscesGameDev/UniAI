@@ -28,40 +28,10 @@ namespace UniAI
             using var request = new UnityWebRequest(url, UnityWebRequest.kHttpVerbPOST);
             request.uploadHandler = new UploadHandlerRaw(bodyBytes);
             request.downloadHandler = new DownloadHandlerBuffer();
-            request.timeout = timeoutSeconds;
             request.SetRequestHeader("Content-Type", "application/json");
 
-            if (headers != null)
-            {
-                foreach (var kv in headers)
-                    request.SetRequestHeader(kv.Key, kv.Value);
-            }
-
             AILogger.Verbose($"POST {url} body={jsonBody.Length} chars");
-
-            try
-            {
-                await request.SendWebRequest().WithCancellation(ct);
-            }
-            catch (OperationCanceledException)
-            {
-                throw;
-            }
-            catch (Exception e)
-            {
-                return HttpResult.Fail(0, $"Request failed: {e.Message}");
-            }
-
-            var responseBody = request.downloadHandler.text;
-
-            if (request.result != UnityWebRequest.Result.Success)
-            {
-                AILogger.Error($"HTTP {request.responseCode}: {request.error}");
-                return HttpResult.Fail(request.responseCode, request.error, responseBody);
-            }
-
-            AILogger.Verbose($"HTTP {request.responseCode} response={responseBody.Length} chars");
-            return HttpResult.Success(request.responseCode, responseBody);
+            return await SendAsync(request, headers, timeoutSeconds, ct);
         }
 
         /// <summary>
@@ -75,6 +45,17 @@ namespace UniAI
         {
             using var request = new UnityWebRequest(url, UnityWebRequest.kHttpVerbGET);
             request.downloadHandler = new DownloadHandlerBuffer();
+
+            AILogger.Verbose($"GET {url}");
+            return await SendAsync(request, headers, timeoutSeconds, ct);
+        }
+
+        private static async UniTask<HttpResult> SendAsync(
+            UnityWebRequest request,
+            Dictionary<string, string> headers,
+            int timeoutSeconds,
+            CancellationToken ct)
+        {
             request.timeout = timeoutSeconds;
 
             if (headers != null)
@@ -82,8 +63,6 @@ namespace UniAI
                 foreach (var kv in headers)
                     request.SetRequestHeader(kv.Key, kv.Value);
             }
-
-            AILogger.Verbose($"GET {url}");
 
             try
             {

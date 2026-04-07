@@ -380,74 +380,94 @@ namespace UniAI.Editor
 
             bool hasApiKey = HasApiKey(entry);
 
-            if (entry.Models != null && entry.Models.Count > 0)
+            DrawModelList(entry, hasApiKey);
+            GUILayout.Space(4);
+            DrawAddModelRow(entry, hasApiKey);
+            DrawAvailableModels(entry);
+
+            GUILayout.Space(6);
+
+            // Test all models button
+            bool anyTesting = entry.Models != null && entry.Models.Any(m =>
+                _modelResults.TryGetValue(ModelKey(entry.Id, m), out var r) && r.IsTesting);
+
+            EditorGUI.BeginDisabledGroup(anyTesting || !hasApiKey || entry.Models == null || entry.Models.Count == 0);
+            if (GUILayout.Button(anyTesting ? "测试中..." : "测试所有模型", GUILayout.Height(24)))
             {
-                // Header
-                EditorGUILayout.BeginHorizontal();
-                GUILayout.Label("模型 ID", EditorStyles.miniLabel, GUILayout.ExpandWidth(true));
-                GUILayout.Label("状态", EditorStyles.miniLabel, GUILayout.Width(50));
-                GUILayout.Label("延迟", EditorStyles.miniLabel, GUILayout.Width(60));
-                GUILayout.Space(96);
-                EditorGUILayout.EndHorizontal();
-
-                EditorGUIHelper.DrawSeparator();
-
-                for (int i = 0; i < entry.Models.Count; i++)
-                {
-                    var modelId = entry.Models[i];
-                    var key = ModelKey(entry.Id, modelId);
-                    _modelResults.TryGetValue(key, out var result);
-
-                    EditorGUILayout.BeginHorizontal();
-
-                    GUILayout.Label(modelId, _modelNameStyle, GUILayout.ExpandWidth(true));
-
-                    DrawModelStatus(result, 50);
-
-                    string latencyText = "---";
-                    if (result is { IsTesting: false, IsSuccess: true })
-                        latencyText = $"{result.LatencyMs}ms";
-                    GUILayout.Label(latencyText, EditorStyles.miniLabel, GUILayout.Width(60));
-
-                    bool isTesting = result is { IsTesting: true };
-                    EditorGUI.BeginDisabledGroup(isTesting || !hasApiKey);
-                    if (GUILayout.Button(isTesting ? "..." : "测试", EditorStyles.miniButton, GUILayout.Width(44)))
-                    {
-                        TestModel(entry, modelId);
-                    }
-                    EditorGUI.EndDisabledGroup();
-
-                    if (GUILayout.Button("✕", EditorStyles.miniButton, GUILayout.Width(22)))
-                    {
-                        entry.Models.RemoveAt(i);
-                        _modelResults.Remove(key);
-                        AIConfigManager.SaveConfig(Config);
-                        GUIUtility.ExitGUI();
-                        return;
-                    }
-
-                    EditorGUILayout.EndHorizontal();
-
-                    if (result is { IsSuccess: false, IsTesting: false } && !string.IsNullOrEmpty(result.Error))
-                    {
-                        EditorGUILayout.BeginHorizontal();
-                        GUILayout.Space(16);
-                        EditorGUILayout.LabelField($"⚠ {result.Error}", _errorStyle);
-                        EditorGUILayout.EndHorizontal();
-                    }
-                }
-
-                EditorGUIHelper.DrawSeparator();
+                TestAllModels(entry);
             }
-            else
+            EditorGUI.EndDisabledGroup();
+        }
+
+        private void DrawModelList(ChannelEntry entry, bool hasApiKey)
+        {
+            if (entry.Models == null || entry.Models.Count == 0)
             {
                 EditorGUILayout.LabelField("暂无模型，请手动添加或获取模型列表。", EditorStyles.miniLabel);
                 GUILayout.Space(4);
+                return;
             }
 
-            GUILayout.Space(4);
+            // Header
+            EditorGUILayout.BeginHorizontal();
+            GUILayout.Label("模型 ID", EditorStyles.miniLabel, GUILayout.ExpandWidth(true));
+            GUILayout.Label("状态", EditorStyles.miniLabel, GUILayout.Width(50));
+            GUILayout.Label("延迟", EditorStyles.miniLabel, GUILayout.Width(60));
+            GUILayout.Space(96);
+            EditorGUILayout.EndHorizontal();
 
-            // Add model row
+            EditorGUIHelper.DrawSeparator();
+
+            for (int i = 0; i < entry.Models.Count; i++)
+            {
+                var modelId = entry.Models[i];
+                var key = ModelKey(entry.Id, modelId);
+                _modelResults.TryGetValue(key, out var result);
+
+                EditorGUILayout.BeginHorizontal();
+
+                GUILayout.Label(modelId, _modelNameStyle, GUILayout.ExpandWidth(true));
+
+                DrawModelStatus(result, 50);
+
+                string latencyText = "---";
+                if (result is { IsTesting: false, IsSuccess: true })
+                    latencyText = $"{result.LatencyMs}ms";
+                GUILayout.Label(latencyText, EditorStyles.miniLabel, GUILayout.Width(60));
+
+                bool isTesting = result is { IsTesting: true };
+                EditorGUI.BeginDisabledGroup(isTesting || !hasApiKey);
+                if (GUILayout.Button(isTesting ? "..." : "测试", EditorStyles.miniButton, GUILayout.Width(44)))
+                {
+                    TestModel(entry, modelId);
+                }
+                EditorGUI.EndDisabledGroup();
+
+                if (GUILayout.Button("✕", EditorStyles.miniButton, GUILayout.Width(22)))
+                {
+                    entry.Models.RemoveAt(i);
+                    _modelResults.Remove(key);
+                    AIConfigManager.SaveConfig(Config);
+                    GUIUtility.ExitGUI();
+                    return;
+                }
+
+                EditorGUILayout.EndHorizontal();
+
+                if (result is { IsSuccess: false, IsTesting: false } && !string.IsNullOrEmpty(result.Error))
+                {
+                    EditorGUILayout.BeginHorizontal();
+                    GUILayout.Space(16);
+                    EditorGUILayout.LabelField($"⚠ {result.Error}", _errorStyle);
+                    EditorGUILayout.EndHorizontal();
+                }
+            }
+
+            EditorGUIHelper.DrawSeparator();
+        }
+
+        private void DrawAddModelRow(ChannelEntry entry, bool hasApiKey)
+        {
             if (!_modelInput.ContainsKey(entry.Id))
                 _modelInput[entry.Id] = "";
 
@@ -472,77 +492,66 @@ namespace UniAI.Editor
             {
                 EditorGUILayout.LabelField($"⚠ {fetchResult.Error}", _errorStyle);
             }
+        }
 
-            // Available models list
-            if (_availableModels.TryGetValue(entry.Id, out var available) && available.Count > 0)
-            {
-                GUILayout.Space(6);
-                EditorGUILayout.BeginHorizontal();
-                GUILayout.Label("可用模型", EditorStyles.boldLabel);
-                GUILayout.FlexibleSpace();
-                if (GUILayout.Button("全部添加", EditorStyles.miniButton, GUILayout.Width(56)))
-                {
-                    entry.Models ??= new List<string>();
-                    foreach (var m in available)
-                    {
-                        if (!entry.Models.Contains(m.Id))
-                            entry.Models.Add(m.Id);
-                    }
-                    AIConfigManager.SaveConfig(Config);
-                    _availableModels.Remove(entry.Id);
-                }
-                if (GUILayout.Button("收起", EditorStyles.miniButton, GUILayout.Width(40)))
-                {
-                    _availableModels.Remove(entry.Id);
-                }
-                EditorGUILayout.EndHorizontal();
-
-                GUILayout.Space(2);
-
-                if (!_availableModelsScroll.ContainsKey(entry.Id))
-                    _availableModelsScroll[entry.Id] = Vector2.zero;
-
-                var scroll = _availableModelsScroll[entry.Id];
-                float listHeight = Mathf.Min(available.Count * 22f, 160f);
-                scroll = EditorGUILayout.BeginScrollView(scroll, GUILayout.Height(listHeight));
-
-                var existingModels = new HashSet<string>(entry.Models ?? new List<string>());
-                foreach (var model in available)
-                {
-                    bool alreadyAdded = existingModels.Contains(model.Id);
-
-                    EditorGUILayout.BeginHorizontal();
-                    EditorGUI.BeginDisabledGroup(alreadyAdded);
-                    if (GUILayout.Button(alreadyAdded ? "✔" : "+", EditorStyles.miniButton, GUILayout.Width(22), GUILayout.Height(18)))
-                    {
-                        entry.Models ??= new List<string>();
-                        if (!entry.Models.Contains(model.Id))
-                        {
-                            entry.Models.Add(model.Id);
-                            AIConfigManager.SaveConfig(Config);
-                        }
-                    }
-                    EditorGUI.EndDisabledGroup();
-                    GUILayout.Label(model.Label, _modelNameStyle, GUILayout.Height(18));
-                    EditorGUILayout.EndHorizontal();
-                }
-
-                EditorGUILayout.EndScrollView();
-                _availableModelsScroll[entry.Id] = scroll;
-            }
+        private void DrawAvailableModels(ChannelEntry entry)
+        {
+            if (!_availableModels.TryGetValue(entry.Id, out var available) || available.Count == 0)
+                return;
 
             GUILayout.Space(6);
-
-            // Test all models button
-            bool anyTesting = entry.Models != null && entry.Models.Any(m =>
-                _modelResults.TryGetValue(ModelKey(entry.Id, m), out var r) && r.IsTesting);
-
-            EditorGUI.BeginDisabledGroup(anyTesting || !hasApiKey || entry.Models == null || entry.Models.Count == 0);
-            if (GUILayout.Button(anyTesting ? "测试中..." : "测试所有模型", GUILayout.Height(24)))
+            EditorGUILayout.BeginHorizontal();
+            GUILayout.Label("可用模型", EditorStyles.boldLabel);
+            GUILayout.FlexibleSpace();
+            if (GUILayout.Button("全部添加", EditorStyles.miniButton, GUILayout.Width(56)))
             {
-                TestAllModels(entry);
+                entry.Models ??= new List<string>();
+                foreach (var m in available)
+                {
+                    if (!entry.Models.Contains(m.Id))
+                        entry.Models.Add(m.Id);
+                }
+                AIConfigManager.SaveConfig(Config);
+                _availableModels.Remove(entry.Id);
             }
-            EditorGUI.EndDisabledGroup();
+            if (GUILayout.Button("收起", EditorStyles.miniButton, GUILayout.Width(40)))
+            {
+                _availableModels.Remove(entry.Id);
+            }
+            EditorGUILayout.EndHorizontal();
+
+            GUILayout.Space(2);
+
+            if (!_availableModelsScroll.ContainsKey(entry.Id))
+                _availableModelsScroll[entry.Id] = Vector2.zero;
+
+            var scroll = _availableModelsScroll[entry.Id];
+            float listHeight = Mathf.Min(available.Count * 22f, 160f);
+            scroll = EditorGUILayout.BeginScrollView(scroll, GUILayout.Height(listHeight));
+
+            var existingModels = new HashSet<string>(entry.Models ?? new List<string>());
+            foreach (var model in available)
+            {
+                bool alreadyAdded = existingModels.Contains(model.Id);
+
+                EditorGUILayout.BeginHorizontal();
+                EditorGUI.BeginDisabledGroup(alreadyAdded);
+                if (GUILayout.Button(alreadyAdded ? "✔" : "+", EditorStyles.miniButton, GUILayout.Width(22), GUILayout.Height(18)))
+                {
+                    entry.Models ??= new List<string>();
+                    if (!entry.Models.Contains(model.Id))
+                    {
+                        entry.Models.Add(model.Id);
+                        AIConfigManager.SaveConfig(Config);
+                    }
+                }
+                EditorGUI.EndDisabledGroup();
+                GUILayout.Label(model.Label, _modelNameStyle, GUILayout.Height(18));
+                EditorGUILayout.EndHorizontal();
+            }
+
+            EditorGUILayout.EndScrollView();
+            _availableModelsScroll[entry.Id] = scroll;
         }
 
         private void DrawModelStatus(ModelTestResult result, float width)

@@ -227,24 +227,8 @@ namespace UniAI.Editor.Tools
                     }
                 }
 
-                var report = new StringBuilder();
-                report.AppendLine($"{label} Test Results: {passed} passed, {failed} failed, {skipped} skipped");
-
-                if (failed > 0)
-                {
-                    report.AppendLine("\n--- Failures ---");
-                    report.Append(failures);
-                }
-                else if (passed > 0)
-                {
-                    report.AppendLine("All tests passed.");
-                }
-                else
-                {
-                    report.AppendLine("No tests found matching the filter.");
-                }
-
-                return report.ToString();
+                var report = FormatReport(label, passed, failed, skipped, failures);
+                return report;
             }
             catch (Exception e)
             {
@@ -298,25 +282,30 @@ namespace UniAI.Editor.Tools
 
             public string BuildReport(string label)
             {
-                var report = new StringBuilder();
-                report.AppendLine($"{label} Test Results: {_passed} passed, {_failed} failed, {_skipped} skipped");
-
-                if (_failed > 0)
-                {
-                    report.AppendLine("\n--- Failures ---");
-                    report.Append(_sb);
-                }
-                else if (_passed > 0)
-                {
-                    report.AppendLine("All tests passed.");
-                }
-                else
-                {
-                    report.AppendLine("No tests found matching the filter.");
-                }
-
-                return report.ToString();
+                return FormatReport(label, _passed, _failed, _skipped, _sb);
             }
+        }
+
+        private static string FormatReport(string label, int passed, int failed, int skipped, StringBuilder failures)
+        {
+            var report = new StringBuilder();
+            report.AppendLine($"{label} Test Results: {passed} passed, {failed} failed, {skipped} skipped");
+
+            if (failed > 0)
+            {
+                report.AppendLine("\n--- Failures ---");
+                report.Append(failures);
+            }
+            else if (passed > 0)
+            {
+                report.AppendLine("All tests passed.");
+            }
+            else
+            {
+                report.AppendLine("No tests found matching the filter.");
+            }
+
+            return report.ToString();
         }
 
         private static string Truncate(string text, int maxLen)

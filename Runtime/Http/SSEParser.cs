@@ -3,7 +3,7 @@ namespace UniAI
     /// <summary>
     /// SSE 事件
     /// </summary>
-    internal class SSEEvent
+    public class SSEEvent
     {
         public string EventType { get; set; }
         public string Data { get; set; }

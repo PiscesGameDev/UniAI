@@ -46,7 +46,7 @@ namespace UniAI.Editor.Chat
         private AIClient _client;
         private IConversationRunner _runner;
         private ContextPipeline _contextPipeline;
-        private ChatHistory _history;
+        private ChatHistoryManager _history;
         private ChatSession _activeSession;
         private string _inputText = "";
         private Vector2 _chatScroll;
@@ -136,7 +136,7 @@ namespace UniAI.Editor.Chat
         private void OnEnable()
         {
             _config = AIConfigManager.LoadConfig();
-            _history = new ChatHistory();
+            _history = new ChatHistoryManager(new EditorChatHistoryStorage());
             _history.Load();
 
             // 恢复编辑器偏好

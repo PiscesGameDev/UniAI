@@ -1,12 +1,14 @@
+using System;
 using System.Collections.Generic;
 using System.Threading;
 using Cysharp.Threading.Tasks;
+using Cysharp.Threading.Tasks.Linq;
 using Newtonsoft.Json;
 
 namespace UniAI.Providers
 {
     /// <summary>
-    /// Provider 抽象基类 — 提取 SendAsync 模板方法和通用工具
+    /// Provider 抽象基类 — 提取 SendAsync / StreamAsync 模板方法和通用工具
     /// </summary>
     public abstract class ProviderBase : IAIProvider
     {
@@ -43,39 +45,81 @@ namespace UniAI.Providers
             return ParseResponse(result.Body);
         }
 
-        public abstract IUniTaskAsyncEnumerable<AIStreamChunk> StreamAsync(AIRequest request, CancellationToken ct = default);
+        // ────────────────────────── StreamAsync 模板方法 ──────────────────────────
+
+        public IUniTaskAsyncEnumerable<AIStreamChunk> StreamAsync(AIRequest request, CancellationToken ct = default)
+        {
+            return UniTaskAsyncEnumerable.Create<AIStreamChunk>(async (writer, token) =>
+            {
+                using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct, token);
+                var linkedToken = cts.Token;
+
+                var url = BuildUrl();
+                var body = BuildRequestBody(request, stream: true);
+                var json = JsonConvert.SerializeObject(body, Formatting.None, SerializerSettings);
+                var headers = BuildHeaders();
+
+                AILogger.Verbose($"{Name} StreamAsync model={GetModelFromBody(body)}");
+
+                var parser = new SSEParser();
+                var streamState = CreateStreamState();
+
+                await foreach (var line in AIHttpClient.PostStreamAsync(url, json, headers, linkedToken))
+                {
+                    var evt = parser.ParseLine(line);
+                    if (evt == null) continue;
+                    if (evt.Data == null || evt.Data == "[DONE]")
+                    {
+                        if (OnStreamDone(streamState, chunk => writer.YieldAsync(chunk)))
+                            break;
+                        continue;
+                    }
+
+                    try
+                    {
+                        await ProcessStreamEvent(evt, streamState, chunk => writer.YieldAsync(chunk));
+                    }
+                    catch (Exception e)
+                    {
+                        AILogger.Warning($"Failed to parse stream event: {e.Message}");
+                    }
+                }
+            });
+        }
+
+        /// <summary>
+        /// 输出流式 chunk 的委托
+        /// </summary>
+        protected delegate UniTask EmitChunk(AIStreamChunk chunk);
 
         // ────────────────────────── 子类实现 ──────────────────────────
 
-        /// <summary>
-        /// 构建 API 请求 URL
-        /// </summary>
         protected abstract string BuildUrl();
 
-        /// <summary>
-        /// 构建协议特定的请求体对象（将被 JSON 序列化）
-        /// </summary>
         protected abstract object BuildRequestBody(AIRequest request, bool stream);
 
-        /// <summary>
-        /// 构建请求头
-        /// </summary>
         protected abstract Dictionary<string, string> BuildHeaders();
 
-        /// <summary>
-        /// 解析成功响应
-        /// </summary>
         protected abstract AIResponse ParseResponse(string json);
 
-        /// <summary>
-        /// 从请求体对象中提取 Model 名称（用于日志）
-        /// </summary>
         protected abstract string GetModelFromBody(object body);
 
-        /// <summary>
-        /// 从错误响应体中提取错误信息。返回 null 表示无法解析。
-        /// </summary>
         protected abstract string TryParseErrorBody(string body);
+
+        /// <summary>
+        /// 创建流式解析状态对象（用于跨事件累积 Tool 调用等）。默认返回 null。
+        /// </summary>
+        protected virtual object CreateStreamState() => null;
+
+        /// <summary>
+        /// 处理单个 SSE 事件，将解析结果通过 emit 输出。子类必须实现协议特定的解析逻辑。
+        /// </summary>
+        protected abstract UniTask ProcessStreamEvent(SSEEvent evt, object streamState, EmitChunk emit);
+
+        /// <summary>
+        /// 收到 [DONE] 时调用，返回 true 表示终止流。默认不终止。
+        /// </summary>
+        protected virtual bool OnStreamDone(object streamState, EmitChunk emit) => false;
 
         // ────────────────────────── 通用方法 ──────────────────────────
 

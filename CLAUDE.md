@@ -15,7 +15,7 @@ UniAI 是 Unity 与 AI 交互的中间件，向下对接多种 AI Provider，向
 
 - **统一抽象**: 所有 Provider 共享 `AIRequest/AIResponse/AIStreamChunk` 模型
 - **双协议覆盖**: Claude Messages API + OpenAI Chat Completions API，兼容所有 OpenAI 兼容接口
-- **Agent 统一通道**: 所有对话统一走 Agent 通道，普通 Chat = 内置默认 Agent（无 Tool，一轮即结束）
+- **双运行器架构**: `ChatRunner`（纯对话）与 `AIAgentRunner`（Tool 循环）独立实现，共享 `IConversationRunner` 接口
 - **Tool Use**: 支持 AI 调用开发者定义的工具（ScriptableObject 扩展）
 - **上下文窗口管理**: 自动 token 预估、滑动窗口截断、摘要压缩、RAG 上下文注入
 - **零业务耦合**: 纯工具层，不依赖任何业务框架
@@ -104,7 +104,7 @@ SSEDownloadHandler + SSEParser（SSE 协议层）
 | `AgentEvent` | `Runtime/Agent/AgentEvent.cs` | Agent 流式事件（TextDelta/ToolCallStart/ToolCallResult/TurnComplete/Error） |
 | `AgentResult` | `Runtime/Agent/AgentResult.cs` | Agent 非流式运行结果 |
 
-**核心设计**: 普通 Chat = 默认 Agent（无 Tool，MaxTurns=1）。所有对话统一走 `IConversationRunner`（`AIAgentRunner` 或 `ChatRunner`），无 Tool 时循环只跑一轮。
+**核心设计**: `ChatRunner` 处理纯对话（无 Tool），`AIAgentRunner` 处理 Agent 对话（含 Tool 循环）。两者共享 `IConversationRunner` 接口，由上层根据是否选择 Agent 决定使用哪个运行器。
 
 ### 3.6 Runtime - Chat（会话管理）
 

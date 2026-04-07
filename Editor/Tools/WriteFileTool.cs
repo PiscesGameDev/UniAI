@@ -23,11 +23,8 @@ namespace UniAI.Editor.Tools
             if (string.IsNullOrEmpty(args.Content) && string.IsNullOrEmpty(args.OldString))
                 return "Error: Must provide 'content' (full write) or 'old_string'+'new_string' (replace).";
 
-            string fullPath = Path.GetFullPath(args.Path);
-            string projectRoot = Path.GetFullPath(".");
-
-            if (!fullPath.StartsWith(projectRoot))
-                return "Error: Path is outside the project directory.";
+            if (!ValidateProjectPath(args.Path, out var fullPath, out var error))
+                return error;
 
             // 替换模式：old_string → new_string
             if (!string.IsNullOrEmpty(args.OldString))

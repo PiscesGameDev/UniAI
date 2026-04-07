@@ -1,3 +1,4 @@
+using System;
 using UnityEditor;
 using UnityEngine;
 
@@ -61,59 +62,96 @@ namespace UniAI.Editor.Chat
         /// </summary>
         private void DrawAgentWelcomeState(AgentDefinition agent, float width, float height)
         {
-            EditorGUI.DrawRect(new Rect(0, 0, width, height), _chatBg);
-
-            float inputAreaH = CalcInputAreaHeight(width);
-            float welcomeH = height - inputAreaH;
-
-            GUILayout.BeginArea(new Rect(0, 0, width, welcomeH));
-            GUILayout.FlexibleSpace();
-
-            // Agent Icon
-            if (agent.Icon != null)
+            DrawWelcomeLayout(width, height, _ =>
             {
+                // Agent Icon
+                if (agent.Icon != null)
+                {
+                    EditorGUILayout.BeginHorizontal();
+                    GUILayout.FlexibleSpace();
+                    var iconRect = GUILayoutUtility.GetRect(48, 48, GUILayout.Width(48), GUILayout.Height(48));
+                    GUI.DrawTexture(iconRect, agent.Icon, ScaleMode.ScaleToFit);
+                    GUILayout.FlexibleSpace();
+                    EditorGUILayout.EndHorizontal();
+                    GUILayout.Space(8);
+                }
+
+                // Agent Name
                 EditorGUILayout.BeginHorizontal();
                 GUILayout.FlexibleSpace();
-                var iconRect = GUILayoutUtility.GetRect(48, 48, GUILayout.Width(48), GUILayout.Height(48));
-                GUI.DrawTexture(iconRect, agent.Icon, ScaleMode.ScaleToFit);
+                GUILayout.Label(agent.AgentName ?? agent.name, _welcomeTitleStyle);
                 GUILayout.FlexibleSpace();
                 EditorGUILayout.EndHorizontal();
-                GUILayout.Space(8);
-            }
 
-            // Agent Name
-            EditorGUILayout.BeginHorizontal();
-            GUILayout.FlexibleSpace();
-            GUILayout.Label(agent.AgentName ?? agent.name, _welcomeTitleStyle);
-            GUILayout.FlexibleSpace();
-            EditorGUILayout.EndHorizontal();
+                // Agent Description
+                if (!string.IsNullOrEmpty(agent.Description))
+                {
+                    GUILayout.Space(4);
+                    EditorGUILayout.BeginHorizontal();
+                    GUILayout.FlexibleSpace();
+                    GUILayout.Label(agent.Description, _welcomeSubStyle, GUILayout.MaxWidth(width * 0.7f));
+                    GUILayout.FlexibleSpace();
+                    EditorGUILayout.EndHorizontal();
+                }
 
-            // Agent Description
-            if (!string.IsNullOrEmpty(agent.Description))
-            {
-                GUILayout.Space(4);
-                EditorGUILayout.BeginHorizontal();
-                GUILayout.FlexibleSpace();
-                GUILayout.Label(agent.Description, _welcomeSubStyle, GUILayout.MaxWidth(width * 0.7f));
-                GUILayout.FlexibleSpace();
-                EditorGUILayout.EndHorizontal();
-            }
-
-            GUILayout.Space(24);
-            GUILayout.FlexibleSpace();
-            GUILayout.EndArea();
-
-            EditorGUI.DrawRect(new Rect(0, welcomeH, width, 1), _separatorColor);
-
-            GUILayout.BeginArea(new Rect(0, welcomeH + 1, width, inputAreaH - 1));
-            DrawInputArea(width);
-            GUILayout.EndArea();
+                GUILayout.Space(24);
+            });
         }
 
         /// <summary>
         /// 纯 Chat 模式空状态：通用欢迎页 + Guide Cards
         /// </summary>
         private void DrawChatWelcomeState(float width, float height)
+        {
+            DrawWelcomeLayout(width, height, w =>
+            {
+                EditorGUILayout.BeginHorizontal();
+                GUILayout.FlexibleSpace();
+                GUILayout.Label("✨ UniAI 对话", _welcomeTitleStyle);
+                GUILayout.FlexibleSpace();
+                EditorGUILayout.EndHorizontal();
+
+                GUILayout.Space(4);
+
+                EditorGUILayout.BeginHorizontal();
+                GUILayout.FlexibleSpace();
+                GUILayout.Label("你的 Unity 工程助手。随便问，或试试下方的快捷操作。", _welcomeSubStyle);
+                GUILayout.FlexibleSpace();
+                EditorGUILayout.EndHorizontal();
+
+                GUILayout.Space(24);
+
+                float cardWidth = Mathf.Min((w - PAD * 3) / 2f, 280f);
+                float gridWidth = cardWidth * 2 + PAD;
+                float gridStartX = (w - gridWidth) / 2f;
+
+                for (int row = 0; row < 2; row++)
+                {
+                    EditorGUILayout.BeginHorizontal();
+                    GUILayout.Space(gridStartX);
+
+                    for (int col = 0; col < 2; col++)
+                    {
+                        int idx = row * 2 + col;
+                        if (idx >= _guideCards.Length) break;
+                        var (cardTitle, desc, slot, message) = _guideCards[idx];
+
+                        DrawGuideCard(cardTitle, desc, slot, message, cardWidth);
+
+                        if (col == 0) GUILayout.Space(PAD);
+                    }
+
+                    GUILayout.FlexibleSpace();
+                    EditorGUILayout.EndHorizontal();
+                    GUILayout.Space(PAD);
+                }
+            });
+        }
+
+        /// <summary>
+        /// Welcome 布局骨架：背景 + 上部居中内容区 + 分隔线 + 输入区
+        /// </summary>
+        private void DrawWelcomeLayout(float width, float height, Action<float> drawContent)
         {
             EditorGUI.DrawRect(new Rect(0, 0, width, height), _chatBg);
 
@@ -123,46 +161,7 @@ namespace UniAI.Editor.Chat
             GUILayout.BeginArea(new Rect(0, 0, width, welcomeH));
             GUILayout.FlexibleSpace();
 
-            EditorGUILayout.BeginHorizontal();
-            GUILayout.FlexibleSpace();
-            GUILayout.Label("✨ UniAI 对话", _welcomeTitleStyle);
-            GUILayout.FlexibleSpace();
-            EditorGUILayout.EndHorizontal();
-
-            GUILayout.Space(4);
-
-            EditorGUILayout.BeginHorizontal();
-            GUILayout.FlexibleSpace();
-            GUILayout.Label("你的 Unity 工程助手。随便问，或试试下方的快捷操作。", _welcomeSubStyle);
-            GUILayout.FlexibleSpace();
-            EditorGUILayout.EndHorizontal();
-
-            GUILayout.Space(24);
-
-            float cardWidth = Mathf.Min((width - PAD * 3) / 2f, 280f);
-            float gridWidth = cardWidth * 2 + PAD;
-            float gridStartX = (width - gridWidth) / 2f;
-
-            for (int row = 0; row < 2; row++)
-            {
-                EditorGUILayout.BeginHorizontal();
-                GUILayout.Space(gridStartX);
-
-                for (int col = 0; col < 2; col++)
-                {
-                    int idx = row * 2 + col;
-                    if (idx >= _guideCards.Length) break;
-                    var (cardTitle, desc, slot, message) = _guideCards[idx];
-
-                    DrawGuideCard(cardTitle, desc, slot, message, cardWidth);
-
-                    if (col == 0) GUILayout.Space(PAD);
-                }
-
-                GUILayout.FlexibleSpace();
-                EditorGUILayout.EndHorizontal();
-                GUILayout.Space(PAD);
-            }
+            drawContent(width);
 
             GUILayout.FlexibleSpace();
             GUILayout.EndArea();
@@ -210,107 +209,111 @@ namespace UniAI.Editor.Chat
                 return;
             }
 
-            bool isUser = msg.Role == AIRole.User;
-            Color bgColor = isUser ? _userMsgBg : _assistantMsgBg;
+            if (msg.Role == AIRole.User)
+                DrawUserMessage(msg, areaWidth);
+            else
+                DrawAssistantMessage(msg, areaWidth);
+        }
+
+        private void DrawUserMessage(ChatMessage msg, float areaWidth)
+        {
             float maxBubbleWidth = areaWidth * MSG_MAX_WIDTH_RATIO;
-            float maxContentWidth = maxBubbleWidth - 16; // bubble padding
+            float maxContentWidth = maxBubbleWidth - 16;
 
             EditorGUILayout.BeginVertical();
             GUILayout.Space(6);
 
-            // ─── Header row: Avatar + Name ───
+            // Header: right-aligned avatar
             EditorGUILayout.BeginHorizontal();
             GUILayout.Space(MSG_HORIZONTAL_PAD);
-
-            if (isUser)
-            {
-                // Right-aligned header: avatar only
-                GUILayout.FlexibleSpace();
-                var avatarRect = GUILayoutUtility.GetRect(AVATAR_SIZE, AVATAR_SIZE, GUILayout.Width(AVATAR_SIZE), GUILayout.Height(AVATAR_SIZE));
-                DrawAvatar(avatarRect, _userAvatar, new Color(0.3f, 0.45f, 0.7f), "U");
-            }
-            else
-            {
-                // Left-aligned header: avatar only
-                if (msg.IsStreaming)
-                {
-                    EnsureSpinnerIcons();
-                    GUILayout.Label(_spinnerIcons[_spinnerFrame], GUILayout.Width(AVATAR_SIZE), GUILayout.Height(AVATAR_SIZE));
-                }
-                else
-                {
-                    var avatarRect = GUILayoutUtility.GetRect(AVATAR_SIZE, AVATAR_SIZE, GUILayout.Width(AVATAR_SIZE), GUILayout.Height(AVATAR_SIZE));
-                    DrawAvatar(avatarRect, _aiAvatar, new Color(0.35f, 0.6f, 0.4f), "AI");
-                }
-
-                if (msg.IsStreaming)
-                {
-                    GUILayout.Space(6);
-                    GUILayout.Label("思考中...", EditorStyles.miniLabel);
-                }
-
-                GUILayout.FlexibleSpace();
-            }
-
+            GUILayout.FlexibleSpace();
+            var avatarRect = GUILayoutUtility.GetRect(AVATAR_SIZE, AVATAR_SIZE, GUILayout.Width(AVATAR_SIZE), GUILayout.Height(AVATAR_SIZE));
+            DrawAvatar(avatarRect, _userAvatar, new Color(0.3f, 0.45f, 0.7f), "U");
             GUILayout.Space(MSG_HORIZONTAL_PAD);
             EditorGUILayout.EndHorizontal();
 
             GUILayout.Space(8);
 
-            // ─── Bubble row ───
+            // Bubble: right-aligned
             EditorGUILayout.BeginHorizontal();
+            GUILayout.FlexibleSpace();
 
-            if (isUser)
-            {
-                // Right-aligned bubble
-                GUILayout.FlexibleSpace();
+            var contentRect = EditorGUILayout.BeginVertical(GUILayout.MaxWidth(maxBubbleWidth));
+            DrawBubbleBackground(contentRect, _userMsgBg, true);
+            GUILayout.Space(2);
+            GUILayout.Label(msg.Content, _userMsgStyle, GUILayout.MaxWidth(maxContentWidth));
+            GUILayout.Space(2);
+            EditorGUILayout.EndVertical();
 
-                var contentRect = EditorGUILayout.BeginVertical(GUILayout.MaxWidth(maxBubbleWidth));
-                if (contentRect.width > 1)
-                {
-                    var bubbleRect = new Rect(
-                        contentRect.x - 8,
-                        contentRect.y - 4,
-                        contentRect.width + 16,
-                        contentRect.height + 8);
-                    DrawAsymmetricBubble(bubbleRect, bgColor, MSG_BUBBLE_RADIUS, 2f, true);
-                }
-
-                GUILayout.Space(2);
-                GUILayout.Label(msg.Content, _userMsgStyle, GUILayout.MaxWidth(maxContentWidth));
-                GUILayout.Space(2);
-                EditorGUILayout.EndVertical();
-
-                GUILayout.Space(MSG_HORIZONTAL_PAD);
-            }
-            else
-            {
-                // Left-aligned bubble
-                GUILayout.Space(MSG_HORIZONTAL_PAD);
-
-                var contentRect = EditorGUILayout.BeginVertical(GUILayout.MaxWidth(maxBubbleWidth));
-                if (contentRect.width > 1)
-                {
-                    var bubbleRect = new Rect(
-                        contentRect.x - 8,
-                        contentRect.y - 4,
-                        contentRect.width + 16,
-                        contentRect.height + 8);
-                    DrawAsymmetricBubble(bubbleRect, bgColor, MSG_BUBBLE_RADIUS, 2f, false);
-                }
-
-                GUILayout.Space(2);
-                MarkdownRenderer.Draw(msg.Content ?? "", maxContentWidth);
-                GUILayout.Space(2);
-                EditorGUILayout.EndVertical();
-
-                GUILayout.FlexibleSpace();
-            }
-
+            GUILayout.Space(MSG_HORIZONTAL_PAD);
             EditorGUILayout.EndHorizontal();
 
             GUILayout.Space(6);
             EditorGUILayout.EndVertical();
+        }
+
+        private void DrawAssistantMessage(ChatMessage msg, float areaWidth)
+        {
+            float maxBubbleWidth = areaWidth * MSG_MAX_WIDTH_RATIO;
+            float maxContentWidth = maxBubbleWidth - 16;
+
+            EditorGUILayout.BeginVertical();
+            GUILayout.Space(6);
+
+            // Header: left-aligned avatar
+            EditorGUILayout.BeginHorizontal();
+            GUILayout.Space(MSG_HORIZONTAL_PAD);
+
+            if (msg.IsStreaming)
+            {
+                EnsureSpinnerIcons();
+                GUILayout.Label(_spinnerIcons[_spinnerFrame], GUILayout.Width(AVATAR_SIZE), GUILayout.Height(AVATAR_SIZE));
+            }
+            else
+            {
+                var avatarRect = GUILayoutUtility.GetRect(AVATAR_SIZE, AVATAR_SIZE, GUILayout.Width(AVATAR_SIZE), GUILayout.Height(AVATAR_SIZE));
+                DrawAvatar(avatarRect, _aiAvatar, new Color(0.35f, 0.6f, 0.4f), "AI");
+            }
+
+            if (msg.IsStreaming)
+            {
+                GUILayout.Space(6);
+                GUILayout.Label("思考中...", EditorStyles.miniLabel);
+            }
+
+            GUILayout.FlexibleSpace();
+            GUILayout.Space(MSG_HORIZONTAL_PAD);
+            EditorGUILayout.EndHorizontal();
+
+            GUILayout.Space(8);
+
+            // Bubble: left-aligned
+            EditorGUILayout.BeginHorizontal();
+            GUILayout.Space(MSG_HORIZONTAL_PAD);
+
+            var contentRect = EditorGUILayout.BeginVertical(GUILayout.MaxWidth(maxBubbleWidth));
+            DrawBubbleBackground(contentRect, _assistantMsgBg, false);
+            GUILayout.Space(2);
+            MarkdownRenderer.Draw(msg.Content ?? "", maxContentWidth);
+            GUILayout.Space(2);
+            EditorGUILayout.EndVertical();
+
+            GUILayout.FlexibleSpace();
+            EditorGUILayout.EndHorizontal();
+
+            GUILayout.Space(6);
+            EditorGUILayout.EndVertical();
+        }
+
+        private static void DrawBubbleBackground(Rect contentRect, Color bgColor, bool isUser)
+        {
+            if (contentRect.width <= 1) return;
+            var bubbleRect = new Rect(
+                contentRect.x - 8,
+                contentRect.y - 4,
+                contentRect.width + 16,
+                contentRect.height + 8);
+            DrawAsymmetricBubble(bubbleRect, bgColor, MSG_BUBBLE_RADIUS, 2f, isUser);
         }
 
         // ─── Tool Call Message ───

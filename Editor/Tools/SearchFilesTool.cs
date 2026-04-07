@@ -25,11 +25,9 @@ namespace UniAI.Editor.Tools
                 return UniTask.FromResult("Error: Missing required parameter 'pattern'.");
 
             string basePath = string.IsNullOrEmpty(args.Path) ? "." : args.Path;
-            string fullBase = Path.GetFullPath(basePath);
-            string projectRoot = Path.GetFullPath(".");
 
-            if (!fullBase.StartsWith(projectRoot))
-                return UniTask.FromResult("Error: Path is outside the project directory.");
+            if (!ValidateProjectPath(basePath, out var fullBase, out var pathError))
+                return UniTask.FromResult(pathError);
 
             if (!Directory.Exists(fullBase))
                 return UniTask.FromResult($"Error: Directory not found: {basePath}");
@@ -59,7 +57,7 @@ namespace UniAI.Editor.Tools
                 {
                     ct.ThrowIfCancellationRequested();
 
-                    string relative = Path.GetRelativePath(projectRoot, filePath).Replace('\\', '/');
+                    string relative = Path.GetRelativePath(ProjectRoot, filePath).Replace('\\', '/');
 
                     // 跳过噪音目录和二进制文件
                     if (relative.Contains("/.") || relative.StartsWith(".")) continue;

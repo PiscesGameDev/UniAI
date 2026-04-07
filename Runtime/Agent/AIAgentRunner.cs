@@ -110,20 +110,8 @@ namespace UniAI
         {
             var request = BuildRequest(new List<AIMessage>(messages), requestOverride);
             return _client.StreamAsync(request, ct)
-                .Select(ChunkToEvent)
+                .Select(AgentEvent.FromChunk)
                 .Where(evt => evt != null);
-        }
-
-        private static AgentEvent ChunkToEvent(AIStreamChunk chunk)
-        {
-            if (!string.IsNullOrEmpty(chunk.DeltaText))
-                return new AgentEvent { Type = AgentEventType.TextDelta, Text = chunk.DeltaText };
-
-            if (chunk.IsComplete)
-                return new AgentEvent { Type = AgentEventType.TurnComplete, TurnIndex = 0, Usage = chunk.Usage };
-
-            // ToolCall chunks 不应出现在无 Tool 的 Agent 中，忽略
-            return null;
         }
 
         /// <summary>

@@ -20,11 +20,8 @@ namespace UniAI.Editor.Tools
             var args = JsonConvert.DeserializeObject<ListFilesArgs>(arguments);
             string basePath = string.IsNullOrEmpty(args?.Path) ? "." : args.Path;
 
-            string fullBase = Path.GetFullPath(basePath);
-            string projectRoot = Path.GetFullPath(".");
-
-            if (!fullBase.StartsWith(projectRoot))
-                return UniTask.FromResult("Error: Path is outside the project directory.");
+            if (!ValidateProjectPath(basePath, out var fullBase, out var error))
+                return UniTask.FromResult(error);
 
             if (!Directory.Exists(fullBase))
                 return UniTask.FromResult($"Error: Directory not found: {basePath}");
@@ -46,7 +43,7 @@ namespace UniAI.Editor.Tools
                 {
                     ct.ThrowIfCancellationRequested();
 
-                    string relative = Path.GetRelativePath(projectRoot, entry).Replace('\\', '/');
+                    string relative = Path.GetRelativePath(ProjectRoot, entry).Replace('\\', '/');
 
                     // 跳过隐藏目录和常见噪音
                     if (relative.Contains("/.") || relative.StartsWith("."))

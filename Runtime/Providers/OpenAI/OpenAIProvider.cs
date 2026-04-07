@@ -1,9 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Threading;
 using Cysharp.Threading.Tasks;
-using Cysharp.Threading.Tasks.Linq;
 using Newtonsoft.Json;
 
 namespace UniAI.Providers.OpenAI
@@ -34,9 +32,29 @@ namespace UniAI.Providers.OpenAI
 
         protected override object BuildRequestBody(AIRequest request, bool stream)
         {
+            var messages = ConvertMessages(request);
+
+            var openAIRequest = new OpenAIRequest
+            {
+                Model = string.IsNullOrEmpty(request.Model) ? _config.Model : request.Model,
+                Messages = messages,
+                MaxTokens = request.MaxTokens,
+                Temperature = request.Temperature,
+                Stream = stream
+            };
+
+            if (request.Tools?.Count > 0)
+                BuildToolDefs(request, openAIRequest);
+
+            return openAIRequest;
+        }
+
+        // ────────────────────────── 消息转换 ──────────────────────────
+
+        private static List<OpenAIMessage> ConvertMessages(AIRequest request)
+        {
             var messages = new List<OpenAIMessage>();
 
-            // System prompt
             if (!string.IsNullOrEmpty(request.SystemPrompt))
             {
                 messages.Add(new OpenAIMessage
@@ -110,135 +128,102 @@ namespace UniAI.Providers.OpenAI
                 messages.Add(new OpenAIMessage { Role = role, Content = content });
             }
 
-            var openAIRequest = new OpenAIRequest
-            {
-                Model = string.IsNullOrEmpty(request.Model) ? _config.Model : request.Model,
-                Messages = messages,
-                MaxTokens = request.MaxTokens,
-                Temperature = request.Temperature,
-                Stream = stream
-            };
+            return messages;
+        }
 
-            // Tools
-            if (request.Tools?.Count > 0)
+        private static void BuildToolDefs(AIRequest request, OpenAIRequest openAIRequest)
+        {
+            openAIRequest.Tools = request.Tools.Select(t => new OpenAIToolDef
             {
-                openAIRequest.Tools = request.Tools.Select(t => new OpenAIToolDef
+                Function = new OpenAIFunctionDef
                 {
-                    Function = new OpenAIFunctionDef
-                    {
-                        Name = t.Name,
-                        Description = t.Description,
-                        Parameters = string.IsNullOrEmpty(t.ParametersSchema) ? new object()
-                            : JsonConvert.DeserializeObject(t.ParametersSchema)
-                    }
-                }).ToList();
-
-                // ToolChoice
-                if (!string.IsNullOrEmpty(request.ToolChoice))
-                {
-                    openAIRequest.ToolChoice = request.ToolChoice switch
-                    {
-                        "auto" => "auto",
-                        "any" => "required",
-                        "none" => "none",
-                        _ => (object)new { type = "function", function = new { name = request.ToolChoice } }
-                    };
+                    Name = t.Name,
+                    Description = t.Description,
+                    Parameters = string.IsNullOrEmpty(t.ParametersSchema) ? new object()
+                        : JsonConvert.DeserializeObject(t.ParametersSchema)
                 }
+            }).ToList();
+
+            if (!string.IsNullOrEmpty(request.ToolChoice))
+            {
+                openAIRequest.ToolChoice = request.ToolChoice switch
+                {
+                    "auto" => "auto",
+                    "any" => "required",
+                    "none" => "none",
+                    _ => (object)new { type = "function", function = new { name = request.ToolChoice } }
+                };
+            }
+        }
+
+        // ────────────────────────── 流式事件处理 ──────────────────────────
+
+        private class OpenAIStreamState
+        {
+            public readonly Dictionary<int, (string Id, string Name, string Args)> ToolCallAccumulators = new();
+        }
+
+        protected override object CreateStreamState() => new OpenAIStreamState();
+
+        protected override async UniTask ProcessStreamEvent(SSEEvent evt, object streamState, EmitChunk emit)
+        {
+            var state = (OpenAIStreamState)streamState;
+            var resp = JsonConvert.DeserializeObject<OpenAIStreamResponse>(evt.Data);
+            var choice = resp?.Choices?.FirstOrDefault();
+            if (choice == null) return;
+
+            // 处理 tool_calls 增量
+            if (choice.Delta?.ToolCalls != null)
+            {
+                foreach (var tc in choice.Delta.ToolCalls)
+                {
+                    if (!state.ToolCallAccumulators.ContainsKey(tc.Index))
+                        state.ToolCallAccumulators[tc.Index] = (tc.Id ?? "", tc.Function?.Name ?? "", "");
+
+                    var current = state.ToolCallAccumulators[tc.Index];
+                    if (!string.IsNullOrEmpty(tc.Id))
+                        current.Id = tc.Id;
+                    if (!string.IsNullOrEmpty(tc.Function?.Name))
+                        current.Name = tc.Function.Name;
+                    if (!string.IsNullOrEmpty(tc.Function?.Arguments))
+                        current.Args += tc.Function.Arguments;
+                    state.ToolCallAccumulators[tc.Index] = current;
+                }
+                return;
             }
 
-            return openAIRequest;
-        }
-
-        public override IUniTaskAsyncEnumerable<AIStreamChunk> StreamAsync(AIRequest request, CancellationToken ct = default)
-        {
-            return UniTaskAsyncEnumerable.Create<AIStreamChunk>(async (writer, token) =>
+            if (choice.FinishReason != null)
             {
-                using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct, token);
-                var linkedToken = cts.Token;
-
-                var url = BuildUrl();
-                var body = (OpenAIRequest)BuildRequestBody(request, stream: true);
-                var json = JsonConvert.SerializeObject(body, Formatting.None, SerializerSettings);
-                var headers = BuildHeaders();
-
-                AILogger.Verbose($"OpenAI StreamAsync model={body.Model}");
-
-                var parser = new SSEParser();
-
-                // 流式 Tool 调用累积
-                var toolCallAccumulators = new Dictionary<int, (string Id, string Name, string Args)>();
-
-                await foreach (var line in AIHttpClient.PostStreamAsync(url, json, headers, linkedToken))
+                // 输出累积的 tool calls
+                foreach (var kvp in state.ToolCallAccumulators)
                 {
-                    var evt = parser.ParseLine(line);
-                    if (evt == null) continue;
-
-                    if (evt.Data == null || evt.Data == "[DONE]")
+                    var (id, name, args) = kvp.Value;
+                    await emit(new AIStreamChunk
                     {
-                        break;
-                    }
-
-                    try
-                    {
-                        var resp = JsonConvert.DeserializeObject<OpenAIStreamResponse>(evt.Data);
-                        var choice = resp?.Choices?.FirstOrDefault();
-                        if (choice == null) continue;
-
-                        // 处理 tool_calls 增量
-                        if (choice.Delta?.ToolCalls != null)
-                        {
-                            foreach (var tc in choice.Delta.ToolCalls)
-                            {
-                                if (!toolCallAccumulators.ContainsKey(tc.Index))
-                                    toolCallAccumulators[tc.Index] = (tc.Id ?? "", tc.Function?.Name ?? "", "");
-
-                                var current = toolCallAccumulators[tc.Index];
-                                if (!string.IsNullOrEmpty(tc.Id))
-                                    current.Id = tc.Id;
-                                if (!string.IsNullOrEmpty(tc.Function?.Name))
-                                    current.Name = tc.Function.Name;
-                                if (!string.IsNullOrEmpty(tc.Function?.Arguments))
-                                    current.Args += tc.Function.Arguments;
-                                toolCallAccumulators[tc.Index] = current;
-                            }
-                            continue;
-                        }
-
-                        if (choice.FinishReason != null)
-                        {
-                            // 输出累积的 tool calls
-                            foreach (var kvp in toolCallAccumulators)
-                            {
-                                var (id, name, args) = kvp.Value;
-                                await writer.YieldAsync(new AIStreamChunk
-                                {
-                                    ToolCall = new AIToolCall { Id = id, Name = name, Arguments = args }
-                                });
-                            }
-
-                            await writer.YieldAsync(new AIStreamChunk
-                            {
-                                IsComplete = true,
-                                Usage = resp.Usage != null ? new TokenUsage
-                                {
-                                    InputTokens = resp.Usage.PromptTokens,
-                                    OutputTokens = resp.Usage.CompletionTokens
-                                } : null
-                            });
-                            break;
-                        }
-
-                        var deltaText = choice.Delta?.Content;
-                        if (deltaText != null)
-                            await writer.YieldAsync(new AIStreamChunk { DeltaText = deltaText });
-                    }
-                    catch (Exception e)
-                    {
-                        AILogger.Warning($"Failed to parse OpenAI stream event: {e.Message}");
-                    }
+                        ToolCall = new AIToolCall { Id = id, Name = name, Arguments = args }
+                    });
                 }
-            });
+
+                await emit(new AIStreamChunk
+                {
+                    IsComplete = true,
+                    Usage = resp.Usage != null ? new TokenUsage
+                    {
+                        InputTokens = resp.Usage.PromptTokens,
+                        OutputTokens = resp.Usage.CompletionTokens
+                    } : null
+                });
+                return;
+            }
+
+            var deltaText = choice.Delta?.Content;
+            if (deltaText != null)
+                await emit(new AIStreamChunk { DeltaText = deltaText });
         }
+
+        protected override bool OnStreamDone(object streamState, EmitChunk emit) => true;
+
+        // ────────────────────────── 响应解析 ──────────────────────────
 
         protected override AIResponse ParseResponse(string json)
         {
@@ -249,7 +234,6 @@ namespace UniAI.Providers.OpenAI
                 var text = choice?.Message?.Content ?? "";
                 var finishReason = choice?.FinishReason;
 
-                // 解析 Tool 调用
                 List<AIToolCall> toolCalls = null;
                 if (choice?.Message?.ToolCalls != null)
                 {

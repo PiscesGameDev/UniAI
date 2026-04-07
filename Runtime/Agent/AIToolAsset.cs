@@ -1,4 +1,5 @@
 using System;
+using System.IO;
 using System.Threading;
 using Cysharp.Threading.Tasks;
 using UnityEngine;
@@ -56,5 +57,38 @@ namespace UniAI
         /// <param name="arguments">AI 传入的参数 JSON 字符串</param>
         /// <param name="ct">取消令牌</param>
         public abstract UniTask<string> ExecuteAsync(string arguments, CancellationToken ct);
+
+        // ────────────────────────── 路径安全工具 ──────────────────────────
+
+        private static readonly string _projectRoot = Path.GetFullPath(".");
+
+        /// <summary>
+        /// 项目根目录绝对路径（供子类使用）
+        /// </summary>
+        protected static string ProjectRoot => _projectRoot;
+
+        /// <summary>
+        /// 验证路径在项目目录内，返回完整路径。失败时返回 null 并输出错误信息。
+        /// </summary>
+        protected static bool ValidateProjectPath(string path, out string fullPath, out string error)
+        {
+            if (string.IsNullOrEmpty(path))
+            {
+                fullPath = null;
+                error = "Error: Missing required parameter 'path'.";
+                return false;
+            }
+
+            fullPath = Path.GetFullPath(path);
+            if (!fullPath.StartsWith(_projectRoot))
+            {
+                error = "Error: Path is outside the project directory.";
+                fullPath = null;
+                return false;
+            }
+
+            error = null;
+            return true;
+        }
     }
 }
