@@ -45,6 +45,7 @@ namespace UniAI.Editor.Chat
         private AIConfig _config;
         private AIClient _client;
         private IConversationRunner _runner;
+        private ContextPipeline _contextPipeline;
         private ChatHistory _history;
         private ChatSession _activeSession;
         private string _inputText = "";

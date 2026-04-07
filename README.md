@@ -3,7 +3,7 @@
 [![Unity](https://img.shields.io/badge/Unity-2022.3%2B-blue)](https://unity.com)
 [![License](https://img.shields.io/badge/License-MIT-green)](LICENSE)
 
-Unity AI 交互框架，支持多 Provider（Claude、OpenAI、Gemini、DeepSeek 等）、多模态输入、Tool Use、Agent 系统和 SSE 流式响应。
+Unity AI 交互框架，支持多 Provider（Claude、OpenAI、Gemini、DeepSeek 等）、多模态输入、Tool Use、Agent 系统、上下文窗口管理和 SSE 流式响应。
 
 ## 特性
 
@@ -12,9 +12,24 @@ Unity AI 交互框架，支持多 Provider（Claude、OpenAI、Gemini、DeepSeek
 - **多模态输入**: 支持文本和图片（base64）混合消息
 - **Tool Use**: 支持 AI 调用开发者自定义工具（Claude tool_use + OpenAI function_calling）
 - **Agent 系统**: 自动多轮 Tool 调用循环编排，ScriptableObject 配置 Agent
+- **上下文窗口管理**: 自动 token 预估、滑动窗口截断、AI 摘要压缩、RAG 上下文注入接口
 - **统一抽象**: 一套 `AIRequest/AIResponse` 模型覆盖所有 Provider
-- **Editor 工具链**: 内置渠道管理、Agent 管理和 AI 对话窗口，开箱即用
+- **Editor 工具链**: 统一管理窗口（渠道、Agent、设置）+ AI 对话窗口，开箱即用
 - **零 GC 异步**: 基于 UniTask 的异步实现
+
+## 定位
+
+**UniAI 是 Unity 与 AI 交互的中间件** — 向下对接多种 AI Provider，向上为 Unity Editor 和游戏 Runtime 提供统一的 AI 调用能力。
+
+| | 网页 AI 聊天 | 通用 AI Agent | AI 编码工具 | **UniAI** |
+|--|---|---|---|---|
+| 代表 | ChatGPT / Claude Web | OpenClaw | Codex / Claude Code | — |
+| 核心价值 | 和 AI 对话 | AI 操控电脑干活 | AI 帮你写代码 | **让 Unity 项目具备 AI 能力** |
+| 可编程性 | 无 | 自然语言指令 | 自然语言指令 | **C# API（嵌入游戏逻辑）** |
+| 游戏 Runtime | 不支持 | 不支持 | 不支持 | **核心能力** |
+| Unity 上下文 | 无 | 无 | 无 | 场景 / 组件 / Console / 工程资源 |
+| 产出 | 对话内容 | 自动化任务结果 | 代码 / PR | **具备 AI 能力的游戏** |
+
 
 ## 环境要求
 
@@ -63,20 +78,9 @@ https://github.com/Cysharp/UniTask.git?path=src/UniTask/Assets/Plugins/UniTask
 
 ### 1. 配置 Provider
 
-**方式 A: Editor 配置窗口**
+**方式 A: Editor 配置窗口** — 菜单 `Window > UniAI > Manager`，切换到渠道 Tab，填写 API Key。
 
-菜单 `Window > UniAI > Channels` 打开渠道管理窗口，填写 API Key 和其他参数。
-
-**方式 B: 环境变量**
-
-设置以下环境变量，框架会自动读取（优先级高于配置文件）：
-
-| Provider | 环境变量 |
-|----------|---------|
-| Claude | `ANTHROPIC_API_KEY` |
-| OpenAI | `OPENAI_API_KEY` |
-| Gemini | `GEMINI_API_KEY` |
-| DeepSeek | `DEEPSEEK_API_KEY` |
+**方式 B: 环境变量** — 设置 `ANTHROPIC_API_KEY` / `OPENAI_API_KEY` / `GEMINI_API_KEY` / `DEEPSEEK_API_KEY`，框架自动读取（优先级高于配置文件）。
 
 **方式 C: 代码配置**
 
@@ -90,12 +94,11 @@ var client = AIClient.Create(new ChannelEntry
 });
 ```
 
-### 2. 发送请求
+### 2. 基础用法
 
 ```csharp
 using UniAI;
 
-// 从配置创建客户端
 var config = AIConfigManager.LoadConfig();
 var client = AIClient.Create(config);
 
@@ -104,86 +107,35 @@ var response = await client.SendAsync(new AIRequest
 {
     SystemPrompt = "你是一个 Unity 游戏开发助手。",
     Messages = { AIMessage.User("如何优化 Draw Call？") },
-    MaxTokens = 2048,
-    Temperature = 0.7f
 });
+if (response.IsSuccess) Debug.Log(response.Text);
 
-if (response.IsSuccess)
-    Debug.Log(response.Text);
-```
-
-### 3. 流式响应
-
-```csharp
-var request = new AIRequest
-{
-    Messages = { AIMessage.User("写一个单例模式的基类") }
-};
-
+// 流式响应
 await foreach (var chunk in client.StreamAsync(request))
 {
     if (!string.IsNullOrEmpty(chunk.DeltaText))
-        Debug.Log(chunk.DeltaText); // 增量文本
-
-    if (chunk.IsComplete)
-        Debug.Log($"Token 用量: {chunk.Usage?.TotalTokens}");
+        Debug.Log(chunk.DeltaText);
 }
-```
 
-### 4. 多模态消息（图文）
-
-```csharp
-byte[] imageData = File.ReadAllBytes("screenshot.png");
-
-var request = new AIRequest
+// 多模态（图文）
+var imgRequest = new AIRequest
 {
-    Messages =
-    {
-        AIMessage.UserWithImage("这张截图中的 UI 有什么问题？", imageData, "image/png")
-    }
+    Messages = { AIMessage.UserWithImage("这张截图有什么问题？", imageBytes, "image/png") }
 };
-```
 
-### 5. 多轮对话
-
-```csharp
-var request = new AIRequest
+// 多轮对话
+var multiRequest = new AIRequest
 {
     Messages =
     {
         AIMessage.User("什么是对象池？"),
-        AIMessage.Assistant("对象池是一种设计模式，通过预先创建并复用对象来避免频繁的创建和销毁开销。"),
+        AIMessage.Assistant("对象池是一种复用对象的设计模式。"),
         AIMessage.User("在 Unity 中如何实现？")
     }
 };
 ```
 
-### 6. Tool Use（工具调用）
-
-```csharp
-var request = new AIRequest
-{
-    Messages = { AIMessage.User("读取 Assets/Scripts/Player.cs 文件的内容") },
-    Tools = new List<AITool>
-    {
-        new AITool
-        {
-            Name = "read_file",
-            Description = "读取指定路径的文件内容",
-            ParametersSchema = @"{""type"":""object"",""properties"":{""path"":{""type"":""string""}},""required"":[""path""]}"
-        }
-    }
-};
-
-var response = await client.SendAsync(request);
-if (response.HasToolCalls)
-{
-    foreach (var tc in response.ToolCalls)
-        Debug.Log($"AI 请求调用工具: {tc.Name}({tc.Arguments})");
-}
-```
-
-### 7. Agent 系统
+### 3. Agent 系统
 
 Agent 是 Tool 调用循环的编排器。普通 Chat = 默认 Agent（无 Tool，一轮即结束）。
 
@@ -201,41 +153,68 @@ public class ReadFileTool : AIToolAsset
 }
 ```
 
-**创建 Agent:**
-
-1. 在 Project 中 Create > UniAI > Agent Definition
-2. 配置名称、SystemPrompt、工具列表、MaxTurns 等
-3. Agent 会自动出现在对话窗口的 Agent 下拉菜单中
+**创建 Agent:** Project 中 Create > UniAI > Agent Definition，配置 SystemPrompt、工具列表、MaxTurns，自动出现在对话窗口的 Agent 下拉菜单中。
 
 **使用 Agent（代码方式）:**
 
 ```csharp
 var runner = new AIAgentRunner(client, agentDefinition);
 
-// 非流式
-var result = await runner.RunAsync(messages);
-if (result.IsSuccess)
-    Debug.Log(result.FinalText);
-
 // 流式
 await foreach (var evt in runner.RunStreamAsync(messages))
 {
     switch (evt.Type)
     {
-        case AgentEventType.TextDelta:
-            Debug.Log(evt.Text);
-            break;
-        case AgentEventType.ToolCallStart:
-            Debug.Log($"调用工具: {evt.ToolCall.Name}");
-            break;
-        case AgentEventType.ToolCallResult:
-            Debug.Log($"工具结果: {evt.ToolResult}");
-            break;
+        case AgentEventType.TextDelta:       Debug.Log(evt.Text); break;
+        case AgentEventType.ToolCallStart:   Debug.Log($"调用: {evt.ToolCall.Name}"); break;
+        case AgentEventType.ToolCallResult:  Debug.Log($"结果: {evt.ToolResult}"); break;
     }
 }
 ```
 
+### 4. 上下文窗口管理
+
+长对话自动管理，防止超出模型 token 上限。Editor 对话窗口默认启用，也可通过 `Window > UniAI > Manager` → 设置 Tab 调整参数。
+
+```csharp
+// 代码方式使用 ContextPipeline
+var pipeline = new ContextPipeline(client);
+pipeline.AddProvider(new MyRagProvider()); // 可选：RAG 上下文
+
+var processed = await pipeline.ProcessAsync(
+    messages, systemPrompt, modelId,
+    config.General.ContextWindow, session);
+```
+
+核心能力：
+- **Token 预估**: `TokenEstimator.EstimateMessages(messages)` — 中英混合字符比例法
+- **模型限制查询**: `ModelContextLimits.GetContextWindow("claude-opus-4-6")` → 200000
+- **自动摘要**: 超限时用 AI 压缩旧消息为摘要，保留最近 N 条
+- **RAG 注入**: 实现 `IContextProvider` 接口，检索结果自动注入消息列表
+
 ## Editor 工具
+
+### 统一管理窗口
+
+菜单 `Window > UniAI > Manager` 打开。左侧图标导航栏 + 右侧 Tab 内容。
+
+**渠道 Tab:**
+- 动态管理渠道列表（增删、启用/禁用）
+- API Key 密码显示/隐藏
+- 在线获取模型列表
+- 单个/批量模型连接测试
+- 支持添加自定义 OpenAI 兼容渠道
+
+**Agent Tab:**
+- 查看和管理所有 Agent
+- 可视化编辑 Agent 配置（名称、描述、参数、工具、System Prompt）
+- 从窗口直接开启与 Agent 的对话
+
+**设置 Tab:**
+- 运行时参数：请求超时、日志级别
+- 上下文窗口：启用/禁用、token 限制、摘要压缩配置
+- 编辑器参数：侧边栏、默认上下文、历史会话上限、头像自定义
+- Tool 设置：执行超时、最大输出字符数、搜索最大匹配数
 
 ### AI 对话窗口
 
@@ -245,6 +224,7 @@ await foreach (var evt in runner.RunStreamAsync(messages))
 - Agent 选择：默认助手 + 自定义 Agent
 - SSE 流式输出，实时显示
 - Tool 调用过程可视化（名称、参数、结果）
+- **上下文窗口管理**：长对话自动截断/摘要，防止 token 超限
 - Markdown 渲染（标题、代码块、列表、加粗）
 - 代码块一键复制
 - 会话历史管理（自动持久化）
@@ -253,85 +233,82 @@ await foreach (var evt in runner.RunStreamAsync(messages))
 - 快捷操作：解释代码、优化建议、生成注释、修复报错
 - Enter 发送，Shift+Enter 换行
 
-### 渠道管理窗口
-
-菜单 `Window > UniAI > Channels` 打开。
-
-- 动态管理渠道列表（增删、启用/禁用）
-- API Key 密码显示/隐藏
-- 在线获取模型列表
-- 单个/批量模型连接测试
-- 支持添加自定义 OpenAI 兼容渠道
-
-### Agent 管理窗口
-
-菜单 `Window > UniAI > Agents` 打开。
-
-- 查看和管理所有 Agent
-- 可视化编辑 Agent 配置（名称、描述、参数、工具、System Prompt）
-- 从窗口直接开启与 Agent 的对话
-
-### 设置窗口
-
-菜单 `Window > UniAI > Settings` 打开。
-
-- 运行时参数：请求超时、日志级别
-- 编辑器参数：侧边栏、历史会话上限
-
 ## 架构
 
 ```
 UniAI/
 ├── Runtime/
 │   ├── Core/
-│   │   ├── AIClient.cs          # 框架入口
-│   │   ├── AIConfig.cs          # 配置模型 + 渠道预设
-│   │   ├── UniAISettings.cs     # 运行时 ScriptableObject 配置
-│   │   ├── ModelListService.cs  # 模型列表查询服务
-│   │   └── AILogger.cs          # 内部日志（API Key 脱敏）
+│   │   ├── AIClient.cs              # 框架入口
+│   │   ├── AIConfig.cs              # 配置模型 + 渠道预设 + ContextWindowConfig
+│   │   ├── UniAISettings.cs         # 运行时 ScriptableObject 配置
+│   │   ├── IConversationRunner.cs   # 对话运行器接口
+│   │   ├── ChatRunner.cs            # 纯 Chat 运行器
+│   │   ├── ModelListService.cs      # 模型列表查询服务
+│   │   └── AILogger.cs              # 内部日志（API Key 脱敏）
 │   ├── Models/
-│   │   ├── AIRequest.cs         # 统一请求
-│   │   ├── AIResponse.cs        # 统一响应 + TokenUsage
-│   │   ├── AIMessage.cs         # 消息（User/Assistant + 内容块）
-│   │   ├── AIContent.cs         # 内容块（Text/Image/ToolUse/ToolResult）
-│   │   ├── AITool.cs            # Tool 定义 + ToolCall
-│   │   └── AIStreamChunk.cs     # 流式响应块
+│   │   ├── AIRequest.cs             # 统一请求
+│   │   ├── AIResponse.cs            # 统一响应 + TokenUsage
+│   │   ├── AIMessage.cs             # 消息（User/Assistant + 内容块）
+│   │   ├── AIContent.cs             # 内容块（Text/Image/ToolUse/ToolResult）
+│   │   ├── AITool.cs                # Tool 定义 + ToolCall
+│   │   └── AIStreamChunk.cs         # 流式响应块
 │   ├── Agent/
-│   │   ├── AIToolAsset.cs       # Tool ScriptableObject 基类
-│   │   ├── AgentDefinition.cs   # Agent 配置 ScriptableObject
-│   │   ├── AIAgentRunner.cs     # Agent 运行器（Tool 调用循环）
-│   │   ├── AgentEvent.cs        # Agent 流式事件
-│   │   └── AgentResult.cs       # Agent 运行结果
-│   ├── Providers/
-│   │   ├── IAIProvider.cs       # Provider 接口
-│   │   ├── ProviderBase.cs      # Provider 抽象基类
-│   │   ├── FallbackProvider.cs  # 多渠道故障转移
-│   │   ├── Claude/              # Claude Messages API
-│   │   └── OpenAI/              # OpenAI Chat Completions API
-│   └── Http/
-│       ├── AIHttpClient.cs      # HTTP 客户端（JSON + SSE Stream）
-│       ├── HttpResult.cs        # HTTP 结果封装
-│       ├── SSEDownloadHandler.cs # SSE 增量下载处理器
-│       └── SSEParser.cs         # SSE 协议解析器
-├── Editor/
-│   ├── EditorGUIHelper.cs       # 编辑器 GUI 工具
-│   ├── Setting/
-│   │   ├── AIConfigManager.cs       # 配置持久化
-│   │   ├── EditorPreferences.cs     # 编辑器偏好（ScriptableSingleton）
-│   │   └── UniAISettingsWindow.cs   # 设置窗口
-│   ├── Channel/
-│   │   └── AIChannelWindow.cs       # 渠道管理窗口
-│   ├── Agent/
-│   │   ├── AIAgentWindow.cs         # Agent 管理窗口
-│   │   ├── AgentManager.cs          # Agent 资产扫描 + 内置默认 Agent
-│   │   └── AgentDefinitionEditor.cs # Agent 自定义 Inspector
+│   │   ├── AIToolAsset.cs           # Tool ScriptableObject 基类
+│   │   ├── AgentDefinition.cs       # Agent 配置 ScriptableObject
+│   │   ├── AIAgentRunner.cs         # Agent 运行器（Tool 调用循环）
+│   │   ├── AgentEvent.cs            # Agent 流式事件
+│   │   └── AgentResult.cs           # Agent 运行结果
 │   ├── Chat/
-│   │   ├── AIChatWindow*.cs     # 对话窗口（partial class）
-│   │   ├── ChatSession.cs       # 会话模型
-│   │   ├── ChatHistory.cs       # 会话历史持久化
-│   │   ├── ContextCollector.cs  # Unity 上下文采集器
-│   │   └── MarkdownRenderer.cs  # Markdown → IMGUI 渲染器
-│   └── Icons/                   # 编辑器图标资源
+│   │   ├── ChatSession.cs           # 会话模型（含摘要状态）
+│   │   ├── ChatHistoryManager.cs    # 会话历史管理器
+│   │   └── IChatHistoryStorage.cs   # 会话存储接口
+│   ├── Context/
+│   │   ├── ContextPipeline.cs       # 上下文处理管道
+│   │   ├── ContextWindowConfig.cs   # 上下文窗口配置
+│   │   ├── TokenEstimator.cs        # Token 预估器
+│   │   ├── ModelContextLimits.cs    # 模型上下文窗口映射
+│   │   ├── MessageSummarizer.cs     # 消息摘要器
+│   │   └── IContextProvider.cs      # RAG 上下文提供者接口
+│   ├── Providers/
+│   │   ├── IAIProvider.cs           # Provider 接口
+│   │   ├── ProviderBase.cs          # Provider 抽象基类
+│   │   ├── FallbackProvider.cs      # 多渠道故障转移
+│   │   ├── Claude/                  # Claude Messages API
+│   │   └── OpenAI/                  # OpenAI Chat Completions API
+│   └── Http/
+│       ├── AIHttpClient.cs          # HTTP 客户端（JSON + SSE Stream）
+│       ├── HttpResult.cs            # HTTP 结果封装
+│       ├── SSEDownloadHandler.cs    # SSE 增量下载处理器
+│       └── SSEParser.cs             # SSE 协议解析器
+├── Editor/
+│   ├── EditorGUIHelper.cs           # 编辑器 GUI 工具
+│   ├── Setting/
+│   │   ├── UniAIManagerWindow.cs    # 统一管理窗口（图标导航 + Tab）
+│   │   ├── ManagerTab.cs            # Tab 页面基类
+│   │   ├── ChannelTab.cs            # 渠道管理 Tab
+│   │   ├── AgentTab.cs              # Agent 管理 Tab
+│   │   ├── SettingsTab.cs           # 设置 Tab（含上下文窗口配置 UI）
+│   │   ├── AIConfigManager.cs       # 配置持久化
+│   │   └── EditorPreferences.cs     # 编辑器偏好（ScriptableSingleton）
+│   ├── Agent/
+│   │   ├── AgentManager.cs          # Agent 资产扫描 + 内置默认 Agent
+│   │   ├── AgentDefinitionEditor.cs # Agent 自定义 Inspector
+│   │   └── EditorAgentGuard.cs      # Agent 运行时 AssetDatabase 保护
+│   ├── Chat/
+│   │   ├── AIChatWindow*.cs         # 对话窗口（partial class, 8 个分部）
+│   │   ├── ChatHistory.cs           # 会话历史持久化
+│   │   ├── EditorChatHistoryStorage.cs # 编辑器会话存储实现
+│   │   ├── ContextCollector.cs      # Unity 上下文采集器
+│   │   └── MarkdownRenderer.cs      # Markdown → IMGUI 渲染器
+│   ├── Tools/                       # 内置 Editor Tools
+│   │   ├── ReadFileTool.cs          # 读取文件
+│   │   ├── WriteFileTool.cs         # 写入文件
+│   │   ├── ListFilesTool.cs         # 列出目录文件
+│   │   ├── SearchFilesTool.cs       # 搜索文件内容
+│   │   ├── RunTestsTool.cs          # 运行测试
+│   │   └── RuntimeQueryTool.cs      # 运行时状态查询
+│   └── Icons/                       # 编辑器图标资源
 └── package.json
 ```
 
@@ -366,7 +343,7 @@ var client = new AIClient(new MyProvider());
 | 1 (最高) | 环境变量 | `ANTHROPIC_API_KEY` 等，仅 Editor 生效 |
 | 2 | UniAISettings.asset | `Assets/Resources/UniAI/`，运行时 ScriptableObject |
 
-会话历史存储在 `ProjectSettings/UniAI/History/` 目录，每个会话一个 JSON 文件，上限 50 个。
+会话历史存储在 `Library/UniAI/History/` 目录，每个会话一个 JSON 文件，上限 50 个。
 
 ## 许可证
 

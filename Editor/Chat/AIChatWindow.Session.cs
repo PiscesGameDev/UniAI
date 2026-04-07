@@ -73,14 +73,19 @@ namespace UniAI.Editor.Chat
             if (_client == null)
             {
                 _runner = null;
+                _contextPipeline = null;
                 return;
             }
+
+            _contextPipeline = new ContextPipeline(_client);
 
             var agent = FindAgentById(_activeSession?.AgentId);
             if (agent != null)
             {
-                var agentRunner = new AIAgentRunner(_client, agent);
-                agentRunner.ToolTimeoutSeconds = EditorPreferences.instance.ToolTimeout;
+                var agentRunner = new AIAgentRunner(_client, agent)
+                {
+                    ToolTimeoutSeconds = EditorPreferences.instance.ToolTimeout
+                };
                 _runner = agentRunner;
             }
             else

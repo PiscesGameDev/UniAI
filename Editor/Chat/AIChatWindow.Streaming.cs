@@ -72,6 +72,20 @@ namespace UniAI.Editor.Chat
                     aiMessages.Insert(1, AIMessage.Assistant("收到上下文信息，我会结合这些信息回答你的问题。"));
                 }
 
+                // 上下文窗口管理
+                if (_contextPipeline != null && _config?.General?.ContextWindow != null)
+                {
+                    string systemPrompt = null;
+                    if (_runner is AIAgentRunner agentRunnerCtx)
+                    {
+                        var agent = FindAgentById(_activeSession?.AgentId);
+                        systemPrompt = agent?.SystemPrompt;
+                    }
+                    aiMessages = await _contextPipeline.ProcessAsync(
+                        aiMessages, systemPrompt, _currentModelId,
+                        _config.General.ContextWindow, _activeSession, _streamCts.Token);
+                }
+
                 var ct = _streamCts.Token;
                 await foreach (var evt in _runner.RunStreamAsync(aiMessages, ct: ct))
                 {

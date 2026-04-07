@@ -39,6 +39,21 @@ namespace UniAI
         public string ModelId;
         public List<ChatMessage> Messages = new();
 
+        /// <summary>
+        /// 已生成的对话摘要（持久化）
+        /// </summary>
+        public string SummaryText;
+
+        /// <summary>
+        /// 已摘要到的消息索引
+        /// </summary>
+        public int SummarizedUpToIndex;
+
+        /// <summary>
+        /// 当前预估的上下文 token 数（不持久化）
+        /// </summary>
+        [NonSerialized] public int EstimatedTokens;
+
         public static ChatSession Create(string modelId)
         {
             long now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();

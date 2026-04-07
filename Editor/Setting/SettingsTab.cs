@@ -70,6 +70,55 @@ namespace UniAI.Editor
             EditorGUILayout.LabelField("日志级别", GUILayout.Width(LABEL_WIDTH));
             Config.General.LogLevel = (AILogLevel)EditorGUILayout.EnumPopup(Config.General.LogLevel);
             EditorGUILayout.EndHorizontal();
+
+            GUILayout.Space(12);
+            DrawContextWindowSettings();
+        }
+
+        private void DrawContextWindowSettings()
+        {
+            var cw = Config.General.ContextWindow;
+
+            GUILayout.Label("上下文窗口", _sectionTitleStyle);
+            EditorGUILayout.LabelField("长对话自动截断与摘要压缩，防止超出模型 token 上限。", EditorStyles.miniLabel);
+            GUILayout.Space(8);
+
+            EditorGUILayout.BeginHorizontal();
+            EditorGUILayout.LabelField("启用", GUILayout.Width(LABEL_WIDTH));
+            cw.Enabled = EditorGUILayout.Toggle(cw.Enabled);
+            EditorGUILayout.EndHorizontal();
+
+            using (new EditorGUI.DisabledScope(!cw.Enabled))
+            {
+                EditorGUILayout.BeginHorizontal();
+                EditorGUILayout.LabelField("最大上下文 Token", GUILayout.Width(LABEL_WIDTH));
+                cw.MaxContextTokens = EditorGUILayout.IntField(cw.MaxContextTokens);
+                EditorGUILayout.EndHorizontal();
+                EditorGUILayout.LabelField("    0 = 自动（模型上下文窗口的 80%）", EditorStyles.miniLabel);
+
+                EditorGUILayout.BeginHorizontal();
+                EditorGUILayout.LabelField("预留输出 Token", GUILayout.Width(LABEL_WIDTH));
+                cw.ReservedOutputTokens = EditorGUILayout.IntSlider(cw.ReservedOutputTokens, 512, 16384);
+                EditorGUILayout.EndHorizontal();
+
+                EditorGUILayout.BeginHorizontal();
+                EditorGUILayout.LabelField("最少保留消息数", GUILayout.Width(LABEL_WIDTH));
+                cw.MinRecentMessages = EditorGUILayout.IntSlider(cw.MinRecentMessages, 2, 20);
+                EditorGUILayout.EndHorizontal();
+
+                EditorGUILayout.BeginHorizontal();
+                EditorGUILayout.LabelField("启用摘要压缩", GUILayout.Width(LABEL_WIDTH));
+                cw.EnableSummary = EditorGUILayout.Toggle(cw.EnableSummary);
+                EditorGUILayout.EndHorizontal();
+
+                using (new EditorGUI.DisabledScope(!cw.EnableSummary))
+                {
+                    EditorGUILayout.BeginHorizontal();
+                    EditorGUILayout.LabelField("摘要最大 Token", GUILayout.Width(LABEL_WIDTH));
+                    cw.SummaryMaxTokens = EditorGUILayout.IntSlider(cw.SummaryMaxTokens, 128, 2048);
+                    EditorGUILayout.EndHorizontal();
+                }
+            }
         }
 
         private void DrawEditorSettings()

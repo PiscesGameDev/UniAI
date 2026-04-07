@@ -170,6 +170,11 @@ namespace UniAI
     {
         public int TimeoutSeconds = 60;
         public AILogLevel LogLevel = AILogLevel.Info;
+
+        /// <summary>
+        /// 上下文窗口管理配置
+        /// </summary>
+        public ContextWindowConfig ContextWindow = new();
     }
 
     /// <summary>
