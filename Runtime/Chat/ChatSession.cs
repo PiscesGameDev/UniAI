@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Converters;
 
-namespace UniAI.Editor.Chat
+namespace UniAI
 {
     [Serializable]
     public class ChatMessage
