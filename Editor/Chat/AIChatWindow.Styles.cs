@@ -119,6 +119,24 @@ namespace UniAI.Editor.Chat
                 padding = new RectOffset(4, 4, 1, 1)
             };
             _contextToggleOffStyle.normal.textColor = new Color(0.5f, 0.5f, 0.5f);
+
+            _msgActionBtnStyle = new GUIStyle(EditorStyles.miniLabel)
+            {
+                fontSize = 10,
+                alignment = TextAnchor.MiddleCenter,
+                padding = new RectOffset(4, 4, 1, 1)
+            };
+            _msgActionBtnStyle.normal.textColor = new Color(0.45f, 0.45f, 0.45f);
+            _msgActionBtnStyle.hover.textColor = new Color(0.75f, 0.75f, 0.75f);
+
+            _toolCallFoldoutStyle = new GUIStyle(EditorStyles.miniLabel)
+            {
+                fontSize = 11,
+                richText = true,
+                padding = new RectOffset(2, 4, 2, 2)
+            };
+            _toolCallFoldoutStyle.normal.textColor = new Color(0.55f, 0.75f, 0.6f);
+            _toolCallFoldoutStyle.hover.textColor = new Color(0.65f, 0.85f, 0.7f);
         }
 
         private void EnsureToolCallStyle()

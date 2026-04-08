@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using UnityEditor;
 using UnityEngine;
 
@@ -25,7 +26,21 @@ namespace UniAI.Editor.Chat
             GUILayout.Space(PAD);
             var messages = activeSession.Messages;
             for (int i = 0; i < messages.Count; i++)
-                DrawMessage(messages[i], width);
+            {
+                if (messages[i].IsToolCall)
+                {
+                    // 收集连续的 ToolCall 消息为一组
+                    int groupStart = i;
+                    while (i < messages.Count && messages[i].IsToolCall)
+                        i++;
+                    DrawToolCallGroup(messages, groupStart, i - 1, width);
+                    i--; // for 循环会 i++，回退一步
+                }
+                else
+                {
+                    DrawMessage(messages[i], width);
+                }
+            }
             GUILayout.Space(PAD);
 
             EditorGUILayout.EndScrollView();
@@ -199,12 +214,6 @@ namespace UniAI.Editor.Chat
 
         private void DrawMessage(ChatMessage msg, float areaWidth)
         {
-            if (msg.IsToolCall)
-            {
-                DrawToolCallMessage(msg, areaWidth);
-                return;
-            }
-
             if (msg.Role == AIRole.User)
                 DrawUserMessage(msg, areaWidth);
             else
@@ -241,6 +250,9 @@ namespace UniAI.Editor.Chat
 
             GUILayout.Space(MSG_HORIZONTAL_PAD);
             EditorGUILayout.EndHorizontal();
+
+            // 用户消息操作栏：复制、删除（右对齐）
+            DrawMessageActions(msg, areaWidth, false);
 
             GUILayout.Space(6);
             EditorGUILayout.EndVertical();
@@ -293,8 +305,80 @@ namespace UniAI.Editor.Chat
             GUILayout.FlexibleSpace();
             EditorGUILayout.EndHorizontal();
 
+            // AI 消息操作栏：复制、重新生成、删除（仅非流式时显示）
+            if (!msg.IsStreaming)
+                DrawMessageActions(msg, areaWidth, true);
+
             GUILayout.Space(6);
             EditorGUILayout.EndVertical();
+        }
+
+        // ─── Message Action Bar ───
+
+        private void DrawMessageActions(ChatMessage msg, float areaWidth, bool isAssistant)
+        {
+            string msgId = $"msg_{msg.Timestamp}_{msg.Content?.GetHashCode()}";
+            bool showCopied = _copiedMsgId == msgId
+                && (EditorApplication.timeSinceStartup - _copiedMsgTime) < 1.5;
+
+            GUILayout.Space(4);
+            EditorGUILayout.BeginHorizontal();
+
+            if (isAssistant)
+            {
+                // AI 消息：左对齐，与气泡左边缘对齐
+                GUILayout.Space(MSG_HORIZONTAL_PAD + 8);
+            }
+            else
+            {
+                // 用户消息：右对齐
+                GUILayout.FlexibleSpace();
+            }
+
+            // 复制按钮
+            if (showCopied)
+            {
+                var copiedStyle = new GUIStyle(_msgActionBtnStyle);
+                copiedStyle.normal.textColor = new Color(0.3f, 0.85f, 0.4f);
+                GUILayout.Label("已复制!", copiedStyle, GUILayout.Height(16));
+            }
+            else
+            {
+                if (GUILayout.Button("复制", _msgActionBtnStyle, GUILayout.Height(16)))
+                {
+                    EditorGUIUtility.systemCopyBuffer = msg.Content;
+                    _copiedMsgId = msgId;
+                    _copiedMsgTime = EditorApplication.timeSinceStartup;
+                }
+            }
+
+            GUILayout.Space(8);
+
+            // 重新生成按钮（仅 AI 消息）
+            if (isAssistant)
+            {
+                if (GUILayout.Button("重新生成", _msgActionBtnStyle, GUILayout.Height(16)))
+                {
+                    _controller?.RegenerateFromMessage(msg, _contextSlots);
+                }
+                GUILayout.Space(8);
+            }
+
+            // 删除按钮
+            if (GUILayout.Button("删除", _msgActionBtnStyle, GUILayout.Height(16)))
+            {
+                if (EditorUtility.DisplayDialog("删除消息", "确定要删除这条消息吗？", "删除", "取消"))
+                {
+                    _controller?.DeleteMessage(msg);
+                }
+            }
+
+            if (isAssistant)
+                GUILayout.FlexibleSpace();
+            else
+                GUILayout.Space(MSG_HORIZONTAL_PAD + 8);
+
+            EditorGUILayout.EndHorizontal();
         }
 
         private static void DrawBubbleBackground(Rect contentRect, Color bgColor, bool isUser)
@@ -308,17 +392,68 @@ namespace UniAI.Editor.Chat
             DrawAsymmetricBubble(bubbleRect, bgColor, MSG_BUBBLE_RADIUS, 2f, isUser);
         }
 
-        // ─── Tool Call Message ───
+        // ─── Tool Call Group ───
 
-        private void DrawToolCallMessage(ChatMessage msg, float areaWidth)
+        /// <summary>
+        /// 将连续的 ToolCall 消息合并为一个可折叠组
+        /// </summary>
+        private void DrawToolCallGroup(List<ChatMessage> messages, int startIdx, int endIdx, float areaWidth)
         {
-            float maxContentWidth = areaWidth - MSG_HORIZONTAL_PAD * 2 - 32;
+            int count = endIdx - startIdx + 1;
+            bool isExpanded = _expandedToolGroups.Contains(startIdx);
 
-            EditorGUILayout.BeginVertical();
-            GUILayout.Space(4);
+            // 统计完成状态
+            int doneCount = 0;
+            bool hasError = false;
+            for (int i = startIdx; i <= endIdx; i++)
+            {
+                if (!string.IsNullOrEmpty(messages[i].ToolResult))
+                    doneCount++;
+                if (messages[i].IsToolError)
+                    hasError = true;
+            }
+            bool allDone = doneCount == count;
+            string statusIcon = hasError ? "x" : (allDone ? "v" : "...");
 
+            // 折叠头
+            GUILayout.Space(2);
             EditorGUILayout.BeginHorizontal();
             GUILayout.Space(MSG_HORIZONTAL_PAD + 20);
+
+            string arrow = isExpanded ? "▼" : "▶";
+            string label = $"{arrow}  [{statusIcon}] 工具调用 ({count})";
+
+            if (GUILayout.Button(label, _toolCallFoldoutStyle, GUILayout.Height(20)))
+            {
+                if (isExpanded)
+                    _expandedToolGroups.Remove(startIdx);
+                else
+                    _expandedToolGroups.Add(startIdx);
+            }
+
+            // 让按钮区域显示手型光标
+            var lastRect = GUILayoutUtility.GetLastRect();
+            EditorGUIUtility.AddCursorRect(lastRect, MouseCursor.Link);
+
+            GUILayout.FlexibleSpace();
+            GUILayout.Space(MSG_HORIZONTAL_PAD);
+            EditorGUILayout.EndHorizontal();
+
+            // 展开时绘制每条 ToolCall
+            if (isExpanded)
+            {
+                float maxContentWidth = areaWidth - MSG_HORIZONTAL_PAD * 2 - 32;
+                for (int i = startIdx; i <= endIdx; i++)
+                    DrawToolCallItem(messages[i], maxContentWidth);
+            }
+
+            GUILayout.Space(2);
+        }
+
+        private void DrawToolCallItem(ChatMessage msg, float maxContentWidth)
+        {
+            EditorGUILayout.BeginHorizontal();
+            GUILayout.Space(MSG_HORIZONTAL_PAD + 28);
 
             var contentRect = EditorGUILayout.BeginVertical();
             if (contentRect.width > 1)
@@ -364,8 +499,7 @@ namespace UniAI.Editor.Chat
             GUILayout.Space(MSG_HORIZONTAL_PAD);
             EditorGUILayout.EndHorizontal();
 
-            GUILayout.Space(4);
-            EditorGUILayout.EndVertical();
+            GUILayout.Space(2);
         }
     }
 }

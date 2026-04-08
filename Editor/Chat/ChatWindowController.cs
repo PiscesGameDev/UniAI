@@ -154,6 +154,72 @@ namespace UniAI.Editor.Chat
 
         // ─── 消息发送与流式响应 ───
 
+        /// <summary>
+        /// 删除单条消息。若为 Assistant 消息，同时删除其后紧邻的 ToolCall 消息（同一轮对话）
+        /// </summary>
+        public void DeleteMessage(ChatMessage message)
+        {
+            if (_activeSession == null) return;
+
+            var messages = _activeSession.Messages;
+            int index = messages.IndexOf(message);
+            if (index < 0) return;
+
+            if (!message.IsToolCall && message.Role == AIRole.Assistant)
+            {
+                // 计算该 Assistant 消息之后连续的 ToolCall 数量
+                int removeCount = 1;
+                for (int i = index + 1; i < messages.Count; i++)
+                {
+                    if (messages[i].IsToolCall)
+                        removeCount++;
+                    else
+                        break;
+                }
+                messages.RemoveRange(index, removeCount);
+            }
+            else
+            {
+                messages.RemoveAt(index);
+            }
+
+            _history.Save(_activeSession);
+            OnStateChanged?.Invoke();
+        }
+
+        /// <summary>
+        /// 重新生成：删除指定 AI 消息及其后所有消息，重新发送最后一条用户消息
+        /// </summary>
+        public void RegenerateFromMessage(ChatMessage message, ContextCollector.ContextSlot contextSlots)
+        {
+            if (_activeSession == null || _isStreaming) return;
+
+            int index = _activeSession.Messages.IndexOf(message);
+            if (index < 0) return;
+
+            // 找到该 index 之前最近的 User 消息
+            string lastUserContent = null;
+            for (int i = index - 1; i >= 0; i--)
+            {
+                var m = _activeSession.Messages[i];
+                if (!m.IsToolCall && m.Role == AIRole.User)
+                {
+                    lastUserContent = m.Content;
+                    break;
+                }
+            }
+
+            if (string.IsNullOrEmpty(lastUserContent)) return;
+
+            // 删除从 index 开始到末尾的所有消息
+            _activeSession.Messages.RemoveRange(index, _activeSession.Messages.Count - index);
+            _history.Save(_activeSession);
+            OnStateChanged?.Invoke();
+
+            // 重新触发流式响应
+            StreamResponseAsync(contextSlots).Forget();
+        }
+
         public void SendMessage(string text, ContextCollector.ContextSlot contextSlots)
         {
             if (string.IsNullOrWhiteSpace(text)) return;

@@ -83,7 +83,18 @@ namespace UniAI.Editor.Chat
         private GUIStyle _contextToggleOffStyle;
         private GUIStyle _toolCallStyle;
         private GUIStyle _toolCallErrorStyle;
+        private GUIStyle _msgActionBtnStyle;
+        private GUIStyle _toolCallFoldoutStyle;
         private bool _stylesReady;
+
+        // ─── Message Action Bar State ───
+
+        private string _copiedMsgId;
+        private double _copiedMsgTime;
+
+        // ─── Tool Call Foldout State ───
+
+        private readonly System.Collections.Generic.HashSet<int> _expandedToolGroups = new();
 
         // ─── Menu ───
 
