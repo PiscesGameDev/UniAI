@@ -355,7 +355,16 @@ UniAI/
 │   │   ├── ListFilesTool.cs         # 列出目录文件
 │   │   ├── SearchFilesTool.cs       # 搜索文件内容
 │   │   ├── RunTestsTool.cs          # 运行测试
-│   │   └── RuntimeQueryTool.cs      # 运行时状态查询
+│   │   ├── RuntimeQueryTool.cs      # 运行时状态查询（Play Mode）
+│   │   ├── SceneEditTool.cs         # 场景层级/Transform/组件/场景 IO 写操作
+│   │   ├── AssetEditTool.cs         # AssetDatabase 元操作
+│   │   ├── PrefabEditTool.cs        # 预制体生命周期
+│   │   ├── MaterialEditTool.cs      # 材质球与 Shader 属性编辑
+│   │   ├── ConsoleLogTool.cs        # Unity Console 日志与编译错误读取
+│   │   ├── MenuItemTool.cs          # 执行编辑器菜单项
+│   │   ├── ProjectSettingsTool.cs   # Tags/Layers/Physics/Time/Quality
+│   │   ├── SelectionTool.cs         # Unity Selection 读写
+│   │   └── ScriptableObjectEditTool.cs # 通用 SO 属性编辑
 │   └── Icons/                       # 编辑器图标资源
 └── package.json
 ```

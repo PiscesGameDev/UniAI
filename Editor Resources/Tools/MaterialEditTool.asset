@@ -1,0 +1,37 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: cbb72473f35c85f4ca2772875110817c, type: 3}
+  m_Name: MaterialEditTool
+  m_EditorClassIdentifier: UniAI.Editor::UniAI.Editor.Tools.MaterialEditTool
+  _toolName: material_edit
+  _description: "\u6750\u8D28\u7403\u521B\u5EFA\u548C Shader \u5C5E\u6027\u7F16\u8F91\uFF1Acreate
+    \u65B0\u5EFA .mat \u8D44\u4EA7\u5E76\u6307\u5B9A shader\uFF1Bset_shader/set_color/set_float/set_int/set_vector/set_texture
+    \u4FEE\u6539\u5DF2\u6709\u6750\u8D28\u7684\u5C5E\u6027\u3002\u81EA\u52A8 Undo
+    + SetDirty + SaveAssetIfDirty\u3002"
+  _parametersSchema: "{                                                         \r\n   
+    \"type\": \"object\",\r\n    \"properties\": {\r\n      \"action\": {\r\n       
+    \"type\": \"string\",\r\n        \"enum\": [\"create\",\"set_shader\",\"set_color\",\"set_float\",\"set_int\",\"set_vector\",\"set_texture\"]\r\n     
+    },                                                                                                                                                                                                                                   
+    \r\n      \"path\": { \"type\": \"string\", \"description\": \"\u6750\u8D28 Asset
+    \u8DEF\u5F84\uFF0C\u5FC5\u987B\u4EE5 'Assets/' \u5F00\u5934\u4E14\u4EE5 '.mat'
+    \u7ED3\u5C3E\" },\r\n      \"shader\": { \"type\": \"string\", \"description\":
+    \"Shader \u540D\u79F0\uFF0C\u5982 'Standard'\uFF1Bcreate \u65F6\u7559\u7A7A\u5219\u7528
+    'Standard'\" },                                                                                                                           
+    \r\n      \"property\": { \"type\": \"string\", \"description\": \"Shader \u5C5E\u6027\u540D\uFF0C\u5982
+    '_BaseColor'\u3001'_Metallic'\u3001'_BaseMap'\" },                                                                                                                          
+    \r\n      \"value\": { \"description\": \"set_color: [r,g,b,a]\uFF1Bset_float:
+    number\uFF1Bset_int: int\uFF1Bset_vector: [x,y,z,w]\" },                                                                                                                          
+    \r\n      \"texture_path\": { \"type\": \"string\", \"description\": \"set_texture
+    \u7684\u7EB9\u7406 Asset \u8DEF\u5F84\" }                                                                                                                                                 
+    \r\n    },                                                                                                                                                                                                                                     
+    \r\n    \"required\": [\"action\"]                                                                                                                                                                                                                 
+    \r\n  }          "

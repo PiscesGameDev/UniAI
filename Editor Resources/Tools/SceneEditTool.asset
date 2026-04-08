@@ -1,0 +1,57 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 9a7203a46f9071c4aa6b8098c4b3866a, type: 3}
+  m_Name: SceneEditTool
+  m_EditorClassIdentifier: UniAI.Editor::UniAI.Editor.Tools.SceneEditTool
+  _toolName: scene_edit
+  _description: "\u5728 Edit Mode \u4E0B\u4FEE\u6539 Unity \u573A\u666F\uFF1A\u521B\u5EFA/\u9500\u6BC1
+    GameObject\u3001\u8BBE\u7F6E Transform\u3001\u589E\u5220\u7EC4\u4EF6\u3001\u4FEE\u6539\u7EC4\u4EF6\u5C5E\u6027\u3001\u4FDD\u5B58/\u6253\u5F00/\u65B0\u5EFA\u573A\u666F\u3002\u6240\u6709\u64CD\u4F5C\u81EA\u52A8\u652F\u6301
+    Undo \u548C\u573A\u666F\u6807\u810F\u3002\u4EC5 Edit Mode \u53EF\u7528\uFF08Play
+    Mode \u4F1A\u88AB\u62D2\u7EDD\uFF09\u3002\u901A\u8FC7 action \u5B57\u6BB5\u5206\u53D1\u5177\u4F53\u64CD\u4F5C\u3002"
+  _parametersSchema: " {                                                                                                                                                                                                                                        
+    \r\n    \"type\": \"object\",                                       \r\n    \"properties\":
+    {                                                                                                                                                                                                                        
+    \r\n      \"action\": {                                           \r\n       
+    \"type\": \"string\",\r\n        \"enum\": [\"create_empty\",\"create_primitive\",\"create_camera\",\"create_light\",\"destroy\",\"set_transform\",\"set_active\",\"set_parent\",\"rename\",\"add_component\",\"remove_component\",\"set_property\",\"save_scene\",\"open_scene\",\"new_scene\"],\r\n       
+    \"description\": \"\u64CD\u4F5C\u7C7B\u578B\"                                                                                                                                                                                                          
+    \r\n      },\r\n      \"path\": { \"type\": \"string\", \"description\": \"\u76EE\u6807
+    GameObject \u7684\u5C42\u7EA7\u8DEF\u5F84\uFF0C\u5982 'Root/Child/Leaf' \u6216\u4EC5\u53F6\u5B50\u540D\"
+    },                                                                                                                          
+    \r\n      \"parent\": { \"type\": \"string\", \"description\": \"\u65B0\u5EFA
+    GameObject \u65F6\u7684\u7236\u8282\u70B9\u8DEF\u5F84\uFF1B\u6216 set_parent
+    \u7684\u76EE\u6807\u7236\u8282\u70B9\uFF08\u7559\u7A7A=\u6839\uFF09\" },                                                                                                              
+    \r\n      \"name\": { \"type\": \"string\", \"description\": \"\u65B0\u5EFA GameObject
+    \u7684\u540D\u79F0\uFF0C\u6216 rename \u7684\u65B0\u540D\u5B57\" },                                                                                                                                           
+    \r\n      \"primitive\": { \"type\": \"string\", \"enum\": [\"Cube\",\"Sphere\",\"Capsule\",\"Cylinder\",\"Plane\",\"Quad\"]
+    },                                                                                                                                    
+    \r\n      \"light_type\": { \"type\": \"string\", \"enum\": [\"Spot\",\"Directional\",\"Point\",\"Area\"]
+    },                                                                                                                                                   
+    \r\n      \"position\": { \"type\": \"array\", \"items\": { \"type\": \"number\"
+    }, \"description\": \"[x,y,z]\" },                                                                                                                                            
+    \r\n      \"rotation\": { \"type\": \"array\", \"items\": { \"type\": \"number\"
+    }, \"description\": \"[x,y,z] \u6B27\u62C9\u89D2\uFF08\u5EA6\uFF09\" },                                                                                                                               
+    \r\n      \"scale\": { \"type\": \"array\", \"items\": { \"type\": \"number\"
+    }, \"description\": \"[x,y,z]\" },                                                                                                                                               
+    \r\n      \"space\": { \"type\": \"string\", \"enum\": [\"local\",\"world\"],
+    \"description\": \"set_transform \u5750\u6807\u7A7A\u95F4\uFF0C\u9ED8\u8BA4 local\"
+    },                                                                                                                       
+    \r\n      \"component_type\": { \"type\": \"string\", \"description\": \"\u7EC4\u4EF6\u7C7B\u578B\u540D\uFF0C\u5982
+    'Rigidbody' \u6216 'UnityEngine.Rigidbody'\" },                                                                                                                      
+    \r\n      \"property\": { \"type\": \"string\", \"description\": \"set_property
+    \u8981\u4FEE\u6539\u7684\u5B57\u6BB5\u6216\u5C5E\u6027\u540D\" },                                                                                                                                                
+    \r\n      \"value\": { \"description\": \"set_active/set_property \u7684\u503C\uFF1BVector3=[x,y,z]\uFF1BColor=[r,g,b,a]\uFF1BObject=asset
+    \u8DEF\u5F84\u5B57\u7B26\u4E32\" },                                                                                                               
+    \r\n      \"scene_path\": { \"type\": \"string\", \"description\": \"open_scene
+    \u7684\u573A\u666F Asset \u8DEF\u5F84\" }                                                                                                                                                    
+    \r\n    },                                                                                                                                                                                                                                     
+    \r\n    \"required\": [\"action\"]                                                                                                                                                                                                                 
+    \r\n  } "

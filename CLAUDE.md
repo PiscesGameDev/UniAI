@@ -229,7 +229,16 @@ McpClient → IMcpTransport
 | `ListFilesTool` | 列出目录下的文件 |
 | `SearchFilesTool` | 搜索文件内容 |
 | `RunTestsTool` | 运行 Unity 测试 |
-| `RuntimeQueryTool` | 查询运行时状态 |
+| `RuntimeQueryTool` | 查询运行时状态（Play Mode 只读反射） |
+| `SceneEditTool` | Edit Mode 场景写操作：创建/销毁/变换/组件/属性/场景 IO（含 Undo） |
+| `AssetEditTool` | AssetDatabase 元操作：创建文件夹、复制/移动/重命名/删除、find、依赖查询、GUID 互转 |
+| `PrefabEditTool` | 预制体生命周期：从 GameObject 创建、实例化、拆包、apply/revert overrides |
+| `MaterialEditTool` | 材质球创建 + Shader 属性（颜色/float/int/vector/texture）编辑 |
+| `ConsoleLogTool` | 读取 Unity Console 日志（运行时 + 编译错误/警告），支持按级别过滤 |
+| `MenuItemTool` | 执行任意 Unity 编辑器菜单项（`EditorApplication.ExecuteMenuItem`），支持列出可用菜单 |
+| `ProjectSettingsTool` | 项目设置读写：Tags / Layers / Physics / Time / Quality |
+| `SelectionTool` | Unity Selection 读写（场景 GameObject 和 Project 资产） |
+| `ScriptableObjectEditTool` | 通用 SO 属性编辑（基于 SerializedObject，自动标脏） |
 
 ## 4. 数据流
 
