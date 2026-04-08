@@ -16,7 +16,8 @@ UniAI 是 Unity 与 AI 交互的中间件，向下对接多种 AI Provider，向
 - **统一抽象**: 所有 Provider 共享 `AIRequest/AIResponse/AIStreamChunk` 模型
 - **双协议覆盖**: Claude Messages API + OpenAI Chat Completions API，兼容所有 OpenAI 兼容接口
 - **双运行器架构**: `ChatRunner`（纯对话）与 `AIAgentRunner`（Tool 循环）独立实现，共享 `IConversationRunner` 接口
-- **Tool Use**: 支持 AI 调用开发者定义的工具（ScriptableObject 扩展）
+- **Tool Use**: 支持 AI 调用开发者定义的本地工具（ScriptableObject 扩展）
+- **MCP Client**: 连接外部 MCP Server（Stdio / Streamable HTTP），动态注入 Tools 与 Resources
 - **上下文窗口管理**: 自动 token 预估、滑动窗口截断、摘要压缩、RAG 上下文注入
 - **零业务耦合**: 纯工具层，不依赖任何业务框架
 
@@ -26,11 +27,13 @@ UniAI 是 Unity 与 AI 交互的中间件，向下对接多种 AI Provider，向
 BuildAIMessages() → 全量消息
         ↓
 ContextPipeline.ProcessAsync()（上下文窗口管理）
-  1. IContextProvider 注入外部上下文（RAG）
+  1. IContextProvider 注入外部上下文（RAG / MCP Resource）
   2. TokenEstimator 估算总 token
   3. 超限时 → 摘要压缩旧消息 / 截断
         ↓
 AIAgentRunner / ChatRunner（对话运行器）
+  ├── 本地 AIToolAsset                   ← 内置工具
+  └── McpClientManager（Tools 动态合并）   ← MCP 外部工具
         ↓
 AIClient（API 入口）
         ↓
@@ -43,6 +46,11 @@ AIHttpClient（HTTP 层）
    └── PostStreamAsync   → SSE 流式响应
          ↓
 SSEDownloadHandler + SSEParser（SSE 协议层）
+
+── 独立的 MCP 传输通道（与 AI Provider HTTP 无关） ──
+McpClient → IMcpTransport
+   ├── StdioMcpTransport  → 子进程 stdin/stdout（JSON-RPC / line-delimited）
+   └── HttpMcpTransport   → Streamable HTTP（复用 AIHttpClient）
 ```
 
 ## 3. 关键类与文件
@@ -59,6 +67,7 @@ SSEDownloadHandler + SSEParser（SSE 协议层）
 | `ChannelEntry` | `Runtime/Core/AIConfig.cs` | 单个渠道配置（含 Enabled 开关） |
 | `ChannelPresets` | `Runtime/Core/AIConfig.cs` | 内置预设（Claude/OpenAI/Gemini/DeepSeek） |
 | `ModelListService` | `Runtime/Core/ModelListService.cs` | 从 Provider API 获取可用模型列表（支持 OpenAI + Claude 分页） |
+| `TimeoutHelper` | `Runtime/Core/TimeoutHelper.cs` | 通用超时包装器，`WithTimeout(action, seconds, ct)` 基于链接 CTS + CancelAfter |
 | `AILogger` | `Runtime/Core/AILogger.cs` | 内部日志，支持级别控制和 API Key 脱敏 |
 
 ### 3.2 Runtime - 模型
@@ -71,6 +80,7 @@ SSEDownloadHandler + SSEParser（SSE 协议层）
 | `AIContent` | `Runtime/Models/AIContent.cs` | 内容块基类，子类: `AITextContent`, `AIImageContent`, `AIToolUseContent`, `AIToolResultContent` |
 | `AITool` | `Runtime/Models/AITool.cs` | Tool 定义（Name + Description + ParametersSchema）+ `AIToolCall`（Id + Name + Arguments） |
 | `AIStreamChunk` | `Runtime/Models/AIStreamChunk.cs` | 流式响应块：DeltaText + IsComplete + Usage + ToolCall |
+| `AIResponseFormat` | `Runtime/Models/AIResponseFormat.cs` | 结构化响应格式声明（JSON Schema） |
 | `TokenUsage` | `Runtime/Models/AIResponse.cs:58` | Token 用量：InputTokens + OutputTokens |
 
 ### 3.3 Runtime - Provider 实现
@@ -144,7 +154,32 @@ SSEDownloadHandler + SSEParser（SSE 协议层）
 
 **ModelContextLimits 内置映射**: Claude → 200K, GPT-4o → 128K, Gemini-2.x → 1M, DeepSeek → 64K, 默认 → 8192。
 
-### 3.8 Editor - 统一管理窗口
+### 3.8 Runtime - MCP（Model Context Protocol Client）
+
+| 类 | 路径 | 职责 |
+|----|------|------|
+| `McpServerConfig` | `Runtime/MCP/McpServerConfig.cs` | MCP Server 连接配置 SO（Stdio / HTTP + 环境变量 / Headers），Awake/Reset/OnValidate 自动生成 Id |
+| `McpTransportType` | `Runtime/MCP/McpServerConfig.cs` | 传输类型枚举（Stdio / Http） |
+| `IMcpTransport` | `Runtime/MCP/IMcpTransport.cs` | 传输层抽象：`ConnectAsync` + `SendRequestAsync` + `SendNotificationAsync` |
+| `StdioMcpTransport` | `Runtime/MCP/StdioMcpTransport.cs` | 子进程 stdin/stdout JSON-RPC（line-delimited），仅 Editor/Standalone |
+| `HttpMcpTransport` | `Runtime/MCP/HttpMcpTransport.cs` | Streamable HTTP 传输，复用 `AIHttpClient`，socket 超时取 `UniAISettings.General.TimeoutSeconds` |
+| `McpTransportFactory` | `Runtime/MCP/McpTransportFactory.cs` | 根据 `McpServerConfig.TransportType` 创建对应 Transport |
+| `McpClient` | `Runtime/MCP/McpClient.cs` | 单个 Server 连接：initialize → notifications/initialized → tools/list → resources/list |
+| `McpClientManager` | `Runtime/MCP/McpClientManager.cs` | 聚合多个 `McpClient`，统一 `GetAllTools/CallToolAsync/GetResourceProviders`，提供静态 `TestConnectionAsync` |
+| `McpResourceProvider` | `Runtime/MCP/McpResourceProvider.cs` | MCP Resource → `IContextProvider` 适配器，基于关键词匹配的相关度过滤 |
+| `McpConstants` | `Runtime/MCP/McpConstants.cs` | `McpMethods` 方法名常量 + `McpContentTypes` 内容类型常量 |
+| `McpModels` | `Runtime/MCP/McpModels.cs` | JSON-RPC 2.0 消息 + MCP 协议数据模型（Tool/Resource/Content 等） |
+
+**核心设计**:
+- **双路由合并**: `AIAgentRunner.InitializeMcpAsync()` 在 Agent 启动时连接 `AgentDefinition.McpServers`，将 MCP Tools 合并到 `_toolDefs`。`ExecuteToolAsync` 先查本地 `_toolMap`，再委托 `McpClientManager.CallToolAsync` — 本地 Tool 同名时优先、MCP Tool 被遮蔽并告警。
+- **懒初始化 + 并发共享**: `_mcpInitTask` 字段持有飞行中的初始化 Task，多个并发调用共享同一次初始化；失败清空以允许重试。
+- **超时层次**: `McpRuntimeConfig.InitTimeoutSeconds` 包裹 connect+initialize+list 全流程，`ToolCallTimeoutSeconds` 包裹单次 tools/call，底层 HTTP socket 超时复用 UniAI 全局 `TimeoutSeconds`。所有超时通过 `TimeoutHelper.WithTimeout` 实现。
+- **线程模型**: `McpClientManager` 实例方法非线程安全，需在单一主线程（UniTask 调度上下文）串行调用。
+- **协议版本**: MCP `2024-11-05`，客户端声明 `tools` + `resources` 能力。
+
+**MCP Resource 注入相关度**: `McpResourceProvider.ComputeRelevance(query)` 基于 Name/Uri/Description 的关键词命中打分，≤ 0.3 的资源不会被 `ContextPipeline` 读取，避免无用的 `resources/read`。
+
+### 3.9 Editor - 统一管理窗口
 
 | 类 | 路径 | 职责 |
 |----|------|------|
@@ -152,15 +187,17 @@ SSEDownloadHandler + SSEParser（SSE 协议层）
 | `ManagerTab` | `Editor/Setting/ManagerTab.cs` | Tab 页面抽象基类 |
 | `ChannelTab` | `Editor/Setting/ChannelTab.cs` | 渠道管理 Tab（渠道列表 + 详情，Enabled 开关，获取模型列表） |
 | `AgentTab` | `Editor/Setting/AgentTab.cs` | Agent 管理 Tab |
-| `SettingsTab` | `Editor/Setting/SettingsTab.cs` | 设置 Tab（运行时设置 + 上下文窗口 + 编辑器偏好 + Tool 设置） |
+| `McpTab` | `Editor/MCP/McpTab.cs` | MCP Server 管理 Tab（列表 + 详情 + 连接测试） |
+| `SettingsTab` | `Editor/Setting/SettingsTab.cs` | 设置 Tab（运行时 + 上下文窗口 + 编辑器偏好 + Tool + MCP 统一节） |
 | `AIConfigManager` | `Editor/Setting/AIConfigManager.cs` | 配置持久化（读写 UniAISettings SO + EditorPreferences，环境变量覆盖） |
 | `EditorPreferences` | `Editor/Setting/EditorPreferences.cs` | ScriptableSingleton，编辑器偏好持久化 + 环境变量静态映射 |
 
-### 3.9 Editor - 对话窗口
+### 3.10 Editor - 对话窗口
 
 | 类 | 路径 | 职责 |
 |----|------|------|
-| `AIChatWindow` | `Editor/Chat/AIChatWindow.cs` | 对话窗口主类（partial class，状态 + 生命周期） |
+| `AIChatWindow` | `Editor/Chat/AIChatWindow.cs` | 对话窗口主类（partial class，状态 + 生命周期），EditorWindow 纯 UI 壳 |
+| `ChatWindowController` | `Editor/Chat/ChatWindowController.cs` | 业务控制器：会话/Client/Runner/ContextPipeline/McpClientManager 全生命周期管理，通过事件与 UI 通信 |
 | `AIChatWindow.Streaming` | `Editor/Chat/AIChatWindow.Streaming.cs` | 流式响应处理（含 ContextPipeline 集成） |
 | `AIChatWindow.Session` | `Editor/Chat/AIChatWindow.Session.cs` | 会话管理 + Client/Runner/ContextPipeline 初始化 |
 | `AIChatWindow.ChatArea` | `Editor/Chat/AIChatWindow.ChatArea.cs` | 消息气泡渲染 |
@@ -168,18 +205,19 @@ SSEDownloadHandler + SSEParser（SSE 协议层）
 | `AIChatWindow.Sidebar` | `Editor/Chat/AIChatWindow.Sidebar.cs` | 侧边栏（会话列表） |
 | `AIChatWindow.Toolbar` | `Editor/Chat/AIChatWindow.Toolbar.cs` | 工具栏（模型选择、Agent 选择） |
 | `AIChatWindow.Styles` | `Editor/Chat/AIChatWindow.Styles.cs` | 样式定义 |
-| `ChatHistory` | `Editor/Chat/ChatHistory.cs` | 会话历史持久化（`ProjectSettings/UniAI/History/`） |
-| `EditorChatHistoryStorage` | `Editor/Chat/EditorChatHistoryStorage.cs` | 编辑器环境的会话存储实现 |
+| `EditorChatHistoryStorage` | `Editor/Chat/EditorChatHistoryStorage.cs` | 编辑器环境的 `IChatHistoryStorage` 实现（`ProjectSettings/UniAI/History/`） |
 | `ContextCollector` | `Editor/Chat/ContextCollector.cs` | Unity 上下文采集：Selection / Console / Project |
 | `MarkdownRenderer` | `Editor/Chat/MarkdownRenderer.cs` | Markdown → IMGUI 渲染器 |
 
-### 3.10 Editor - Agent 与 Tools
+### 3.11 Editor - Agent / MCP / Tools
 
 | 类 | 路径 | 职责 |
 |----|------|------|
 | `AgentManager` | `Editor/Agent/AgentManager.cs` | Agent 资产扫描 + 内置默认 Agent（无 Tool，通用聊天助手） |
-| `AgentDefinitionEditor` | `Editor/Agent/AgentDefinitionEditor.cs` | Agent 自定义 Inspector |
+| `AgentDefinitionEditor` | `Editor/Agent/AgentDefinitionEditor.cs` | Agent 自定义 Inspector（含 MCP Servers 列表绘制） |
 | `EditorAgentGuard` | `Editor/Agent/EditorAgentGuard.cs` | Agent 运行时 AssetDatabase 保护（防止 Tool 修改文件时触发重编译） |
+| `McpServerConfigEditor` | `Editor/MCP/McpServerConfigEditor.cs` | `McpServerConfig` 自定义 Inspector，传输类型切换 + 环境变量/Headers ReorderableList + 「测试连接」按钮 |
+| `McpTab` | `Editor/MCP/McpTab.cs` | 管理窗口的 MCP Server Tab，创建/选择/删除 + 详情内嵌 Inspector |
 | `EditorGUIHelper` | `Editor/EditorGUIHelper.cs` | 编辑器 GUI 工具（Section 绘制、颜色常量） |
 
 **内置 Editor Tools**（`Editor/Tools/`）:
@@ -255,15 +293,18 @@ UniAISettings (ScriptableObject, Runtime)
 │   └── ApiVersion                      # Claude 专用
 ├── ActiveProviderId: string            # 当前激活的 Provider
 └── General: GeneralConfig              # 通用设置
-    ├── TimeoutSeconds: int (60)
+    ├── TimeoutSeconds: int (60)        # 全局 HTTP socket 超时（也用作 MCP HTTP 底层兜底）
     ├── LogLevel: AILogLevel (Info)
-    └── ContextWindow: ContextWindowConfig  # 上下文窗口管理
-        ├── Enabled: bool (true)
-        ├── MaxContextTokens: int (0=自动，模型的80%)
-        ├── ReservedOutputTokens: int (4096)
-        ├── MinRecentMessages: int (4)
-        ├── EnableSummary: bool (true)
-        └── SummaryMaxTokens: int (512)
+    ├── ContextWindow: ContextWindowConfig  # 上下文窗口管理
+    │   ├── Enabled: bool (true)
+    │   ├── MaxContextTokens: int (0=自动，模型的80%)
+    │   ├── ReservedOutputTokens: int (4096)
+    │   ├── MinRecentMessages: int (4)
+    │   ├── EnableSummary: bool (true)
+    │   └── SummaryMaxTokens: int (512)
+    └── Mcp: McpRuntimeConfig            # MCP 连接参数
+        ├── InitTimeoutSeconds: int (30) # connect+initialize+list 全流程超时
+        └── ToolCallTimeoutSeconds: int (0) # 单次 tools/call 超时，0=不限制
 
 EditorPreferences (ScriptableSingleton, Editor Only, 持久化到 Library/)
 ├── LastSelectedModelId              # 上次选择的模型
@@ -275,6 +316,9 @@ EditorPreferences (ScriptableSingleton, Editor Only, 持久化到 Library/)
 ├── ToolTimeout                      # Tool 执行超时
 ├── ToolMaxOutputChars               # Tool 最大输出字符数
 ├── SearchMaxMatches                 # 搜索最大匹配数
+├── McpAutoConnect (true)            # 切换 Agent 时自动连接其 MCP Server
+├── McpResourceInjection (true)      # 自动将 MCP Resource 注入对话上下文
+├── McpServerDirectory               # MCP Server 资产创建目录
 └── 环境变量映射（静态，按预设 ID → 环境变量名）
 ```
 
@@ -371,7 +415,20 @@ public class ReadFileTool : AIToolAsset
 1. 在 Project 中创建: Create > UniAI > Agent Definition
 2. 配置 AgentName、SystemPrompt、Temperature、MaxTokens、MaxTurns
 3. 将自定义 Tool SO 拖入 Tools 列表
-4. Agent 会自动出现在 AIChatWindow 的 Agent 下拉菜单中
+4. （可选）将 MCP Server Config 拖入 McpServers 列表，Agent 启动时自动连接并合并远端 Tools/Resources
+5. Agent 会自动出现在 AIChatWindow 的 Agent 下拉菜单中
+
+### 接入外部 MCP Server
+
+1. Project 中创建: Create > UniAI > MCP Server Config
+2. 选择传输类型：
+   - **Stdio**: 填写 `Command`（如 `npx`）+ `Arguments`（如 `-y @modelcontextprotocol/server-filesystem .`）+ 环境变量
+   - **HTTP**: 填写 `Base URL`（必须是绝对 http(s) URL）+ 请求头
+3. Inspector 右侧「测试连接」按钮验证配置可用性（走 `McpClientManager.TestConnectionAsync`）
+4. 将此 SO 拖入 `AgentDefinition.McpServers`
+5. 对话启动后，外部 Tools 会自动合并进 Agent 的 Tool 列表；Resources 会按相关度注入上下文
+
+**自定义 Transport**（极少需要）: 实现 `IMcpTransport` 接口 + 在 `McpTransportFactory.Create` 中加分支。
 
 ### 添加 RAG 上下文提供者
 
@@ -408,3 +465,7 @@ pipeline.AddProvider(new MyRagProvider());
 - **上下文窗口**: `ContextPipeline` 在 `AIChatWindow.Streaming.cs` 的 `StreamResponseAsync()` 中集成，位于 `BuildAIMessages()` 之后、`RunStreamAsync()` 之前。摘要结果存储在 `ChatSession.SummaryText` 中随会话持久化。
 - **Token 预估**: `TokenEstimator` 使用字符比例法（非 tiktoken），为轻量估算，误差可接受。Provider 返回的实际 `TokenUsage` 可用于后续校准。
 - **EditorAgentGuard**: Agent Tool 执行期间锁定 AssetDatabase 刷新，防止 Tool 写入文件后触发重编译导致状态丢失。
+- **MCP 超时层次**: `InitTimeoutSeconds` / `ToolCallTimeoutSeconds` 都由 `TimeoutHelper` 在 orchestration 层包裹，真正截止时间由 CancellationToken 传导；HTTP transport 的 socket 超时只是底层兜底，不应设得比 orchestration 超时更短。
+- **MCP 懒初始化**: `AIAgentRunner._mcpInitTask` 存储飞行中的初始化 Task，并发调用共享同一次 await；失败时清空字段允许重试，成功后 `_mcpInitialized = true` 永久缓存。
+- **MCP Tool 命名冲突**: 本地 `AIToolAsset` 与 MCP Tool 同名时，本地优先，MCP 版本会被丢弃并打印 `Warning`；跨 Server 的同名 Tool 由后加载者覆盖前者，也会打印 `Warning`。
+- **Stdio 平台限制**: `StdioMcpTransport` 仅在 `UNITY_EDITOR || UNITY_STANDALONE` 下可用，移动平台会抛 `PlatformNotSupportedException`。

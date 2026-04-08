@@ -12,9 +12,10 @@ Unity AI 交互框架，支持多 Provider（Claude、OpenAI、Gemini、DeepSeek
 - **多模态输入**: 支持文本和图片（base64）混合消息
 - **Tool Use**: 支持 AI 调用开发者自定义工具（Claude tool_use + OpenAI function_calling）
 - **Agent 系统**: 自动多轮 Tool 调用循环编排，ScriptableObject 配置 Agent
+- **MCP Client**: 作为标准 MCP 客户端连接外部 Server（Stdio 子进程 / Streamable HTTP），动态合并 Tools 与 Resources 到 Agent
 - **上下文窗口管理**: 自动 token 预估、滑动窗口截断、AI 摘要压缩、RAG 上下文注入接口
 - **统一抽象**: 一套 `AIRequest/AIResponse` 模型覆盖所有 Provider
-- **Editor 工具链**: 统一管理窗口（渠道、Agent、设置）+ AI 对话窗口，开箱即用
+- **Editor 工具链**: 统一管理窗口（渠道、Agent、MCP、设置）+ AI 对话窗口，开箱即用
 - **零 GC 异步**: 基于 UniTask 的异步实现
 
 ## 定位
@@ -172,7 +173,29 @@ await foreach (var evt in runner.RunStreamAsync(messages))
 }
 ```
 
-### 4. 上下文窗口管理
+### 4. 接入 MCP Server（可选）
+
+让 Agent 连接外部 MCP Server 动态获得 Tools 和 Resources：
+
+1. Project 中创建 Server 配置：Create > UniAI > MCP Server Config
+2. 选择传输类型：
+   - **Stdio**（本地子进程）：`Command = npx`，`Arguments = -y @modelcontextprotocol/server-filesystem .`
+   - **HTTP**（远程服务）：填写绝对 `Base URL`
+3. 点击 Inspector 的「测试连接」验证配置可用
+4. 将此 SO 拖到 `AgentDefinition.McpServers` 列表
+
+Agent 启动时自动连接所有启用的 Server，`tools/list` 和 `resources/list` 的结果会合并到 Agent 可用工具中。本地 `AIToolAsset` 同名时本地优先。
+
+```csharp
+// 代码方式测试 MCP Server
+var config = AssetDatabase.LoadAssetAtPath<McpServerConfig>("Assets/MyMcp.asset");
+var result = await McpClientManager.TestConnectionAsync(config, initTimeoutSeconds: 30);
+Debug.Log($"Success: {result.Success}, Tools: {result.ToolCount}, Resources: {result.ResourceCount}");
+```
+
+MCP 的连接超时与 Tool 调用超时在 `Window > UniAI > Manager → 设置 → MCP 设置` 中统一配置。
+
+### 5. 上下文窗口管理
 
 长对话自动管理，防止超出模型 token 上限。Editor 对话窗口默认启用，也可通过 `Window > UniAI > Manager` → 设置 Tab 调整参数。
 
@@ -207,14 +230,21 @@ var processed = await pipeline.ProcessAsync(
 
 **Agent Tab:**
 - 查看和管理所有 Agent
-- 可视化编辑 Agent 配置（名称、描述、参数、工具、System Prompt）
+- 可视化编辑 Agent 配置（名称、描述、参数、工具、System Prompt、MCP Servers）
 - 从窗口直接开启与 Agent 的对话
+
+**MCP Tab:**
+- 管理 MCP Server Config 资产（增删、启用/禁用）
+- Stdio / Streamable HTTP 两种传输类型
+- 环境变量和请求头的 ReorderableList 编辑
+- 内嵌「测试连接」按钮，验证握手 + tools/resources 拉取
 
 **设置 Tab:**
 - 运行时参数：请求超时、日志级别
 - 上下文窗口：启用/禁用、token 限制、摘要压缩配置
 - 编辑器参数：侧边栏、默认上下文、历史会话上限、头像自定义
 - Tool 设置：执行超时、最大输出字符数、搜索最大匹配数
+- MCP 设置：连接/Tool 调用超时、自动连接、Resource 自动注入、Server 资产目录
 
 ### AI 对话窗口
 
@@ -240,11 +270,12 @@ UniAI/
 ├── Runtime/
 │   ├── Core/
 │   │   ├── AIClient.cs              # 框架入口
-│   │   ├── AIConfig.cs              # 配置模型 + 渠道预设 + ContextWindowConfig
+│   │   ├── AIConfig.cs              # 配置模型 + 渠道预设 + ContextWindowConfig + McpRuntimeConfig
 │   │   ├── UniAISettings.cs         # 运行时 ScriptableObject 配置
 │   │   ├── IConversationRunner.cs   # 对话运行器接口
 │   │   ├── ChatRunner.cs            # 纯 Chat 运行器
 │   │   ├── ModelListService.cs      # 模型列表查询服务
+│   │   ├── TimeoutHelper.cs         # 通用超时包装（链接 CTS + CancelAfter）
 │   │   └── AILogger.cs              # 内部日志（API Key 脱敏）
 │   ├── Models/
 │   │   ├── AIRequest.cs             # 统一请求
@@ -252,11 +283,12 @@ UniAI/
 │   │   ├── AIMessage.cs             # 消息（User/Assistant + 内容块）
 │   │   ├── AIContent.cs             # 内容块（Text/Image/ToolUse/ToolResult）
 │   │   ├── AITool.cs                # Tool 定义 + ToolCall
+│   │   ├── AIResponseFormat.cs      # 结构化响应格式（JSON Schema）
 │   │   └── AIStreamChunk.cs         # 流式响应块
 │   ├── Agent/
-│   │   ├── AIToolAsset.cs           # Tool ScriptableObject 基类
-│   │   ├── AgentDefinition.cs       # Agent 配置 ScriptableObject
-│   │   ├── AIAgentRunner.cs         # Agent 运行器（Tool 调用循环）
+│   │   ├── AIToolAsset.cs           # 本地 Tool ScriptableObject 基类
+│   │   ├── AgentDefinition.cs       # Agent 配置 SO（含 McpServers 列表）
+│   │   ├── AIAgentRunner.cs         # Agent 运行器（本地 Tool + MCP Tool 路由）
 │   │   ├── AgentEvent.cs            # Agent 流式事件
 │   │   └── AgentResult.cs           # Agent 运行结果
 │   ├── Chat/
@@ -270,17 +302,30 @@ UniAI/
 │   │   ├── ModelContextLimits.cs    # 模型上下文窗口映射
 │   │   ├── MessageSummarizer.cs     # 消息摘要器
 │   │   └── IContextProvider.cs      # RAG 上下文提供者接口
+│   ├── MCP/
+│   │   ├── McpServerConfig.cs       # MCP Server 配置 SO（Stdio / HTTP）
+│   │   ├── IMcpTransport.cs         # 传输层抽象接口
+│   │   ├── StdioMcpTransport.cs     # 子进程 stdin/stdout（Editor/Standalone）
+│   │   ├── HttpMcpTransport.cs      # Streamable HTTP 传输
+│   │   ├── McpTransportFactory.cs   # 传输类型工厂
+│   │   ├── McpClient.cs             # 单 Server 连接 + 协议握手
+│   │   ├── McpClientManager.cs      # 多 Server 管理 + Tool 路由 + TestConnectionAsync
+│   │   ├── McpResourceProvider.cs   # Resource → IContextProvider 适配器
+│   │   ├── McpConstants.cs          # 方法名 / 内容类型常量
+│   │   └── McpModels.cs             # JSON-RPC + MCP 协议数据模型
 │   ├── Providers/
 │   │   ├── IAIProvider.cs           # Provider 接口
 │   │   ├── ProviderBase.cs          # Provider 抽象基类
 │   │   ├── FallbackProvider.cs      # 多渠道故障转移
 │   │   ├── Claude/                  # Claude Messages API
 │   │   └── OpenAI/                  # OpenAI Chat Completions API
-│   └── Http/
-│       ├── AIHttpClient.cs          # HTTP 客户端（JSON + SSE Stream）
-│       ├── HttpResult.cs            # HTTP 结果封装
-│       ├── SSEDownloadHandler.cs    # SSE 增量下载处理器
-│       └── SSEParser.cs             # SSE 协议解析器
+│   ├── Http/
+│   │   ├── AIHttpClient.cs          # HTTP 客户端（JSON + SSE Stream）
+│   │   ├── HttpResult.cs            # HTTP 结果封装
+│   │   ├── SSEDownloadHandler.cs    # SSE 增量下载处理器
+│   │   └── SSEParser.cs             # SSE 协议解析器
+│   └── Assembly/
+│       └── AssemblyInfo.cs          # InternalsVisibleTo("UniAI.Editor")
 ├── Editor/
 │   ├── EditorGUIHelper.cs           # 编辑器 GUI 工具
 │   ├── Setting/
@@ -288,16 +333,19 @@ UniAI/
 │   │   ├── ManagerTab.cs            # Tab 页面基类
 │   │   ├── ChannelTab.cs            # 渠道管理 Tab
 │   │   ├── AgentTab.cs              # Agent 管理 Tab
-│   │   ├── SettingsTab.cs           # 设置 Tab（含上下文窗口配置 UI）
+│   │   ├── SettingsTab.cs           # 设置 Tab（运行时 + 上下文 + 编辑器 + MCP）
 │   │   ├── AIConfigManager.cs       # 配置持久化
 │   │   └── EditorPreferences.cs     # 编辑器偏好（ScriptableSingleton）
 │   ├── Agent/
 │   │   ├── AgentManager.cs          # Agent 资产扫描 + 内置默认 Agent
 │   │   ├── AgentDefinitionEditor.cs # Agent 自定义 Inspector
 │   │   └── EditorAgentGuard.cs      # Agent 运行时 AssetDatabase 保护
+│   ├── MCP/
+│   │   ├── McpTab.cs                # MCP Server 管理 Tab
+│   │   └── McpServerConfigEditor.cs # MCP Server 自定义 Inspector + 测试连接
 │   ├── Chat/
-│   │   ├── AIChatWindow*.cs         # 对话窗口（partial class, 8 个分部）
-│   │   ├── ChatHistory.cs           # 会话历史持久化
+│   │   ├── AIChatWindow*.cs         # 对话窗口 UI（partial class，8 个分部）
+│   │   ├── ChatWindowController.cs  # 业务控制器（会话 / Client / Runner / MCP 生命周期）
 │   │   ├── EditorChatHistoryStorage.cs # 编辑器会话存储实现
 │   │   ├── ContextCollector.cs      # Unity 上下文采集器
 │   │   └── MarkdownRenderer.cs      # Markdown → IMGUI 渲染器
