@@ -175,6 +175,28 @@ namespace UniAI
         /// 上下文窗口管理配置
         /// </summary>
         public ContextWindowConfig ContextWindow = new();
+
+        /// <summary>
+        /// MCP 相关配置
+        /// </summary>
+        public McpConfig Mcp = new();
+    }
+
+    /// <summary>
+    /// MCP 运行时配置
+    /// </summary>
+    [Serializable]
+    public class McpConfig
+    {
+        /// <summary>
+        /// MCP Server 初始化超时（connect + initialize + tools/list 全流程，秒）
+        /// </summary>
+        public int InitTimeoutSeconds = 30;
+
+        /// <summary>
+        /// 单次 MCP Tool 调用超时（秒），0 = 不限制
+        /// </summary>
+        public int ToolCallTimeoutSeconds = 60;
     }
 
     /// <summary>

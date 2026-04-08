@@ -73,6 +73,9 @@ namespace UniAI.Editor
 
             GUILayout.Space(12);
             DrawContextWindowSettings();
+
+            GUILayout.Space(12);
+            DrawMcpRuntimeSettings();
         }
 
         private void DrawContextWindowSettings()
@@ -119,6 +122,27 @@ namespace UniAI.Editor
                     EditorGUILayout.EndHorizontal();
                 }
             }
+        }
+
+        private void DrawMcpRuntimeSettings()
+        {
+            var mcp = Config.General.Mcp;
+
+            GUILayout.Label("MCP 连接", _sectionTitleStyle);
+            EditorGUILayout.LabelField("MCP Server 连接与调用的超时参数。", EditorStyles.miniLabel);
+            GUILayout.Space(8);
+
+            EditorGUILayout.BeginHorizontal();
+            EditorGUILayout.LabelField("初始化超时 (秒)", GUILayout.Width(LABEL_WIDTH));
+            mcp.InitTimeoutSeconds = EditorGUILayout.IntSlider(mcp.InitTimeoutSeconds, 5, 120);
+            EditorGUILayout.EndHorizontal();
+            EditorGUILayout.LabelField("    connect + initialize + tools/list 全流程超时", EditorStyles.miniLabel);
+
+            EditorGUILayout.BeginHorizontal();
+            EditorGUILayout.LabelField("Tool 调用超时 (秒)", GUILayout.Width(LABEL_WIDTH));
+            mcp.ToolCallTimeoutSeconds = EditorGUILayout.IntSlider(mcp.ToolCallTimeoutSeconds, 0, 300);
+            EditorGUILayout.EndHorizontal();
+            EditorGUILayout.LabelField("    单次 MCP Tool 调用超时，0 = 不限制", EditorStyles.miniLabel);
         }
 
         private void DrawEditorSettings()
@@ -217,6 +241,53 @@ namespace UniAI.Editor
             var newMaxMatches = EditorGUILayout.IntField(prefs.SearchMaxMatches);
             if (newMaxMatches != prefs.SearchMaxMatches)
                 prefs.SearchMaxMatches = Mathf.Clamp(newMaxMatches, 10, 1000);
+            EditorGUILayout.EndHorizontal();
+
+            GUILayout.Space(12);
+            DrawMcpEditorSettings(prefs);
+        }
+
+        private void DrawMcpEditorSettings(EditorPreferences prefs)
+        {
+            GUILayout.Label("MCP 设置", _sectionTitleStyle);
+            EditorGUILayout.LabelField("编辑器中 MCP Client 的行为偏好。", EditorStyles.miniLabel);
+            GUILayout.Space(8);
+
+            EditorGUILayout.BeginHorizontal();
+            EditorGUILayout.LabelField("自动连接", GUILayout.Width(LABEL_WIDTH));
+            var newAutoConnect = EditorGUILayout.Toggle(prefs.McpAutoConnect);
+            if (newAutoConnect != prefs.McpAutoConnect)
+                prefs.McpAutoConnect = newAutoConnect;
+            EditorGUILayout.EndHorizontal();
+            EditorGUILayout.LabelField("    切换 Agent 时自动连接其绑定的 MCP Server", EditorStyles.miniLabel);
+
+            EditorGUILayout.BeginHorizontal();
+            EditorGUILayout.LabelField("Resource 注入", GUILayout.Width(LABEL_WIDTH));
+            var newResInject = EditorGUILayout.Toggle(prefs.McpResourceInjection);
+            if (newResInject != prefs.McpResourceInjection)
+                prefs.McpResourceInjection = newResInject;
+            EditorGUILayout.EndHorizontal();
+            EditorGUILayout.LabelField("    自动将 MCP Resource 注入对话上下文", EditorStyles.miniLabel);
+
+            EditorGUILayout.BeginHorizontal();
+            EditorGUILayout.LabelField("Server 创建目录", GUILayout.Width(LABEL_WIDTH));
+            EditorGUILayout.TextField(prefs.McpServerDirectory);
+            if (GUILayout.Button("选择", GUILayout.Width(60)))
+            {
+                string path = EditorUtility.OpenFolderPanel("选择 MCP Server 创建目录", "Assets", "");
+                if (!string.IsNullOrEmpty(path))
+                {
+                    if (path.StartsWith(Application.dataPath))
+                    {
+                        path = "Assets" + path.Substring(Application.dataPath.Length);
+                        prefs.McpServerDirectory = path;
+                    }
+                    else
+                    {
+                        EditorUtility.DisplayDialog("路径错误", "请选择 Assets 目录下的文件夹", "确定");
+                    }
+                }
+            }
             EditorGUILayout.EndHorizontal();
         }
 

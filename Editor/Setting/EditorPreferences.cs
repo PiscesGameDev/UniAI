@@ -61,6 +61,21 @@ namespace UniAI.Editor
         /// </summary>
         [SerializeField] private int _defaultContextSlots = 1; // ContextSlot.Selection
 
+        /// <summary>
+        /// 切换 Agent 时是否自动连接 MCP Server
+        /// </summary>
+        [SerializeField] private bool _mcpAutoConnect = true;
+
+        /// <summary>
+        /// 是否将 MCP Resource 自动注入上下文
+        /// </summary>
+        [SerializeField] private bool _mcpResourceInjection = true;
+
+        /// <summary>
+        /// MCP Server 配置资产默认创建目录
+        /// </summary>
+        [SerializeField] private string _mcpServerDirectory = "Assets/UniAI/Resources/MCP";
+
         // ─── 公开属性 ───
 
         internal string LastSelectedModelId
@@ -121,6 +136,24 @@ namespace UniAI.Editor
         {
             get => _defaultContextSlots;
             set => _defaultContextSlots = value;
+        }
+
+        internal bool McpAutoConnect
+        {
+            get => _mcpAutoConnect;
+            set => _mcpAutoConnect = value;
+        }
+
+        internal bool McpResourceInjection
+        {
+            get => _mcpResourceInjection;
+            set => _mcpResourceInjection = value;
+        }
+
+        internal string McpServerDirectory
+        {
+            get => string.IsNullOrEmpty(_mcpServerDirectory) ? "Assets/UniAI/Resources/MCP" : _mcpServerDirectory;
+            set => _mcpServerDirectory = value;
         }
 
         // ─── 环境变量映射（按预设 ID，跟随 AI 供应商） ───

@@ -29,7 +29,10 @@ namespace UniAI
             public string Value;
         }
 
+        [SerializeField] private string _id;
         [SerializeField] private string _serverName = "New MCP Server";
+        [SerializeField] private string _description;
+        [SerializeField] private Texture2D _icon;
         [SerializeField] private McpTransportType _transportType = McpTransportType.Stdio;
         [SerializeField] private bool _enabled = true;
 
@@ -43,7 +46,23 @@ namespace UniAI
         [SerializeField] private List<KeyValueEntry> _headers = new();
         [SerializeField] private int _httpTimeoutSeconds = 60;
 
+        /// <summary>唯一标识符（GUID）</summary>
+        public string Id
+        {
+            get
+            {
+                if (!string.IsNullOrEmpty(_id)) return _id;
+                _id = Guid.NewGuid().ToString("N");
+#if UNITY_EDITOR
+                UnityEditor.EditorUtility.SetDirty(this);
+#endif
+                return _id;
+            }
+        }
+
         public string ServerName => _serverName;
+        public string Description => _description;
+        public Texture2D Icon => _icon;
         public McpTransportType TransportType => _transportType;
         public bool Enabled => _enabled;
 

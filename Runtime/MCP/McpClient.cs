@@ -15,18 +15,22 @@ namespace UniAI
         private const string ProtocolVersion = "2024-11-05";
 
         private readonly IMcpTransport _transport;
+        private readonly string _serverId;
         private readonly string _serverName;
         private readonly List<McpToolDefinition> _tools = new();
         private readonly List<McpResourceDefinition> _resources = new();
 
+        /// <summary>McpServerConfig.Id，稳定唯一标识</summary>
+        public string ServerId => _serverId;
         public string ServerName => _serverName;
         public McpServerInfo ServerInfo { get; private set; }
         public IReadOnlyList<McpToolDefinition> Tools => _tools;
         public IReadOnlyList<McpResourceDefinition> Resources => _resources;
         public bool IsInitialized { get; private set; }
 
-        internal McpClient(string serverName, IMcpTransport transport)
+        internal McpClient(string serverId, string serverName, IMcpTransport transport)
         {
+            _serverId = serverId;
             _serverName = serverName;
             _transport = transport ?? throw new ArgumentNullException(nameof(transport));
         }

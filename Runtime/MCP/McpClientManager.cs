@@ -13,6 +13,12 @@ namespace UniAI
     {
         private readonly List<McpClient> _clients = new();
         private readonly Dictionary<string, McpClient> _toolToClient = new();
+        private readonly Dictionary<string, McpClient> _serverIdToClient = new();
+
+        /// <summary>
+        /// 单次 MCP Tool 调用超时（秒），0 = 不限制
+        /// </summary>
+        public int ToolCallTimeoutSeconds { get; set; }
 
         /// <summary>
         /// 是否有任一已初始化的 Client
@@ -27,7 +33,10 @@ namespace UniAI
         /// <summary>
         /// 连接所有启用的 MCP Server，拉取 Tools/Resources。单个 Server 失败不影响其他。
         /// </summary>
-        public async UniTask ConnectAllAsync(IReadOnlyList<McpServerConfig> configs, CancellationToken ct = default)
+        /// <param name="configs">Server 配置列表</param>
+        /// <param name="initTimeoutSeconds">每个 Server 的初始化超时（秒），0 = 不限制</param>
+        /// <param name="ct">外部取消令牌</param>
+        public async UniTask ConnectAllAsync(IReadOnlyList<McpServerConfig> configs, int initTimeoutSeconds = 0, CancellationToken ct = default)
         {
             if (configs == null) return;
 
@@ -38,10 +47,21 @@ namespace UniAI
                 try
                 {
                     var transport = config.CreateTransport();
-                    var client = new McpClient(config.ServerName, transport);
-                    await client.InitializeAsync(ct);
+                    var client = new McpClient(config.Id, config.ServerName, transport);
+
+                    if (initTimeoutSeconds > 0)
+                    {
+                        using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+                        cts.CancelAfter(TimeSpan.FromSeconds(initTimeoutSeconds));
+                        await client.InitializeAsync(cts.Token);
+                    }
+                    else
+                    {
+                        await client.InitializeAsync(ct);
+                    }
 
                     _clients.Add(client);
+                    _serverIdToClient[config.Id] = client;
 
                     foreach (var tool in client.Tools)
                     {
@@ -87,6 +107,16 @@ namespace UniAI
         public bool HasTool(string toolName) => !string.IsNullOrEmpty(toolName) && _toolToClient.ContainsKey(toolName);
 
         /// <summary>
+        /// 通过 McpServerConfig.Id 查找已连接的 Client（未连接返回 null）
+        /// </summary>
+        public McpClient GetClientByServerId(string serverId)
+        {
+            if (string.IsNullOrEmpty(serverId)) return null;
+            _serverIdToClient.TryGetValue(serverId, out var client);
+            return client;
+        }
+
+        /// <summary>
         /// 调用 MCP Tool，返回文本结果
         /// </summary>
         public async UniTask<(string result, bool isError)> CallToolAsync(string toolName, string argumentsJson, CancellationToken ct = default)
@@ -96,8 +126,28 @@ namespace UniAI
 
             try
             {
-                var result = await client.CallToolAsync(toolName, argumentsJson, ct);
-                return (FlattenContent(result.Content), result.IsError);
+                CancellationToken token = ct;
+                CancellationTokenSource timeoutCts = null;
+                if (ToolCallTimeoutSeconds > 0)
+                {
+                    timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+                    timeoutCts.CancelAfter(TimeSpan.FromSeconds(ToolCallTimeoutSeconds));
+                    token = timeoutCts.Token;
+                }
+
+                try
+                {
+                    var result = await client.CallToolAsync(toolName, argumentsJson, token);
+                    return (FlattenContent(result.Content), result.IsError);
+                }
+                finally
+                {
+                    timeoutCts?.Dispose();
+                }
+            }
+            catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+            {
+                return ($"MCP tool '{toolName}' timed out after {ToolCallTimeoutSeconds}s", true);
             }
             catch (Exception e)
             {
@@ -150,6 +200,7 @@ namespace UniAI
             }
             _clients.Clear();
             _toolToClient.Clear();
+            _serverIdToClient.Clear();
         }
     }
 }

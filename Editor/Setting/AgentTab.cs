@@ -31,7 +31,7 @@ namespace UniAI.Editor
         private bool _stylesReady;
 
         private AgentDefinition SelectedAgent =>
-            _agents != null && _agents.Count > 0 && _selectedIndex < _agents.Count
+            _agents is { Count: > 0 } && _selectedIndex < _agents.Count
                 ? _agents[_selectedIndex]
                 : null;
 

@@ -527,11 +527,12 @@ namespace UniAI.Editor.Chat
             {
                 var agentRunner = new AIAgentRunner(_client, agent)
                 {
-                    ToolTimeoutSeconds = EditorPreferences.instance.ToolTimeout
+                    ToolTimeoutSeconds = EditorPreferences.instance.ToolTimeout,
+                    McpSettings = _config.General.Mcp
                 };
                 _runner = agentRunner;
 
-                if (agent.HasMcpServers)
+                if (agent.HasMcpServers && EditorPreferences.instance.McpAutoConnect)
                     _mcpInitTask = InitializeMcpAsync(agentRunner, agent);
             }
             else
@@ -550,7 +551,8 @@ namespace UniAI.Editor.Chat
                 await agentRunner.InitializeMcpAsync();
 
                 // 把 MCP Resource 注入到 ContextPipeline
-                if (agentRunner.McpManager != null && _contextPipeline != null)
+                if (EditorPreferences.instance.McpResourceInjection
+                    && agentRunner.McpManager != null && _contextPipeline != null)
                 {
                     foreach (var provider in agentRunner.McpManager.GetResourceProviders())
                         _contextPipeline.AddProvider(provider);

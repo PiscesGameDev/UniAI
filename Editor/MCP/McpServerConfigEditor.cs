@@ -8,13 +8,16 @@ using UnityEngine;
 namespace UniAI.Editor
 {
     /// <summary>
-    /// McpServerConfig 自定义 Inspector — 根据 TransportType 条件显示对应字段，
+    /// McpServerConfig 自定义 Inspector — Icon+Name 头部 + 根据 TransportType 条件显示对应字段，
     /// 提供「测试连接」按钮验证配置可用性
     /// </summary>
     [CustomEditor(typeof(McpServerConfig))]
     internal class McpServerConfigEditor : UnityEditor.Editor
     {
+        private SerializedProperty _id;
         private SerializedProperty _serverName;
+        private SerializedProperty _description;
+        private SerializedProperty _icon;
         private SerializedProperty _transportType;
         private SerializedProperty _enabled;
         private SerializedProperty _command;
@@ -33,7 +36,10 @@ namespace UniAI.Editor
 
         private void OnEnable()
         {
+            _id = serializedObject.FindProperty("_id");
             _serverName = serializedObject.FindProperty("_serverName");
+            _description = serializedObject.FindProperty("_description");
+            _icon = serializedObject.FindProperty("_icon");
             _transportType = serializedObject.FindProperty("_transportType");
             _enabled = serializedObject.FindProperty("_enabled");
             _command = serializedObject.FindProperty("_command");
@@ -45,14 +51,20 @@ namespace UniAI.Editor
 
             _envList = BuildKeyValueList(_environmentVariables, "环境变量");
             _headerList = BuildKeyValueList(_headers, "请求头");
+
+            // 确保 Id 已生成
+            var config = (McpServerConfig)target;
+            _ = config.Id;
         }
 
         public override void OnInspectorGUI()
         {
             serializedObject.Update();
 
+            DrawBasicInfo();
+            EditorGUILayout.Space(6);
+
             EditorGUILayout.BeginVertical(EditorStyles.helpBox);
-            EditorGUILayout.PropertyField(_serverName, new GUIContent("名称"));
             EditorGUILayout.PropertyField(_transportType, new GUIContent("传输类型"));
             EditorGUILayout.PropertyField(_enabled, new GUIContent("启用"));
             EditorGUILayout.EndVertical();
@@ -70,6 +82,41 @@ namespace UniAI.Editor
             DrawTestSection();
 
             serializedObject.ApplyModifiedProperties();
+        }
+
+        // ─── 基本信息（Icon + Name 布局，与 AgentDefinitionEditor 一致） ───
+
+        private void DrawBasicInfo()
+        {
+            EditorGUILayout.BeginVertical(EditorStyles.helpBox);
+
+            EditorGUILayout.BeginHorizontal();
+            // 左侧：图标
+            EditorGUILayout.BeginVertical(GUILayout.Width(68));
+            _icon.objectReferenceValue = EditorGUILayout.ObjectField(
+                _icon.objectReferenceValue, typeof(Texture2D), false,
+                GUILayout.Width(64), GUILayout.Height(64));
+            EditorGUILayout.EndVertical();
+
+            GUILayout.Space(8);
+
+            // 右侧：Id + 名称 + 描述
+            EditorGUILayout.BeginVertical();
+            var oldLabelWidth = EditorGUIUtility.labelWidth;
+            EditorGUIUtility.labelWidth = 60;
+            EditorGUI.BeginDisabledGroup(true);
+            EditorGUILayout.PropertyField(_id, new GUIContent("Id"));
+            EditorGUI.EndDisabledGroup();
+            GUILayout.Space(2);
+            EditorGUILayout.PropertyField(_serverName, new GUIContent("名称"));
+            GUILayout.Space(2);
+            EditorGUILayout.PropertyField(_description, new GUIContent("描述"));
+            EditorGUIUtility.labelWidth = oldLabelWidth;
+            EditorGUILayout.EndVertical();
+
+            EditorGUILayout.EndHorizontal();
+
+            EditorGUILayout.EndVertical();
         }
 
         private void DrawStdio()
@@ -139,9 +186,10 @@ namespace UniAI.Editor
             McpClient client = null;
             try
             {
-                using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(15));
+                int timeout = AIConfigManager.LoadConfig()?.General?.Mcp?.InitTimeoutSeconds ?? 30;
+                using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(timeout));
                 var transport = config.CreateTransport();
-                client = new McpClient(config.ServerName, transport);
+                client = new McpClient(config.Id, config.ServerName, transport);
                 await client.InitializeAsync(cts.Token);
 
                 _testStatus = $"连接成功 — Server: {client.ServerInfo?.Name ?? "(unknown)"} v{client.ServerInfo?.Version}\n" +

@@ -39,6 +39,11 @@ namespace UniAI
         /// </summary>
         public float ToolTimeoutSeconds { get; set; }
 
+        /// <summary>
+        /// MCP 运行时配置（初始化超时、Tool 调用超时），从 AIConfig.General.Mcp 传入
+        /// </summary>
+        public McpConfig McpSettings { get; set; }
+
         public AIAgentRunner(AIClient client, AgentDefinition definition)
         {
             _client = client ?? throw new ArgumentNullException(nameof(client));
@@ -67,7 +72,11 @@ namespace UniAI
             if (!_definition.HasMcpServers) return;
 
             _mcpManager = new McpClientManager();
-            await _mcpManager.ConnectAllAsync(_definition.McpServers, ct);
+
+            int initTimeout = McpSettings?.InitTimeoutSeconds ?? 0;
+            await _mcpManager.ConnectAllAsync(_definition.McpServers, initTimeout, ct);
+
+            _mcpManager.ToolCallTimeoutSeconds = McpSettings?.ToolCallTimeoutSeconds ?? 0;
 
             foreach (var tool in _mcpManager.GetAllTools())
             {

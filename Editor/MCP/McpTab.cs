@@ -16,15 +16,15 @@ namespace UniAI.Editor
 
         private const float LEFT_PANEL_WIDTH = 220f;
         private const float PAD = 10f;
+        private const float ITEM_ICON_SIZE = 24f;
 
         private List<McpServerConfig> _servers;
         private int _selectedIndex;
         private Vector2 _rightScroll;
         private UnityEditor.Editor _cachedEditor;
 
-        private GUIStyle _sectionTitleStyle;
         private GUIStyle _itemLabelStyle;
-        private GUIStyle _itemSubLabelStyle;
+        private GUIStyle _dotStyle;
         private GUIStyle _addBtnStyle;
         private bool _stylesReady;
 
@@ -48,9 +48,13 @@ namespace UniAI.Editor
             if (_stylesReady) return;
             _stylesReady = true;
 
-            _sectionTitleStyle = new GUIStyle(EditorStyles.boldLabel) { fontSize = 13 };
             _itemLabelStyle = new GUIStyle(EditorStyles.label) { fontSize = 12, alignment = TextAnchor.MiddleLeft };
-            _itemSubLabelStyle = new GUIStyle(EditorStyles.miniLabel) { alignment = TextAnchor.MiddleLeft };
+            _dotStyle = new GUIStyle(EditorStyles.label)
+            {
+                fontSize = 14,
+                alignment = TextAnchor.MiddleCenter,
+                padding = new RectOffset(0, 0, 0, 0)
+            };
             _addBtnStyle = new GUIStyle(GUI.skin.button) { alignment = TextAnchor.MiddleCenter };
         }
 
@@ -113,7 +117,7 @@ namespace UniAI.Editor
         {
             var server = _servers[index];
             bool isSelected = _selectedIndex == index;
-            var rect = EditorGUILayout.BeginVertical(GUILayout.Height(40));
+            var rect = EditorGUILayout.BeginVertical(GUILayout.Height(32));
 
             if (rect.width > 1)
                 EditorGUI.DrawRect(rect, isSelected ? EditorGUIHelper.ItemSelectedBg : EditorGUIHelper.ItemBg);
@@ -122,16 +126,25 @@ namespace UniAI.Editor
             EditorGUILayout.BeginHorizontal();
             GUILayout.Space(PAD);
 
-            // 启用状态点
-            var dotRect = GUILayoutUtility.GetRect(8, 8, GUILayout.Width(8), GUILayout.Height(8));
-            dotRect.y += 4;
-            EditorGUI.DrawRect(dotRect, server.Enabled ? new Color(0.4f, 0.85f, 0.4f) : new Color(0.5f, 0.5f, 0.5f));
-            GUILayout.Space(6);
+            // 启用状态圆点
+            var prevColor = GUI.contentColor;
+            GUI.contentColor = server.Enabled ? new Color(0.4f, 0.85f, 0.4f) : new Color(0.5f, 0.5f, 0.5f);
+            GUILayout.Label("●", _dotStyle, GUILayout.Width(14), GUILayout.Height(ITEM_ICON_SIZE));
+            GUI.contentColor = prevColor;
+            GUILayout.Space(2);
+
+            // 图标缩略图
+            if (server.Icon != null)
+            {
+                var iconRect = GUILayoutUtility.GetRect(ITEM_ICON_SIZE, ITEM_ICON_SIZE,
+                    GUILayout.Width(ITEM_ICON_SIZE), GUILayout.Height(ITEM_ICON_SIZE));
+                GUI.DrawTexture(iconRect, server.Icon, ScaleMode.ScaleToFit);
+                GUILayout.Space(4);
+            }
 
             string displayName = string.IsNullOrEmpty(server.ServerName) ? server.name : server.ServerName;
             GUILayout.Label(displayName, _itemLabelStyle);
             GUILayout.FlexibleSpace();
-            GUILayout.Label(server.TransportType.ToString(), _itemSubLabelStyle);
             GUILayout.Space(6);
             EditorGUILayout.EndHorizontal();
 
@@ -171,16 +184,6 @@ namespace UniAI.Editor
 
             EditorGUILayout.BeginHorizontal();
             GUILayout.Space(PAD);
-            string headerLabel = string.IsNullOrEmpty(server.ServerName) ? server.name : server.ServerName;
-            GUILayout.Label($"{headerLabel} 配置", _sectionTitleStyle);
-            GUILayout.FlexibleSpace();
-            GUILayout.Space(PAD);
-            EditorGUILayout.EndHorizontal();
-
-            GUILayout.Space(8);
-
-            EditorGUILayout.BeginHorizontal();
-            GUILayout.Space(PAD);
             EditorGUILayout.BeginVertical();
 
             if (_cachedEditor == null || _cachedEditor.target != server)
@@ -199,7 +202,7 @@ namespace UniAI.Editor
 
         private void CreateNewServer()
         {
-            string defaultDir = "Assets/UniAI/Resources/MCP";
+            string defaultDir = AIConfigManager.Prefs.McpServerDirectory;
             if (!Directory.Exists(defaultDir))
                 Directory.CreateDirectory(defaultDir);
 
