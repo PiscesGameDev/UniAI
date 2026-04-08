@@ -74,7 +74,7 @@ namespace UniAI.Editor
         /// <summary>
         /// MCP Server 配置资产默认创建目录
         /// </summary>
-        [SerializeField] private string _mcpServerDirectory = "Assets/UniAI/Resources/MCP";
+        [SerializeField] private string _mcpServerDirectory = "Assets/Agents/MCP";
 
         // ─── 公开属性 ───
 
@@ -152,7 +152,7 @@ namespace UniAI.Editor
 
         internal string McpServerDirectory
         {
-            get => string.IsNullOrEmpty(_mcpServerDirectory) ? "Assets/UniAI/Resources/MCP" : _mcpServerDirectory;
+            get => string.IsNullOrEmpty(_mcpServerDirectory) ? "Assets/Agents/MCP" : _mcpServerDirectory;
             set => _mcpServerDirectory = value;
         }
 

@@ -36,12 +36,12 @@ namespace UniAI
     /// </summary>
     public class McpToolDefinition
     {
-        public string Name;
-        public string Description;
+        public string Name { get; set; }
+        public string Description { get; set; }
         /// <summary>
         /// 原始 JSON Schema 字符串，直接映射为 AITool.ParametersSchema
         /// </summary>
-        public string InputSchemaJson;
+        public string InputSchemaJson { get; set; }
     }
 
     /// <summary>
@@ -49,8 +49,8 @@ namespace UniAI
     /// </summary>
     public class McpToolResult
     {
-        public List<McpContent> Content = new();
-        public bool IsError;
+        public List<McpContent> Content { get; set; } = new();
+        public bool IsError { get; set; }
     }
 
     /// <summary>
@@ -58,10 +58,10 @@ namespace UniAI
     /// </summary>
     public class McpContent
     {
-        public string Type;   // "text" | "image" | "resource"
-        public string Text;
-        public string Data;   // base64（image）
-        public string MimeType;
+        public string Type { get; set; }       // "text" | "image" | "resource"
+        public string Text { get; set; }
+        public string Data { get; set; }       // base64（image）
+        public string MimeType { get; set; }
     }
 
     /// <summary>
@@ -69,10 +69,10 @@ namespace UniAI
     /// </summary>
     public class McpResourceDefinition
     {
-        public string Uri;
-        public string Name;
-        public string Description;
-        public string MimeType;
+        public string Uri { get; set; }
+        public string Name { get; set; }
+        public string Description { get; set; }
+        public string MimeType { get; set; }
     }
 
     /// <summary>
@@ -80,10 +80,10 @@ namespace UniAI
     /// </summary>
     public class McpResourceContent
     {
-        public string Uri;
-        public string MimeType;
-        public string Text;
-        public string Blob;
+        public string Uri { get; set; }
+        public string MimeType { get; set; }
+        public string Text { get; set; }
+        public string Blob { get; set; }
     }
 
     /// <summary>
@@ -91,8 +91,8 @@ namespace UniAI
     /// </summary>
     public class McpServerInfo
     {
-        public string Name;
-        public string Version;
-        public string ProtocolVersion;
+        public string Name { get; set; }
+        public string Version { get; set; }
+        public string ProtocolVersion { get; set; }
     }
 }

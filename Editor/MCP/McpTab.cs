@@ -142,7 +142,7 @@ namespace UniAI.Editor
                 GUILayout.Space(4);
             }
 
-            string displayName = string.IsNullOrEmpty(server.ServerName) ? server.name : server.ServerName;
+            string displayName = server.DisplayName;
             GUILayout.Label(displayName, _itemLabelStyle);
             GUILayout.FlexibleSpace();
             GUILayout.Space(6);
@@ -212,20 +212,14 @@ namespace UniAI.Editor
             AssetDatabase.SaveAssets();
 
             RefreshList();
-            for (int i = 0; i < _servers.Count; i++)
-            {
-                if (_servers[i] == asset)
-                {
-                    _selectedIndex = i;
-                    break;
-                }
-            }
+            int idx = _servers.IndexOf(asset);
+            if (idx >= 0) _selectedIndex = idx;
             Window.Repaint();
         }
 
         private void DeleteServer(McpServerConfig server)
         {
-            string serverName = string.IsNullOrEmpty(server.ServerName) ? server.name : server.ServerName;
+            string serverName = server.DisplayName;
             if (!EditorUtility.DisplayDialog(
                     "删除 MCP Server",
                     $"确定要删除「{serverName}」吗？\n此操作不可撤销。",
@@ -251,7 +245,7 @@ namespace UniAI.Editor
 
             menu.AddSeparator("");
 
-            string serverName = string.IsNullOrEmpty(server.ServerName) ? server.name : server.ServerName;
+            string serverName = server.DisplayName;
             menu.AddItem(new GUIContent($"删除「{serverName}」"), false, () => DeleteServer(server));
 
             menu.ShowAsContext();

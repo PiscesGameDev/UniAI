@@ -37,42 +37,53 @@ namespace UniAI
 
         /// <summary>
         /// 初始化连接：建立传输 → MCP initialize 握手 → 拉取 tools/resources 列表
+        /// 失败时会自动释放底层 transport，避免资源泄漏
         /// </summary>
         public async UniTask InitializeAsync(CancellationToken ct = default)
         {
-            await _transport.ConnectAsync(ct);
-
-            // 1. initialize
-            var initResult = await SendAsync("initialize", new JObject
+            try
             {
-                ["protocolVersion"] = ProtocolVersion,
-                ["capabilities"] = new JObject
+                await _transport.ConnectAsync(ct);
+
+                // 1. initialize
+                var initResult = await SendAsync(McpMethods.Initialize, new JObject
                 {
-                    ["tools"] = new JObject(),
-                    ["resources"] = new JObject()
-                },
-                ["clientInfo"] = new JObject
-                {
-                    ["name"] = "UniAI",
-                    ["version"] = "0.0.1"
-                }
-            }, ct);
+                    ["protocolVersion"] = ProtocolVersion,
+                    ["capabilities"] = new JObject
+                    {
+                        ["tools"] = new JObject(),
+                        ["resources"] = new JObject()
+                    },
+                    ["clientInfo"] = new JObject
+                    {
+                        ["name"] = "UniAI",
+                        ["version"] = "0.0.1"
+                    }
+                }, ct);
 
-            ServerInfo = ParseServerInfo(initResult);
+                ServerInfo = ParseServerInfo(initResult);
 
-            // 2. initialized 通知
-            await _transport.SendNotificationAsync("notifications/initialized", new JObject(), ct);
+                // 2. initialized 通知
+                await _transport.SendNotificationAsync(McpMethods.Initialized, new JObject(), ct);
 
-            IsInitialized = true;
+                IsInitialized = true;
 
-            // 3. 拉取 tools 和 resources（静默失败：Server 可能不支持）
-            try { await LoadToolsAsync(ct); }
-            catch (Exception e) { AILogger.Verbose($"[MCP] {_serverName}: tools/list failed: {e.Message}"); }
+                // 3. 拉取 tools 和 resources（静默失败：Server 可能不支持）
+                try { await LoadToolsAsync(ct); }
+                catch (Exception e) { AILogger.Warning($"[MCP] {_serverName}: tools/list failed: {e.Message}"); }
 
-            try { await LoadResourcesAsync(ct); }
-            catch (Exception e) { AILogger.Verbose($"[MCP] {_serverName}: resources/list failed: {e.Message}"); }
+                try { await LoadResourcesAsync(ct); }
+                catch (Exception e) { AILogger.Warning($"[MCP] {_serverName}: resources/list failed: {e.Message}"); }
 
-            AILogger.Info($"[MCP] {_serverName} initialized: {_tools.Count} tools, {_resources.Count} resources");
+                AILogger.Info($"[MCP] {_serverName} initialized: {_tools.Count} tools, {_resources.Count} resources");
+            }
+            catch
+            {
+                // 握手或连接失败时释放底层 transport，避免子进程/HTTP session 泄漏
+                try { _transport.Dispose(); }
+                catch (Exception disposeEx) { AILogger.Warning($"[MCP] {_serverName}: dispose transport after init failure: {disposeEx.Message}"); }
+                throw;
+            }
         }
 
         /// <summary>
@@ -89,7 +100,7 @@ namespace UniAI
                 catch { args = new JObject(); }
             }
 
-            var result = await SendAsync("tools/call", new JObject
+            var result = await SendAsync(McpMethods.ToolsCall, new JObject
             {
                 ["name"] = name,
                 ["arguments"] = args
@@ -103,13 +114,13 @@ namespace UniAI
         /// </summary>
         public async UniTask<McpResourceContent> ReadResourceAsync(string uri, CancellationToken ct = default)
         {
-            var result = await SendAsync("resources/read", new JObject { ["uri"] = uri }, ct);
+            var result = await SendAsync(McpMethods.ResourcesRead, new JObject { ["uri"] = uri }, ct);
             return ParseResourceContent(result, uri);
         }
 
         private async UniTask LoadToolsAsync(CancellationToken ct)
         {
-            var result = await SendAsync("tools/list", new JObject(), ct);
+            var result = await SendAsync(McpMethods.ToolsList, new JObject(), ct);
             _tools.Clear();
             if (result?["tools"] is JArray arr)
             {
@@ -127,7 +138,7 @@ namespace UniAI
 
         private async UniTask LoadResourcesAsync(CancellationToken ct)
         {
-            var result = await SendAsync("resources/list", new JObject(), ct);
+            var result = await SendAsync(McpMethods.ResourcesList, new JObject(), ct);
             _resources.Clear();
             if (result?["resources"] is JArray arr)
             {

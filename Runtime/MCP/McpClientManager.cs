@@ -8,6 +8,9 @@ namespace UniAI
 {
     /// <summary>
     /// MCP 客户端管理器 — 聚合多个 McpClient 连接，提供统一的 Tool/Resource 访问接口
+    ///
+    /// 线程模型：实例方法不是线程安全的，调用方需在单一主线程（如 Unity Main Thread / UniTask 调度上下文）
+    /// 内串行调用 ConnectAllAsync / CallToolAsync / GetAllTools / Dispose 等。内部集合无锁保护。
     /// </summary>
     public class McpClientManager : IDisposable
     {
@@ -46,37 +49,90 @@ namespace UniAI
 
                 try
                 {
-                    var transport = config.CreateTransport();
-                    var client = new McpClient(config.Id, config.ServerName, transport);
-
-                    if (initTimeoutSeconds > 0)
-                    {
-                        using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
-                        cts.CancelAfter(TimeSpan.FromSeconds(initTimeoutSeconds));
-                        await client.InitializeAsync(cts.Token);
-                    }
-                    else
-                    {
-                        await client.InitializeAsync(ct);
-                    }
-
-                    _clients.Add(client);
-                    _serverIdToClient[config.Id] = client;
-
-                    foreach (var tool in client.Tools)
-                    {
-                        if (string.IsNullOrEmpty(tool.Name)) continue;
-                        if (_toolToClient.ContainsKey(tool.Name))
-                        {
-                            AILogger.Warning($"[MCP] Tool name conflict: '{tool.Name}' (server '{config.ServerName}' shadows previous)");
-                        }
-                        _toolToClient[tool.Name] = client;
-                    }
+                    var client = await ConnectOneAsync(config, initTimeoutSeconds, ct);
+                    AddClient(config, client);
                 }
                 catch (Exception e)
                 {
                     AILogger.Error($"[MCP] Failed to connect '{config.ServerName}': {e.Message}");
                 }
+            }
+        }
+
+        /// <summary>
+        /// 测试单个 Server 配置是否可用。不会加入管理器，调用后即释放连接。
+        /// 供编辑器「测试连接」按钮使用。
+        /// </summary>
+        public static async UniTask<TestConnectionResult> TestConnectionAsync(
+            McpServerConfig config,
+            int initTimeoutSeconds,
+            CancellationToken ct = default)
+        {
+            if (config == null)
+                return TestConnectionResult.Fail("config is null");
+
+            McpClient client = null;
+            try
+            {
+                client = await ConnectOneAsync(config, initTimeoutSeconds, ct);
+                return new TestConnectionResult
+                {
+                    Success = true,
+                    ServerInfo = client.ServerInfo,
+                    ToolCount = client.Tools.Count,
+                    ResourceCount = client.Resources.Count
+                };
+            }
+            catch (Exception e)
+            {
+                return TestConnectionResult.Fail(e.Message);
+            }
+            finally
+            {
+                client?.Dispose();
+            }
+        }
+
+        /// <summary>
+        /// 生成所有已连接 Server 的状态概要（供 UI 展示）
+        /// </summary>
+        public string GetConnectionSummary()
+        {
+            if (_clients.Count == 0) return "未连接任何 MCP Server";
+
+            int toolTotal = 0;
+            int resTotal = 0;
+            foreach (var c in _clients)
+            {
+                toolTotal += c.Tools.Count;
+                resTotal += c.Resources.Count;
+            }
+            return $"已连接 {_clients.Count} 个 MCP Server — Tools: {toolTotal}, Resources: {resTotal}";
+        }
+
+        private static async UniTask<McpClient> ConnectOneAsync(McpServerConfig config, int initTimeoutSeconds, CancellationToken ct)
+        {
+            var transport = McpTransportFactory.Create(config);
+            var client = new McpClient(config.Id, config.ServerName, transport);
+
+            await TimeoutHelper.WithTimeout(token => client.InitializeAsync(token), initTimeoutSeconds, ct);
+
+            return client;
+        }
+
+        private void AddClient(McpServerConfig config, McpClient client)
+        {
+            _clients.Add(client);
+            _serverIdToClient[config.Id] = client;
+
+            foreach (var tool in client.Tools)
+            {
+                if (string.IsNullOrEmpty(tool.Name)) continue;
+                if (_toolToClient.ContainsKey(tool.Name))
+                {
+                    AILogger.Warning($"[MCP] Tool name conflict: '{tool.Name}' (server '{config.ServerName}' shadows previous)");
+                }
+                _toolToClient[tool.Name] = client;
             }
         }
 
@@ -126,24 +182,10 @@ namespace UniAI
 
             try
             {
-                CancellationToken token = ct;
-                CancellationTokenSource timeoutCts = null;
-                if (ToolCallTimeoutSeconds > 0)
-                {
-                    timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
-                    timeoutCts.CancelAfter(TimeSpan.FromSeconds(ToolCallTimeoutSeconds));
-                    token = timeoutCts.Token;
-                }
-
-                try
-                {
-                    var result = await client.CallToolAsync(toolName, argumentsJson, token);
-                    return (FlattenContent(result.Content), result.IsError);
-                }
-                finally
-                {
-                    timeoutCts?.Dispose();
-                }
+                var result = await TimeoutHelper.WithTimeout(
+                    token => client.CallToolAsync(toolName, argumentsJson, token),
+                    ToolCallTimeoutSeconds, ct);
+                return (FlattenContent(result.Content), result.IsError);
             }
             catch (OperationCanceledException) when (!ct.IsCancellationRequested)
             {
@@ -177,12 +219,12 @@ namespace UniAI
             foreach (var c in contents)
             {
                 if (c == null) continue;
-                if (c.Type == "text" && !string.IsNullOrEmpty(c.Text))
+                if (c.Type == McpContentTypes.Text && !string.IsNullOrEmpty(c.Text))
                 {
                     if (sb.Length > 0) sb.Append('\n');
                     sb.Append(c.Text);
                 }
-                else if (c.Type == "image" && !string.IsNullOrEmpty(c.MimeType))
+                else if (c.Type == McpContentTypes.Image && !string.IsNullOrEmpty(c.MimeType))
                 {
                     if (sb.Length > 0) sb.Append('\n');
                     sb.Append($"[image: {c.MimeType}]");
@@ -202,5 +244,20 @@ namespace UniAI
             _toolToClient.Clear();
             _serverIdToClient.Clear();
         }
+    }
+
+    /// <summary>
+    /// MCP Server 连接测试结果
+    /// </summary>
+    public class TestConnectionResult
+    {
+        public bool Success;
+        public string Error;
+        public McpServerInfo ServerInfo;
+        public int ToolCount;
+        public int ResourceCount;
+
+        public static TestConnectionResult Fail(string error) =>
+            new() { Success = false, Error = error };
     }
 }

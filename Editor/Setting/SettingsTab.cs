@@ -50,6 +50,10 @@ namespace UniAI.Editor
 
             EditorGUIHelper.DrawSection(PAD, DrawEditorSettings);
 
+            GUILayout.Space(12);
+
+            EditorGUIHelper.DrawSection(PAD, DrawMcpSettings);
+
             GUILayout.FlexibleSpace();
             GUILayout.Space(PAD);
             EditorGUILayout.EndScrollView();
@@ -73,9 +77,6 @@ namespace UniAI.Editor
 
             GUILayout.Space(12);
             DrawContextWindowSettings();
-
-            GUILayout.Space(12);
-            DrawMcpRuntimeSettings();
         }
 
         private void DrawContextWindowSettings()
@@ -124,27 +125,6 @@ namespace UniAI.Editor
             }
         }
 
-        private void DrawMcpRuntimeSettings()
-        {
-            var mcp = Config.General.Mcp;
-
-            GUILayout.Label("MCP 连接", _sectionTitleStyle);
-            EditorGUILayout.LabelField("MCP Server 连接与调用的超时参数。", EditorStyles.miniLabel);
-            GUILayout.Space(8);
-
-            EditorGUILayout.BeginHorizontal();
-            EditorGUILayout.LabelField("初始化超时 (秒)", GUILayout.Width(LABEL_WIDTH));
-            mcp.InitTimeoutSeconds = EditorGUILayout.IntSlider(mcp.InitTimeoutSeconds, 5, 120);
-            EditorGUILayout.EndHorizontal();
-            EditorGUILayout.LabelField("    connect + initialize + tools/list 全流程超时", EditorStyles.miniLabel);
-
-            EditorGUILayout.BeginHorizontal();
-            EditorGUILayout.LabelField("Tool 调用超时 (秒)", GUILayout.Width(LABEL_WIDTH));
-            mcp.ToolCallTimeoutSeconds = EditorGUILayout.IntSlider(mcp.ToolCallTimeoutSeconds, 0, 300);
-            EditorGUILayout.EndHorizontal();
-            EditorGUILayout.LabelField("    单次 MCP Tool 调用超时，0 = 不限制", EditorStyles.miniLabel);
-        }
-
         private void DrawEditorSettings()
         {
             var prefs = AIConfigManager.Prefs;
@@ -180,23 +160,7 @@ namespace UniAI.Editor
 
             EditorGUILayout.BeginHorizontal();
             EditorGUILayout.LabelField("Agent 创建目录", GUILayout.Width(LABEL_WIDTH));
-            EditorGUILayout.TextField(prefs.AgentDirectory);
-            if (GUILayout.Button("选择", GUILayout.Width(60)))
-            {
-                string path = EditorUtility.OpenFolderPanel("选择 Agent 创建目录", "Assets", "");
-                if (!string.IsNullOrEmpty(path))
-                {
-                    if (path.StartsWith(Application.dataPath))
-                    {
-                        path = "Assets" + path.Substring(Application.dataPath.Length);
-                        prefs.AgentDirectory = path;
-                    }
-                    else
-                    {
-                        EditorUtility.DisplayDialog("路径错误", "请选择 Assets 目录下的文件夹", "确定");
-                    }
-                }
-            }
+            DrawFolderPicker("选择 Agent 创建目录", prefs.AgentDirectory, path => prefs.AgentDirectory = path);
             EditorGUILayout.EndHorizontal();
 
             GUILayout.Space(8);
@@ -242,15 +206,39 @@ namespace UniAI.Editor
             if (newMaxMatches != prefs.SearchMaxMatches)
                 prefs.SearchMaxMatches = Mathf.Clamp(newMaxMatches, 10, 1000);
             EditorGUILayout.EndHorizontal();
-
-            GUILayout.Space(12);
-            DrawMcpEditorSettings(prefs);
         }
 
-        private void DrawMcpEditorSettings(EditorPreferences prefs)
+        private void DrawMcpSettings()
         {
-            GUILayout.Label("MCP 设置", _sectionTitleStyle);
-            EditorGUILayout.LabelField("编辑器中 MCP Client 的行为偏好。", EditorStyles.miniLabel);
+            var prefs = AIConfigManager.Prefs;
+            var mcp = Config.General.Mcp;
+
+            GUILayout.Label("MCP 设置", _titleStyle);
+            EditorGUILayout.LabelField("MCP Client 的连接超时与编辑器行为偏好。", EditorStyles.miniLabel);
+            GUILayout.Space(12);
+
+            // ─── 连接参数（运行时） ───
+            GUILayout.Label("连接参数", _sectionTitleStyle);
+            EditorGUILayout.LabelField("MCP Server 连接与调用的超时参数（影响运行时）。", EditorStyles.miniLabel);
+            GUILayout.Space(8);
+
+            EditorGUILayout.BeginHorizontal();
+            EditorGUILayout.LabelField("初始化超时 (秒)", GUILayout.Width(LABEL_WIDTH));
+            mcp.InitTimeoutSeconds = EditorGUILayout.IntSlider(mcp.InitTimeoutSeconds, 5, 120);
+            EditorGUILayout.EndHorizontal();
+            EditorGUILayout.LabelField("    connect + initialize + tools/list 全流程超时", EditorStyles.miniLabel);
+
+            EditorGUILayout.BeginHorizontal();
+            EditorGUILayout.LabelField("Tool 调用超时 (秒)", GUILayout.Width(LABEL_WIDTH));
+            mcp.ToolCallTimeoutSeconds = EditorGUILayout.IntSlider(mcp.ToolCallTimeoutSeconds, 0, 300);
+            EditorGUILayout.EndHorizontal();
+            EditorGUILayout.LabelField("    单次 MCP Tool 调用超时，0 = 不限制", EditorStyles.miniLabel);
+
+            GUILayout.Space(12);
+
+            // ─── 编辑器行为 ───
+            GUILayout.Label("编辑器行为", _sectionTitleStyle);
+            EditorGUILayout.LabelField("仅影响编辑器中的 MCP Client 体验。", EditorStyles.miniLabel);
             GUILayout.Space(8);
 
             EditorGUILayout.BeginHorizontal();
@@ -271,24 +259,28 @@ namespace UniAI.Editor
 
             EditorGUILayout.BeginHorizontal();
             EditorGUILayout.LabelField("Server 创建目录", GUILayout.Width(LABEL_WIDTH));
-            EditorGUILayout.TextField(prefs.McpServerDirectory);
+            DrawFolderPicker("选择 MCP Server 创建目录", prefs.McpServerDirectory, path => prefs.McpServerDirectory = path);
+            EditorGUILayout.EndHorizontal();
+        }
+
+        private static void DrawFolderPicker(string dialogTitle, string currentPath, System.Action<string> onChanged)
+        {
+            EditorGUILayout.TextField(currentPath);
             if (GUILayout.Button("选择", GUILayout.Width(60)))
             {
-                string path = EditorUtility.OpenFolderPanel("选择 MCP Server 创建目录", "Assets", "");
-                if (!string.IsNullOrEmpty(path))
+                string path = EditorUtility.OpenFolderPanel(dialogTitle, "Assets", "");
+                if (string.IsNullOrEmpty(path)) return;
+
+                if (path.StartsWith(Application.dataPath))
                 {
-                    if (path.StartsWith(Application.dataPath))
-                    {
-                        path = "Assets" + path.Substring(Application.dataPath.Length);
-                        prefs.McpServerDirectory = path;
-                    }
-                    else
-                    {
-                        EditorUtility.DisplayDialog("路径错误", "请选择 Assets 目录下的文件夹", "确定");
-                    }
+                    path = "Assets" + path.Substring(Application.dataPath.Length);
+                    onChanged(path);
+                }
+                else
+                {
+                    EditorUtility.DisplayDialog("路径错误", "请选择 Assets 目录下的文件夹", "确定");
                 }
             }
-            EditorGUILayout.EndHorizontal();
         }
 
         private static void DrawContextSlotToggle(ref ContextCollector.ContextSlot slots, ContextCollector.ContextSlot flag, string label)

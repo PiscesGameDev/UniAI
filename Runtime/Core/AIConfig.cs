@@ -179,14 +179,14 @@ namespace UniAI
         /// <summary>
         /// MCP 相关配置
         /// </summary>
-        public McpConfig Mcp = new();
+        public McpRuntimeConfig Mcp = new();
     }
 
     /// <summary>
-    /// MCP 运行时配置
+    /// MCP 运行时配置（初始化 + 调用超时等，区别于 McpServerConfig 资产）
     /// </summary>
     [Serializable]
-    public class McpConfig
+    public class McpRuntimeConfig
     {
         /// <summary>
         /// MCP Server 初始化超时（connect + initialize + tools/list 全流程，秒）

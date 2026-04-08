@@ -31,6 +31,11 @@ namespace UniAI
         {
             if (string.IsNullOrEmpty(_baseUrl))
                 throw new InvalidOperationException("HttpMcpTransport: BaseUrl is empty");
+
+            if (!Uri.TryCreate(_baseUrl, UriKind.Absolute, out var uri) ||
+                (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps))
+                throw new InvalidOperationException($"HttpMcpTransport: BaseUrl must be absolute http(s) URL, got '{_baseUrl}'");
+
             IsConnected = true;
             AILogger.Info($"[MCP] HTTP transport ready: {_baseUrl}");
             return UniTask.CompletedTask;

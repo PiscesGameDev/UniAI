@@ -10,7 +10,7 @@ namespace UniAI.Editor.Chat
     /// 对话窗口业务控制器 — 管理会话、Client、消息流和上下文
     /// 与 UI 通过事件/回调通信，不依赖 EditorWindow
     /// </summary>
-    public class ChatWindowController : IDisposable
+    internal class ChatWindowController : IDisposable
     {
         // ─── 事件（UI 订阅） ───
 
@@ -563,11 +563,8 @@ namespace UniAI.Editor.Chat
                 foreach (var cfg in agent.McpServers)
                     if (cfg != null && cfg.Enabled) total++;
 
-                int toolCount = 0;
-                if (agentRunner.McpManager != null)
-                    foreach (var c in agentRunner.McpManager.Clients) toolCount += c.Tools.Count;
-
-                _mcpStatus = $"MCP: {connected}/{total} 已连接 · {toolCount} tools";
+                string summary = agentRunner.McpManager?.GetConnectionSummary() ?? "未连接";
+                _mcpStatus = $"MCP: {connected}/{total} — {summary}";
             }
             catch (Exception e)
             {

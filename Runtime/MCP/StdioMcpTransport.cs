@@ -193,7 +193,10 @@ namespace UniAI
                 }
             }
             catch (OperationCanceledException) { }
-            catch (Exception) { }
+            catch (Exception e)
+            {
+                AILogger.Verbose($"[MCP] stderr read loop ended: {e.Message}");
+            }
         }
 
         private static async UniTask<string> ReadLineAsync(StreamReader reader, CancellationToken ct)
@@ -215,7 +218,9 @@ namespace UniAI
 
         public void Dispose()
         {
-            try { _readCts?.Cancel(); } catch { }
+            try { _readCts?.Cancel(); }
+            catch (Exception e) { AILogger.Warning($"[MCP] Dispose: cancel read cts failed: {e.Message}"); }
+
             FailAllPending("Transport disposed");
 
             if (_process != null)
@@ -224,12 +229,17 @@ namespace UniAI
                 {
                     if (!_process.HasExited)
                     {
-                        try { _process.StandardInput.Close(); } catch { }
+                        try { _process.StandardInput.Close(); }
+                        catch (Exception e) { AILogger.Verbose($"[MCP] Dispose: close stdin failed: {e.Message}"); }
+
                         if (!_process.WaitForExit(500))
                             _process.Kill();
                     }
                 }
-                catch { }
+                catch (Exception e)
+                {
+                    AILogger.Warning($"[MCP] Dispose: terminate process failed: {e.Message}");
+                }
                 finally
                 {
                     _process.Dispose();

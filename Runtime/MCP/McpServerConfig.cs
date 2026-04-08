@@ -44,20 +44,32 @@ namespace UniAI
         [Header("HTTP")]
         [SerializeField] private string _baseUrl;
         [SerializeField] private List<KeyValueEntry> _headers = new();
-        [SerializeField] private int _httpTimeoutSeconds = 60;
 
-        /// <summary>唯一标识符（GUID）</summary>
-        public string Id
+        /// <summary>唯一标识符（GUID），在资产创建/校验时生成</summary>
+        public string Id => _id;
+
+        private void Awake()
         {
-            get
-            {
-                if (!string.IsNullOrEmpty(_id)) return _id;
-                _id = Guid.NewGuid().ToString("N");
+            EnsureId();
+        }
+
+        private void Reset()
+        {
+            EnsureId();
+        }
+
+        private void OnValidate()
+        {
+            EnsureId();
+        }
+
+        private void EnsureId()
+        {
+            if (!string.IsNullOrEmpty(_id)) return;
+            _id = Guid.NewGuid().ToString("N");
 #if UNITY_EDITOR
-                UnityEditor.EditorUtility.SetDirty(this);
+            UnityEditor.EditorUtility.SetDirty(this);
 #endif
-                return _id;
-            }
         }
 
         public string ServerName => _serverName;
@@ -72,38 +84,10 @@ namespace UniAI
 
         public string BaseUrl => _baseUrl;
         public IReadOnlyList<KeyValueEntry> Headers => _headers;
-        public int HttpTimeoutSeconds => _httpTimeoutSeconds;
 
         /// <summary>
-        /// 根据配置创建传输层实例
+        /// 显示名：优先使用 ServerName，否则回退到资产文件名
         /// </summary>
-        internal IMcpTransport CreateTransport()
-        {
-            switch (_transportType)
-            {
-                case McpTransportType.Stdio:
-#if UNITY_EDITOR || UNITY_STANDALONE
-                    return new StdioMcpTransport(_command, _arguments, ToDict(_environmentVariables));
-#else
-                    throw new PlatformNotSupportedException("Stdio MCP transport is only supported on Editor/Standalone platforms");
-#endif
-                case McpTransportType.Http:
-                    return new HttpMcpTransport(_baseUrl, ToDict(_headers), _httpTimeoutSeconds);
-                default:
-                    throw new NotSupportedException($"Unknown MCP transport type: {_transportType}");
-            }
-        }
-
-        private static Dictionary<string, string> ToDict(IReadOnlyList<KeyValueEntry> entries)
-        {
-            if (entries == null || entries.Count == 0) return null;
-            var dict = new Dictionary<string, string>(entries.Count);
-            foreach (var e in entries)
-            {
-                if (!string.IsNullOrEmpty(e?.Key))
-                    dict[e.Key] = e.Value ?? string.Empty;
-            }
-            return dict;
-        }
+        public string DisplayName => string.IsNullOrEmpty(_serverName) ? name : _serverName;
     }
 }

@@ -1,5 +1,3 @@
-using System;
-using System.Threading;
 using Cysharp.Threading.Tasks;
 using UnityEditor;
 using UnityEditorInternal;
@@ -25,7 +23,6 @@ namespace UniAI.Editor
         private SerializedProperty _environmentVariables;
         private SerializedProperty _baseUrl;
         private SerializedProperty _headers;
-        private SerializedProperty _httpTimeoutSeconds;
 
         private ReorderableList _envList;
         private ReorderableList _headerList;
@@ -47,14 +44,9 @@ namespace UniAI.Editor
             _environmentVariables = serializedObject.FindProperty("_environmentVariables");
             _baseUrl = serializedObject.FindProperty("_baseUrl");
             _headers = serializedObject.FindProperty("_headers");
-            _httpTimeoutSeconds = serializedObject.FindProperty("_httpTimeoutSeconds");
 
             _envList = BuildKeyValueList(_environmentVariables, "环境变量");
             _headerList = BuildKeyValueList(_headers, "请求头");
-
-            // 确保 Id 已生成
-            var config = (McpServerConfig)target;
-            _ = config.Id;
         }
 
         public override void OnInspectorGUI()
@@ -145,7 +137,6 @@ namespace UniAI.Editor
             GUILayout.Space(4);
 
             EditorGUILayout.PropertyField(_baseUrl, new GUIContent("Base URL", "MCP Server JSON-RPC 端点"));
-            EditorGUILayout.PropertyField(_httpTimeoutSeconds, new GUIContent("超时 (秒)"));
 
             GUILayout.Space(4);
             _headerList.DoLayoutList();
@@ -183,27 +174,25 @@ namespace UniAI.Editor
 
         private async UniTaskVoid RunTestAsync(McpServerConfig config)
         {
-            McpClient client = null;
             try
             {
                 int timeout = AIConfigManager.LoadConfig()?.General?.Mcp?.InitTimeoutSeconds ?? 30;
-                using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(timeout));
-                var transport = config.CreateTransport();
-                client = new McpClient(config.Id, config.ServerName, transport);
-                await client.InitializeAsync(cts.Token);
+                var result = await McpClientManager.TestConnectionAsync(config, timeout);
 
-                _testStatus = $"连接成功 — Server: {client.ServerInfo?.Name ?? "(unknown)"} v{client.ServerInfo?.Version}\n" +
-                              $"Tools: {client.Tools.Count}, Resources: {client.Resources.Count}";
-                _testStatusType = MessageType.Info;
-            }
-            catch (Exception e)
-            {
-                _testStatus = $"连接失败: {e.Message}";
-                _testStatusType = MessageType.Error;
+                if (result.Success)
+                {
+                    _testStatus = $"连接成功 — Server: {result.ServerInfo?.Name ?? "(unknown)"} v{result.ServerInfo?.Version}\n" +
+                                  $"Tools: {result.ToolCount}, Resources: {result.ResourceCount}";
+                    _testStatusType = MessageType.Info;
+                }
+                else
+                {
+                    _testStatus = $"连接失败: {result.Error}";
+                    _testStatusType = MessageType.Error;
+                }
             }
             finally
             {
-                client?.Dispose();
                 _testRunning = false;
                 Repaint();
             }

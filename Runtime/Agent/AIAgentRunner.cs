@@ -17,6 +17,7 @@ namespace UniAI
         private readonly Dictionary<string, AIToolAsset> _toolMap = new();
         private readonly List<AITool> _toolDefs = new();
         private McpClientManager _mcpManager;
+        private UniTask? _mcpInitTask;
         private bool _mcpInitialized;
 
         /// <summary>
@@ -42,7 +43,7 @@ namespace UniAI
         /// <summary>
         /// MCP 运行时配置（初始化超时、Tool 调用超时），从 AIConfig.General.Mcp 传入
         /// </summary>
-        public McpConfig McpSettings { get; set; }
+        public McpRuntimeConfig McpSettings { get; set; }
 
         public AIAgentRunner(AIClient client, AgentDefinition definition)
         {
@@ -62,33 +63,56 @@ namespace UniAI
 
         /// <summary>
         /// 异步初始化 MCP 连接：连接所有启用的 MCP Server，将其 Tools 合并到可用工具列表
-        /// 没有 MCP 配置时立即返回。多次调用只会初始化一次。
+        /// 没有 MCP 配置时立即返回。初始化成功后不会重复执行；失败时允许下次重试。
+        /// 并发调用会共享同一次初始化过程。
         /// </summary>
-        public async UniTask InitializeMcpAsync(CancellationToken ct = default)
+        public UniTask InitializeMcpAsync(CancellationToken ct = default)
         {
-            if (_mcpInitialized) return;
-            _mcpInitialized = true;
+            if (_mcpInitialized) return UniTask.CompletedTask;
+            if (_mcpInitTask.HasValue) return _mcpInitTask.Value;
 
-            if (!_definition.HasMcpServers) return;
+            var task = InitializeMcpCoreAsync(ct);
+            _mcpInitTask = task;
+            return task;
+        }
 
-            _mcpManager = new McpClientManager();
-
-            int initTimeout = McpSettings?.InitTimeoutSeconds ?? 0;
-            await _mcpManager.ConnectAllAsync(_definition.McpServers, initTimeout, ct);
-
-            _mcpManager.ToolCallTimeoutSeconds = McpSettings?.ToolCallTimeoutSeconds ?? 0;
-
-            foreach (var tool in _mcpManager.GetAllTools())
+        private async UniTask InitializeMcpCoreAsync(CancellationToken ct)
+        {
+            try
             {
-                if (string.IsNullOrEmpty(tool.Name)) continue;
-
-                // MCP Tool 名与本地 AIToolAsset 冲突时，本地优先
-                if (_toolMap.ContainsKey(tool.Name))
+                if (!_definition.HasMcpServers)
                 {
-                    AILogger.Warning($"MCP tool '{tool.Name}' shadowed by local AIToolAsset");
-                    continue;
+                    _mcpInitialized = true;
+                    return;
                 }
-                _toolDefs.Add(tool);
+
+                var manager = new McpClientManager();
+                int initTimeout = McpSettings?.InitTimeoutSeconds ?? 0;
+                await manager.ConnectAllAsync(_definition.McpServers, initTimeout, ct);
+
+                manager.ToolCallTimeoutSeconds = McpSettings?.ToolCallTimeoutSeconds ?? 0;
+
+                foreach (var tool in manager.GetAllTools())
+                {
+                    if (string.IsNullOrEmpty(tool.Name)) continue;
+
+                    // MCP Tool 名与本地 AIToolAsset 冲突时，本地优先
+                    if (_toolMap.ContainsKey(tool.Name))
+                    {
+                        AILogger.Warning($"MCP tool '{tool.Name}' shadowed by local AIToolAsset");
+                        continue;
+                    }
+                    _toolDefs.Add(tool);
+                }
+
+                _mcpManager = manager;
+                _mcpInitialized = true;
+            }
+            catch
+            {
+                // 失败时允许重试：清空缓存的 task，下次调用会重新尝试
+                _mcpInitTask = null;
+                throw;
             }
         }
 
@@ -300,20 +324,11 @@ namespace UniAI
             {
                 try
                 {
-                    if (ToolTimeoutSeconds > 0)
-                    {
-                        using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
-                        cts.CancelAfter(TimeSpan.FromSeconds(ToolTimeoutSeconds));
-                        var mcpResult = await _mcpManager.CallToolAsync(toolCall.Name, toolCall.Arguments, cts.Token);
-                        AILogger.Verbose($"MCP tool '{toolCall.Name}' executed (error={mcpResult.isError})");
-                        return mcpResult;
-                    }
-                    else
-                    {
-                        var mcpResult = await _mcpManager.CallToolAsync(toolCall.Name, toolCall.Arguments, ct);
-                        AILogger.Verbose($"MCP tool '{toolCall.Name}' executed (error={mcpResult.isError})");
-                        return mcpResult;
-                    }
+                    var mcpResult = await TimeoutHelper.WithTimeout(
+                        token => _mcpManager.CallToolAsync(toolCall.Name, toolCall.Arguments, token),
+                        ToolTimeoutSeconds, ct);
+                    AILogger.Verbose($"MCP tool '{toolCall.Name}' executed (error={mcpResult.isError})");
+                    return mcpResult;
                 }
                 catch (OperationCanceledException) when (!ct.IsCancellationRequested)
                 {
@@ -333,20 +348,11 @@ namespace UniAI
         {
             try
             {
-                if (ToolTimeoutSeconds > 0)
-                {
-                    using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
-                    cts.CancelAfter(TimeSpan.FromSeconds(ToolTimeoutSeconds));
-                    var result = await tool.ExecuteAsync(toolCall.Arguments, cts.Token);
-                    AILogger.Verbose($"Tool '{toolCall.Name}' executed successfully");
-                    return (result, false);
-                }
-                else
-                {
-                    var result = await tool.ExecuteAsync(toolCall.Arguments, ct);
-                    AILogger.Verbose($"Tool '{toolCall.Name}' executed successfully");
-                    return (result, false);
-                }
+                var result = await TimeoutHelper.WithTimeout(
+                    token => tool.ExecuteAsync(toolCall.Arguments, token),
+                    ToolTimeoutSeconds, ct);
+                AILogger.Verbose($"Tool '{toolCall.Name}' executed successfully");
+                return (result, false);
             }
             catch (OperationCanceledException) when (!ct.IsCancellationRequested)
             {
