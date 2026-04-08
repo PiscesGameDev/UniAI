@@ -10,12 +10,14 @@ namespace UniAI
     /// Agent 运行器 — 封装 Tool 调用循环
     /// 无 Tool 时等价于直接 Chat（一轮即结束）
     /// </summary>
-    public class AIAgentRunner : IConversationRunner
+    public class AIAgentRunner : IConversationRunner, IDisposable
     {
         private readonly AIClient _client;
         private readonly AgentDefinition _definition;
         private readonly Dictionary<string, AIToolAsset> _toolMap = new();
         private readonly List<AITool> _toolDefs = new();
+        private McpClientManager _mcpManager;
+        private bool _mcpInitialized;
 
         /// <summary>
         /// 是否注册了工具
@@ -26,6 +28,11 @@ namespace UniAI
         /// 已注册的工具资产
         /// </summary>
         public IReadOnlyCollection<AIToolAsset> ToolAssets => _toolMap.Values;
+
+        /// <summary>
+        /// MCP 客户端管理器（可能为 null，表示未使用 MCP）
+        /// </summary>
+        public McpClientManager McpManager => _mcpManager;
 
         /// <summary>
         /// 单个 Tool 执行超时时间（秒），0 或负数表示不限制
@@ -49,13 +56,41 @@ namespace UniAI
         }
 
         /// <summary>
+        /// 异步初始化 MCP 连接：连接所有启用的 MCP Server，将其 Tools 合并到可用工具列表
+        /// 没有 MCP 配置时立即返回。多次调用只会初始化一次。
+        /// </summary>
+        public async UniTask InitializeMcpAsync(CancellationToken ct = default)
+        {
+            if (_mcpInitialized) return;
+            _mcpInitialized = true;
+
+            if (!_definition.HasMcpServers) return;
+
+            _mcpManager = new McpClientManager();
+            await _mcpManager.ConnectAllAsync(_definition.McpServers, ct);
+
+            foreach (var tool in _mcpManager.GetAllTools())
+            {
+                if (string.IsNullOrEmpty(tool.Name)) continue;
+
+                // MCP Tool 名与本地 AIToolAsset 冲突时，本地优先
+                if (_toolMap.ContainsKey(tool.Name))
+                {
+                    AILogger.Warning($"MCP tool '{tool.Name}' shadowed by local AIToolAsset");
+                    continue;
+                }
+                _toolDefs.Add(tool);
+            }
+        }
+
+        /// <summary>
         /// 非流式运行：返回最终结果。可选 requestOverride 覆盖 AgentDefinition 默认值
         /// </summary>
         public async UniTask<AgentResult> RunAsync(List<AIMessage> messages, AIRequest requestOverride = null, CancellationToken ct = default)
         {
             var workingMessages = new List<AIMessage>(messages);
             var totalUsage = new TokenUsage();
-            int maxTurns = _definition.HasTools ? _definition.MaxTurns : 1;
+            int maxTurns = HasTools ? _definition.MaxTurns : 1;
 
             for (int turn = 0; turn < maxTurns; turn++)
             {
@@ -96,7 +131,7 @@ namespace UniAI
         public IUniTaskAsyncEnumerable<AgentEvent> RunStreamAsync(List<AIMessage> messages, AIRequest requestOverride = null, CancellationToken ct = default)
         {
             // 无 Tool 时直接转换 Provider 流，避免额外的 UniTaskAsyncEnumerable.Create 嵌套
-            if (!_definition.HasTools)
+            if (!HasTools)
                 return RunStreamSimple(messages, requestOverride, ct);
 
             return RunStreamWithTools(messages, requestOverride, ct);
@@ -247,13 +282,46 @@ namespace UniAI
 
         private async UniTask<(string result, bool isError)> ExecuteToolAsync(AIToolCall toolCall, CancellationToken ct)
         {
-            if (!_toolMap.TryGetValue(toolCall.Name, out var tool))
+            // 1. 本地 AIToolAsset 优先
+            if (_toolMap.TryGetValue(toolCall.Name, out var tool))
+                return await ExecuteLocalToolAsync(tool, toolCall, ct);
+
+            // 2. MCP Tool
+            if (_mcpManager != null && _mcpManager.HasTool(toolCall.Name))
             {
-                var error = $"Unknown tool: {toolCall.Name}";
-                AILogger.Warning(error);
-                return (error, true);
+                try
+                {
+                    if (ToolTimeoutSeconds > 0)
+                    {
+                        using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+                        cts.CancelAfter(TimeSpan.FromSeconds(ToolTimeoutSeconds));
+                        var mcpResult = await _mcpManager.CallToolAsync(toolCall.Name, toolCall.Arguments, cts.Token);
+                        AILogger.Verbose($"MCP tool '{toolCall.Name}' executed (error={mcpResult.isError})");
+                        return mcpResult;
+                    }
+                    else
+                    {
+                        var mcpResult = await _mcpManager.CallToolAsync(toolCall.Name, toolCall.Arguments, ct);
+                        AILogger.Verbose($"MCP tool '{toolCall.Name}' executed (error={mcpResult.isError})");
+                        return mcpResult;
+                    }
+                }
+                catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+                {
+                    var timeoutError = $"MCP tool '{toolCall.Name}' timed out after {ToolTimeoutSeconds}s";
+                    AILogger.Warning(timeoutError);
+                    return (timeoutError, true);
+                }
             }
 
+            // 3. 未知工具
+            var error = $"Unknown tool: {toolCall.Name}";
+            AILogger.Warning(error);
+            return (error, true);
+        }
+
+        private async UniTask<(string result, bool isError)> ExecuteLocalToolAsync(AIToolAsset tool, AIToolCall toolCall, CancellationToken ct)
+        {
             try
             {
                 if (ToolTimeoutSeconds > 0)
@@ -283,6 +351,12 @@ namespace UniAI
                 AILogger.Error(error);
                 return (error, true);
             }
+        }
+
+        public void Dispose()
+        {
+            _mcpManager?.Dispose();
+            _mcpManager = null;
         }
 
         private static void AccumulateUsage(TokenUsage total, TokenUsage turn)

@@ -37,6 +37,9 @@ namespace UniAI.Editor.Chat
         public int SelectedModelIndex => _selectedModelIndex;
         public IReadOnlyList<AgentDefinition> AvailableAgents => _availableAgents;
 
+        /// <summary>当前 Agent 的 MCP 连接状态文本（null 表示未启用 MCP）</summary>
+        public string McpStatus => _mcpStatus;
+
         // ─── 内部状态 ───
 
         private AIConfig _config;
@@ -53,6 +56,8 @@ namespace UniAI.Editor.Chat
         private string[] _modelNames;
         private List<ModelRoute> _modelEntries;
         private List<AgentDefinition> _availableAgents;
+        private string _mcpStatus;
+        private UniTask _mcpInitTask;
 
         // ─── 初始化 ───
 
@@ -256,6 +261,10 @@ namespace UniAI.Editor.Chat
             OnStreamingChanged?.Invoke(true);
             _streamCts = new CancellationTokenSource();
 
+            // 等待 MCP 初始化完成（如果有），避免首次消息丢失工具
+            try { await _mcpInitTask; }
+            catch { /* 已在 InitializeMcpAsync 中记录 */ }
+
             var assistantMsg = new ChatMessage
             {
                 Role = AIRole.Assistant,
@@ -433,6 +442,12 @@ namespace UniAI.Editor.Chat
         public void Dispose()
         {
             CancelStream();
+            if (_runner is IDisposable disposableRunner)
+            {
+                try { disposableRunner.Dispose(); }
+                catch { }
+            }
+            _runner = null;
         }
 
         // ─── 内部 ───
@@ -488,9 +503,19 @@ namespace UniAI.Editor.Chat
         private void EnsureRunner()
         {
             EnsureClient();
+
+            // 释放旧的 runner（如有 MCP 连接需要清理）
+            if (_runner is IDisposable disposableRunner)
+            {
+                try { disposableRunner.Dispose(); }
+                catch (Exception e) { Debug.LogWarning($"[UniAI Chat] Dispose runner failed: {e.Message}"); }
+            }
+            _runner = null;
+            _mcpStatus = null;
+            _mcpInitTask = default;
+
             if (_client == null)
             {
-                _runner = null;
                 _contextPipeline = null;
                 return;
             }
@@ -505,10 +530,51 @@ namespace UniAI.Editor.Chat
                     ToolTimeoutSeconds = EditorPreferences.instance.ToolTimeout
                 };
                 _runner = agentRunner;
+
+                if (agent.HasMcpServers)
+                    _mcpInitTask = InitializeMcpAsync(agentRunner, agent);
             }
             else
             {
                 _runner = new ChatRunner(_client);
+            }
+        }
+
+        private async UniTask InitializeMcpAsync(AIAgentRunner agentRunner, AgentDefinition agent)
+        {
+            _mcpStatus = "MCP: 连接中...";
+            OnStateChanged?.Invoke();
+
+            try
+            {
+                await agentRunner.InitializeMcpAsync();
+
+                // 把 MCP Resource 注入到 ContextPipeline
+                if (agentRunner.McpManager != null && _contextPipeline != null)
+                {
+                    foreach (var provider in agentRunner.McpManager.GetResourceProviders())
+                        _contextPipeline.AddProvider(provider);
+                }
+
+                int connected = agentRunner.McpManager?.Clients.Count ?? 0;
+                int total = 0;
+                foreach (var cfg in agent.McpServers)
+                    if (cfg != null && cfg.Enabled) total++;
+
+                int toolCount = 0;
+                if (agentRunner.McpManager != null)
+                    foreach (var c in agentRunner.McpManager.Clients) toolCount += c.Tools.Count;
+
+                _mcpStatus = $"MCP: {connected}/{total} 已连接 · {toolCount} tools";
+            }
+            catch (Exception e)
+            {
+                _mcpStatus = $"MCP: 初始化失败 — {e.Message}";
+                Debug.LogWarning($"[UniAI Chat] MCP init failed: {e}");
+            }
+            finally
+            {
+                OnStateChanged?.Invoke();
             }
         }
 

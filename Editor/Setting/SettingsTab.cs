@@ -11,7 +11,7 @@ namespace UniAI.Editor
     {
         public override string TabName => "设置";
         public override string TabIcon => "⚙";
-        public override int Order => 2;
+        public override int Order => 3;
 
         private const float LABEL_WIDTH = 140f;
         private const float PAD = 16f;

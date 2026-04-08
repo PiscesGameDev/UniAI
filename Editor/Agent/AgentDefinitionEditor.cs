@@ -15,9 +15,11 @@ namespace UniAI.Editor
         private SerializedProperty _maxTokens;
         private SerializedProperty _maxTurns;
         private SerializedProperty _tools;
+        private SerializedProperty _mcpServers;
         private SerializedProperty _systemPrompt;
 
         private ReorderableList _toolList;
+        private ReorderableList _mcpServerList;
 
         // Styles
         private static readonly Color _promptBg = new(0.16f, 0.18f, 0.20f);
@@ -36,6 +38,7 @@ namespace UniAI.Editor
             _maxTokens = serializedObject.FindProperty("_maxTokens");
             _maxTurns = serializedObject.FindProperty("_maxTurns");
             _tools = serializedObject.FindProperty("_tools");
+            _mcpServers = serializedObject.FindProperty("_mcpServers");
             _systemPrompt = serializedObject.FindProperty("_systemPrompt");
 
             _toolList = new ReorderableList(serializedObject, _tools, true, true, true, true)
@@ -44,6 +47,14 @@ namespace UniAI.Editor
                 drawElementCallback = DrawToolElement,
                 elementHeight = EditorGUIUtility.singleLineHeight + 4,
                 drawNoneElementCallback = rect => EditorGUI.LabelField(rect, "无工具 — 点击 + 添加", EditorStyles.centeredGreyMiniLabel)
+            };
+
+            _mcpServerList = new ReorderableList(serializedObject, _mcpServers, true, true, true, true)
+            {
+                drawHeaderCallback = rect => EditorGUI.LabelField(rect, "MCP Servers"),
+                drawElementCallback = DrawMcpServerElement,
+                elementHeight = EditorGUIUtility.singleLineHeight + 4,
+                drawNoneElementCallback = rect => EditorGUI.LabelField(rect, "无 MCP Server — 点击 + 添加", EditorStyles.centeredGreyMiniLabel)
             };
         }
 
@@ -57,6 +68,8 @@ namespace UniAI.Editor
             DrawParameters();
             EditorGUILayout.Space(8);
             DrawTools();
+            EditorGUILayout.Space(8);
+            DrawMcpServers();
             EditorGUILayout.Space(8);
             DrawSystemPrompt();
 
@@ -127,6 +140,24 @@ namespace UniAI.Editor
         private void DrawToolElement(Rect rect, int index, bool isActive, bool isFocused)
         {
             var element = _tools.GetArrayElementAtIndex(index);
+            rect.y += 2;
+            rect.height = EditorGUIUtility.singleLineHeight;
+
+            EditorGUI.PropertyField(rect, element, GUIContent.none);
+        }
+
+        // ─── MCP Servers ───
+
+        private void DrawMcpServers()
+        {
+            EditorGUILayout.BeginVertical(EditorStyles.helpBox);
+            _mcpServerList.DoLayoutList();
+            EditorGUILayout.EndVertical();
+        }
+
+        private void DrawMcpServerElement(Rect rect, int index, bool isActive, bool isFocused)
+        {
+            var element = _mcpServers.GetArrayElementAtIndex(index);
             rect.y += 2;
             rect.height = EditorGUIUtility.singleLineHeight;
 

@@ -49,6 +49,13 @@ namespace UniAI.Editor.Chat
 
             GUILayout.FlexibleSpace();
 
+            // ─── MCP 状态 ───
+            if (!string.IsNullOrEmpty(_controller.McpStatus))
+            {
+                GUILayout.Label(_controller.McpStatus, _costLabelStyle);
+                GUILayout.Space(8);
+            }
+
             var activeSession = _controller.ActiveSession;
             if (activeSession != null)
             {

@@ -20,6 +20,7 @@ namespace UniAI
         [SerializeField] private int _maxTokens = 4096;
         [SerializeField, Range(1, 50)] private int _maxTurns = 10;
         [SerializeField] private List<AIToolAsset> _tools = new();
+        [SerializeField] private List<McpServerConfig> _mcpServers = new();
 
         /// <summary>
         /// Agent 唯一标识符（GUID）
@@ -81,5 +82,15 @@ namespace UniAI
         /// 是否包含工具
         /// </summary>
         public bool HasTools => _tools is { Count: > 0 };
+
+        /// <summary>
+        /// 绑定的 MCP Server 配置列表
+        /// </summary>
+        public IReadOnlyList<McpServerConfig> McpServers => _mcpServers;
+
+        /// <summary>
+        /// 是否配置了 MCP Server
+        /// </summary>
+        public bool HasMcpServers => _mcpServers is { Count: > 0 };
     }
 }

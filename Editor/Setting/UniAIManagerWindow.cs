@@ -57,6 +57,7 @@ namespace UniAI.Editor
             {
                 new ChannelTab(),
                 new AgentTab(),
+                new McpTab(),
                 new SettingsTab()
             };
             _tabs.Sort((a, b) => a.Order.CompareTo(b.Order));
