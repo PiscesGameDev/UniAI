@@ -135,6 +135,15 @@ namespace UniAI
         }
 
         /// <summary>
+        /// 发送请求并自动反序列化为 T（结构化输出）
+        /// </summary>
+        public async UniTask<AITypedResponse<T>> SendAsync<T>(AIRequest request, CancellationToken ct = default)
+        {
+            var response = await _provider.SendAsync(request, ct);
+            return AITypedResponse<T>.FromResponse(response);
+        }
+
+        /// <summary>
         /// 流式发送请求
         /// </summary>
         public IUniTaskAsyncEnumerable<AIStreamChunk> StreamAsync(AIRequest request, CancellationToken ct = default)
@@ -153,6 +162,22 @@ namespace UniAI
                 Messages = { AIMessage.User(userMessage) }
             };
             return SendAsync(request, ct);
+        }
+
+        /// <summary>
+        /// 便捷 Chat：发送单条消息并自动反序列化为 T（结构化输出）
+        /// </summary>
+        public UniTask<AITypedResponse<T>> ChatAsync<T>(
+            string userMessage, AIResponseFormat responseFormat,
+            string systemPrompt = null, CancellationToken ct = default)
+        {
+            var request = new AIRequest
+            {
+                SystemPrompt = systemPrompt,
+                ResponseFormat = responseFormat,
+                Messages = { AIMessage.User(userMessage) }
+            };
+            return SendAsync<T>(request, ct);
         }
 
         /// <summary>

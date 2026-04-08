@@ -16,6 +16,7 @@ namespace UniAI.Providers.OpenAI
         [JsonProperty("stream")] public bool Stream;
         [JsonProperty("tools")] public List<OpenAIToolDef> Tools;
         [JsonProperty("tool_choice")] public object ToolChoice;
+        [JsonProperty("response_format")] public object ResponseFormat;
     }
 
     [Serializable]

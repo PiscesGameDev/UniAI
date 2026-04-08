@@ -16,6 +16,11 @@ namespace UniAI.Providers.Claude
 
         private readonly ClaudeConfig _config;
 
+        /// <summary>
+        /// 当前请求使用的结构化输出虚拟 Tool 名称（非 null 时 ParseResponse 需特殊处理）
+        /// </summary>
+        private string _structuredToolName;
+
         public ClaudeProvider(ClaudeConfig config, int timeoutSeconds = 60)
             : base(timeoutSeconds)
         {
@@ -48,6 +53,8 @@ namespace UniAI.Providers.Claude
 
             if (request.Tools?.Count > 0)
                 BuildToolDefs(request, claudeRequest);
+
+            BuildStructuredOutput(request, claudeRequest);
 
             return claudeRequest;
         }
@@ -149,6 +156,35 @@ namespace UniAI.Providers.Claude
                     "none" => null,
                     _ => (object)new { type = "tool", name = request.ToolChoice }
                 };
+            }
+        }
+
+        private void BuildStructuredOutput(AIRequest request, ClaudeRequest claudeRequest)
+        {
+            _structuredToolName = null;
+            var format = request.ResponseFormat;
+            if (format == null || format.Type == ResponseFormatType.Text)
+                return;
+
+            if (format.Type == ResponseFormatType.JsonSchema && request.Tools == null)
+            {
+                // 用虚拟 Tool 模拟 JSON Schema 结构化输出
+                _structuredToolName = format.Name ?? "structured_output";
+                var virtualTool = new ClaudeToolDef
+                {
+                    Name = _structuredToolName,
+                    Description = "Respond with structured JSON matching the provided schema.",
+                    InputSchema = JsonConvert.DeserializeObject(format.Schema)
+                };
+
+                claudeRequest.Tools = new List<ClaudeToolDef> { virtualTool };
+                claudeRequest.ToolChoice = new { type = "tool", name = _structuredToolName };
+            }
+            else if (format.Type == ResponseFormatType.JsonObject)
+            {
+                // 在 SystemPrompt 末尾追加 JSON 输出指令
+                const string JSON_INSTRUCTION = "\n\nIMPORTANT: You MUST respond with valid JSON only. No markdown, no explanation, just pure JSON.";
+                claudeRequest.System = (claudeRequest.System ?? "") + JSON_INSTRUCTION;
             }
         }
 
@@ -254,16 +290,25 @@ namespace UniAI.Providers.Claude
                 {
                     foreach (var block in rawContent)
                     {
-                        if (block["type"]?.ToString() == "tool_use")
+                        if (block["type"]?.ToString() != "tool_use")
+                            continue;
+
+                        var toolName = block["name"]?.ToString();
+
+                        // 虚拟 Tool 输出 → 提取为 Text，不放入 ToolCalls
+                        if (_structuredToolName != null && toolName == _structuredToolName)
                         {
-                            toolCalls ??= new List<AIToolCall>();
-                            toolCalls.Add(new AIToolCall
-                            {
-                                Id = block["id"]?.ToString(),
-                                Name = block["name"]?.ToString(),
-                                Arguments = block["input"]?.ToString(Formatting.None)
-                            });
+                            text = block["input"]?.ToString(Formatting.None) ?? "";
+                            continue;
                         }
+
+                        toolCalls ??= new List<AIToolCall>();
+                        toolCalls.Add(new AIToolCall
+                        {
+                            Id = block["id"]?.ToString(),
+                            Name = toolName,
+                            Arguments = block["input"]?.ToString(Formatting.None)
+                        });
                     }
                 }
 

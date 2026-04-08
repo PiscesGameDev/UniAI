@@ -46,5 +46,10 @@ namespace UniAI
         /// 工具选择策略: "auto"/"any"/"none" 或指定工具名
         /// </summary>
         public string ToolChoice { get; set; }
+
+        /// <summary>
+        /// 响应格式约束（结构化输出 / JSON Mode）
+        /// </summary>
+        public AIResponseFormat ResponseFormat { get; set; }
     }
 }

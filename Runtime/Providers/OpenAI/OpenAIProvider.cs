@@ -46,6 +46,8 @@ namespace UniAI.Providers.OpenAI
             if (request.Tools?.Count > 0)
                 BuildToolDefs(request, openAIRequest);
 
+            BuildResponseFormat(request, openAIRequest);
+
             return openAIRequest;
         }
 
@@ -152,6 +154,31 @@ namespace UniAI.Providers.OpenAI
                     "any" => "required",
                     "none" => "none",
                     _ => (object)new { type = "function", function = new { name = request.ToolChoice } }
+                };
+            }
+        }
+
+        private static void BuildResponseFormat(AIRequest request, OpenAIRequest openAIRequest)
+        {
+            var format = request.ResponseFormat;
+            if (format == null || format.Type == ResponseFormatType.Text)
+                return;
+
+            if (format.Type == ResponseFormatType.JsonObject)
+            {
+                openAIRequest.ResponseFormat = new { type = "json_object" };
+            }
+            else if (format.Type == ResponseFormatType.JsonSchema)
+            {
+                openAIRequest.ResponseFormat = new
+                {
+                    type = "json_schema",
+                    json_schema = new
+                    {
+                        name = format.Name,
+                        schema = JsonConvert.DeserializeObject(format.Schema),
+                        strict = format.Strict
+                    }
                 };
             }
         }
