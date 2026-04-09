@@ -28,11 +28,11 @@ namespace UniAI.Editor.Tools
         public static UniTask<object> HandleAsync(JObject args, CancellationToken ct)
         {
             if (!Application.isPlaying)
-                return UniTask.FromResult<object>(ToolResponse.Error("runtime_query is only available in Play Mode."));
+                return UniTask.FromResult(ToolResponse.Error("runtime_query is only available in Play Mode."));
 
             var action = (string)args["action"];
             if (string.IsNullOrEmpty(action))
-                return UniTask.FromResult<object>(ToolResponse.Error("Missing 'action'."));
+                return UniTask.FromResult(ToolResponse.Error("Missing 'action'."));
 
             object result;
             try

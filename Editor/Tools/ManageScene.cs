@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Reflection;
 using System.Text;
 using System.Threading;
@@ -7,6 +8,7 @@ using Newtonsoft.Json.Linq;
 using UnityEditor;
 using UnityEditor.SceneManagement;
 using UnityEngine;
+using UnityEngine.SceneManagement;
 
 namespace UniAI.Editor.Tools
 {
@@ -18,12 +20,15 @@ namespace UniAI.Editor.Tools
         Name = "manage_scene",
         Group = ToolGroups.Scene,
         Description =
-            "Scene operations (Edit & Play Mode). Actions: 'create_empty', 'create_primitive', 'create_camera', 'create_light', " +
+            "Scene operations (Edit & Play Mode). Read actions: 'find' (by name), 'get_hierarchy' (nested tree). " +
+            "Write actions: 'create_empty', 'create_primitive', 'create_camera', 'create_light', " +
             "'destroy', 'set_transform', 'set_active', 'set_parent', 'rename', " +
-            "'add_component', 'remove_component', 'set_property', " +
-            "'save_scene' (edit only), 'open_scene' (edit only), 'new_scene' (edit only).",
+            "'add_component', 'remove_component', 'set_property'. " +
+            "Edit-only: 'save_scene', 'open_scene', 'new_scene'. " +
+            "For Play-Mode runtime state (reflected field/property values), use 'runtime_query' instead.",
         Actions = new[]
         {
+            "find", "get_hierarchy",
             "create_empty", "create_primitive", "create_camera", "create_light",
             "destroy", "set_transform", "set_active", "set_parent", "rename",
             "add_component", "remove_component", "set_property",
@@ -44,6 +49,8 @@ namespace UniAI.Editor.Tools
             {
                 result = action switch
                 {
+                    "find" => Find(args),
+                    "get_hierarchy" => GetHierarchy(args),
                     "create_empty" => CreateEmpty(args),
                     "create_primitive" => CreatePrimitive(args),
                     "create_camera" => CreateCamera(args),
@@ -71,6 +78,24 @@ namespace UniAI.Editor.Tools
         }
 
         // ─── 通用 args 形参 ───
+
+        public class FindArgs
+        {
+            [ToolParam(Description = "GameObject name (exact match first, fallback to case-insensitive substring).")]
+            public string Name;
+            [ToolParam(Description = "Include inactive GameObjects (default true).", Required = false)]
+            public bool IncludeInactive;
+        }
+
+        public class GetHierarchyArgs
+        {
+            [ToolParam(Description = "Optional root GameObject path. Empty = enumerate all loaded scenes.", Required = false)]
+            public string Path;
+            [ToolParam(Description = "Max traversal depth (default 3, 0 = unlimited).", Required = false)]
+            public int Depth;
+            [ToolParam(Description = "Include inactive GameObjects (default true).", Required = false)]
+            public bool IncludeInactive;
+        }
 
         public class CreateEmptyArgs
         {
@@ -155,6 +180,118 @@ namespace UniAI.Editor.Tools
             [ToolParam(Description = "Scene asset path (must start with 'Assets/').")]
             public string ScenePath;
         }
+
+        // ─── 查询（只读） ───
+
+        private const int MAX_FIND_RESULTS = 50;
+        private const int DEFAULT_HIERARCHY_DEPTH = 3;
+
+        private static object Find(JObject args)
+        {
+            var name = (string)args["name"];
+            if (string.IsNullOrEmpty(name)) return ToolResponse.Error("'name' required.");
+            bool includeInactive = (bool?)args["includeInactive"] ?? true;
+
+            var inactiveMode = includeInactive ? FindObjectsInactive.Include : FindObjectsInactive.Exclude;
+            var all = UnityEngine.Object.FindObjectsByType<GameObject>(inactiveMode, FindObjectsSortMode.None);
+
+            string lower = name.ToLowerInvariant();
+            var exactMatches = new List<object>();
+            var fuzzyMatches = new List<object>();
+
+            foreach (var go in all)
+            {
+                if (go.name == name)
+                    exactMatches.Add(FormatMatch(go));
+                else if (go.name.ToLowerInvariant().Contains(lower))
+                    fuzzyMatches.Add(FormatMatch(go));
+                if (exactMatches.Count + fuzzyMatches.Count >= MAX_FIND_RESULTS) break;
+            }
+
+            var matches = exactMatches.Count > 0 ? exactMatches : fuzzyMatches;
+            return ToolResponse.Success(new
+            {
+                query = name,
+                matchMode = exactMatches.Count > 0 ? "exact" : "fuzzy",
+                count = matches.Count,
+                truncated = matches.Count >= MAX_FIND_RESULTS,
+                matches
+            });
+        }
+
+        private static object GetHierarchy(JObject args)
+        {
+            int depth = (int?)args["depth"] ?? DEFAULT_HIERARCHY_DEPTH;
+            if (depth < 0) depth = DEFAULT_HIERARCHY_DEPTH;
+            bool includeInactive = (bool?)args["includeInactive"] ?? true;
+            var rootPath = (string)args["path"];
+
+            if (!string.IsNullOrEmpty(rootPath))
+            {
+                if (!TryLocate(rootPath, out var rootGo, out var err)) return ToolResponse.Error(err);
+                if (!includeInactive && !rootGo.activeInHierarchy)
+                    return ToolResponse.Success(new { path = GetFullPath(rootGo), skipped = "inactive" });
+                return ToolResponse.Success(new
+                {
+                    path = GetFullPath(rootGo),
+                    tree = BuildNode(rootGo, 0, depth, includeInactive)
+                });
+            }
+
+            var scenes = new List<object>();
+            int count = SceneManager.sceneCount;
+            for (int i = 0; i < count; i++)
+            {
+                var scene = SceneManager.GetSceneAt(i);
+                if (!scene.isLoaded) continue;
+                var roots = new List<object>();
+                foreach (var root in scene.GetRootGameObjects())
+                {
+                    if (!includeInactive && !root.activeInHierarchy) continue;
+                    roots.Add(BuildNode(root, 0, depth, includeInactive));
+                }
+                scenes.Add(new { name = scene.name, path = scene.path, roots });
+            }
+            return ToolResponse.Success(new { scenes });
+        }
+
+        private static object BuildNode(GameObject go, int currentDepth, int maxDepth, bool includeInactive)
+        {
+            var childrenList = new List<object>();
+            bool depthReached = maxDepth > 0 && currentDepth + 1 >= maxDepth;
+            int totalChildren = go.transform.childCount;
+
+            if (!depthReached)
+            {
+                for (int i = 0; i < totalChildren; i++)
+                {
+                    var child = go.transform.GetChild(i).gameObject;
+                    if (!includeInactive && !child.activeSelf) continue;
+                    childrenList.Add(BuildNode(child, currentDepth + 1, maxDepth, includeInactive));
+                }
+            }
+
+            var components = new List<string>();
+            foreach (var c in go.GetComponents<Component>())
+                if (c != null) components.Add(c.GetType().Name);
+
+            return new
+            {
+                name = go.name,
+                active = go.activeSelf,
+                components,
+                childCount = totalChildren,
+                children = childrenList,
+                truncated = depthReached && totalChildren > 0
+            };
+        }
+
+        private static object FormatMatch(GameObject go) => new
+        {
+            path = GetFullPath(go),
+            active = go.activeInHierarchy,
+            scene = go.scene.name
+        };
 
         // ─── 创建 ───
 

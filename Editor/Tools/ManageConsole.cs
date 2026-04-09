@@ -111,7 +111,7 @@ namespace UniAI.Editor.Tools
         {
             var action = (string)args["action"];
             if (string.IsNullOrEmpty(action))
-                return UniTask.FromResult<object>(ToolResponse.Error("Missing 'action'."));
+                return UniTask.FromResult(ToolResponse.Error("Missing 'action'."));
 
             int limit = (int?)args["limit"] ?? DEFAULT_LIMIT;
             if (limit <= 0) limit = DEFAULT_LIMIT;

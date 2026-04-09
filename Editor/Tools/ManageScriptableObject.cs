@@ -24,7 +24,7 @@ namespace UniAI.Editor.Tools
         {
             var action = (string)args["action"];
             if (string.IsNullOrEmpty(action))
-                return UniTask.FromResult<object>(ToolResponse.Error("Missing 'action'."));
+                return UniTask.FromResult(ToolResponse.Error("Missing 'action'."));
 
             object result;
             try
