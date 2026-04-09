@@ -1,7 +1,7 @@
 # UniAI
 
 [![Unity](https://img.shields.io/badge/Unity-2022.3%2B-blue)](https://unity.com)
-[![License](https://img.shields.io/badge/License-MIT-green)](LICENSE)
+[![License](https://img.shields.io/badge/License-Apache%202.0-blue)](LICENSE)
 
 Unity AI 交互框架，支持多 Provider（Claude、OpenAI、Gemini、DeepSeek 等）、多模态输入、Tool Use、Agent 系统、上下文窗口管理和 SSE 流式响应。
 
@@ -404,4 +404,4 @@ var client = new AIClient(new MyProvider());
 
 ## 许可证
 
-MIT License - Copyright (c) 2026 PiscesGameDev
+Apache License 2.0 - Copyright 2025 PiscesGameDev
