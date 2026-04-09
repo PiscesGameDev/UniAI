@@ -16,6 +16,7 @@ namespace UniAI
         [SerializeField] private string _description;
         [SerializeField, TextArea(3, 10)] private string _systemPrompt;
         [SerializeField] private Texture2D _icon;
+        [SerializeField] private string _specifyModel;
         [SerializeField, Range(0f, 1f)] private float _temperature = 0.7f;
         [SerializeField] private int _maxTokens = 4096;
         [SerializeField, Range(1, 50)] private int _maxTurns = 10;
@@ -58,6 +59,11 @@ namespace UniAI
         /// </summary>
         public Texture2D Icon { get => _icon; set => _icon = value; }
 
+        /// <summary>
+        /// 指定模型名称（空则使用默认）
+        /// </summary>
+        public string SpecifyModel => _specifyModel;
+        
         /// <summary>
         /// 温度参数
         /// </summary>

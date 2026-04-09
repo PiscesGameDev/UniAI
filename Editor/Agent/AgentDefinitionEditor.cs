@@ -12,6 +12,7 @@ namespace UniAI.Editor
         private SerializedProperty _agentName;
         private SerializedProperty _description;
         private SerializedProperty _icon;
+        private SerializedProperty _specifyModel;
         private SerializedProperty _temperature;
         private SerializedProperty _maxTokens;
         private SerializedProperty _maxTurns;
@@ -35,6 +36,7 @@ namespace UniAI.Editor
             _agentName = serializedObject.FindProperty("_agentName");
             _description = serializedObject.FindProperty("_description");
             _icon = serializedObject.FindProperty("_icon");
+            _specifyModel = serializedObject.FindProperty("_specifyModel");
             _temperature = serializedObject.FindProperty("_temperature");
             _maxTokens = serializedObject.FindProperty("_maxTokens");
             _maxTurns = serializedObject.FindProperty("_maxTurns");
@@ -121,6 +123,15 @@ namespace UniAI.Editor
             EditorGUILayout.LabelField("模型参数", EditorStyles.boldLabel);
             GUILayout.Space(4);
 
+
+            EditorGUILayout.BeginHorizontal();
+            EditorGUILayout.PropertyField(_specifyModel, new GUIContent("Model"));
+            var btnRect = GUILayoutUtility.GetRect(new GUIContent("选择"), EditorStyles.miniButton,
+                GUILayout.Width(50));
+            if (GUI.Button(btnRect, "选择", EditorStyles.miniButton))
+                ShowModelPicker(btnRect);
+            EditorGUILayout.EndHorizontal();
+
             EditorGUILayout.Slider(_temperature, 0f, 1f, new GUIContent("Temperature", "控制回复的创造性，值越高越随机"));
             _maxTokens.intValue = EditorGUILayout.IntSlider(
                 new GUIContent("Max Tokens", "单次回复最大 Token 数"),
@@ -128,6 +139,58 @@ namespace UniAI.Editor
             EditorGUILayout.IntSlider(_maxTurns, 1, 50, new GUIContent("Max Turns", "Tool 调用最大循环轮数"));
 
             EditorGUILayout.EndVertical();
+        }
+
+        private void ShowModelPicker(Rect activatorRect)
+        {
+            var menu = new GenericMenu();
+            var settings = UniAISettings.Instance;
+            string current = _specifyModel.stringValue;
+
+            // 汇总所有启用渠道的模型，按厂商分组去重
+            var byVendor = new System.Collections.Generic.SortedDictionary<string, System.Collections.Generic.SortedSet<string>>();
+            if (settings != null)
+            {
+                foreach (var provider in settings.Providers)
+                {
+                    if (provider == null || !provider.Enabled || provider.Models == null) continue;
+                    foreach (var modelId in provider.Models)
+                    {
+                        if (string.IsNullOrEmpty(modelId)) continue;
+                        var entry = ModelRegistry.Get(modelId);
+                        string vendor = !string.IsNullOrEmpty(entry?.Vendor) ? entry.Vendor : "Unknown";
+                        if (!byVendor.TryGetValue(vendor, out var set))
+                            byVendor[vendor] = set = new System.Collections.Generic.SortedSet<string>();
+                        set.Add(modelId);
+                    }
+                }
+            }
+
+            if (byVendor.Count == 0)
+            {
+                menu.AddDisabledItem(new GUIContent("无可用模型 — 请先在 UniAI Manager 中配置渠道"));
+            }
+            else
+            {
+                foreach (var kv in byVendor)
+                {
+                    foreach (var modelId in kv.Value)
+                    {
+                        var entry = ModelRegistry.Get(modelId);
+                        string display = !string.IsNullOrEmpty(entry?.DisplayName) ? entry.DisplayName : modelId;
+                        var label = new GUIContent($"{kv.Key}/{display}");
+                        string captured = modelId;
+                        menu.AddItem(label, modelId == current, () =>
+                        {
+                            serializedObject.Update();
+                            _specifyModel.stringValue = captured;
+                            serializedObject.ApplyModifiedProperties();
+                        });
+                    }
+                }
+            }
+
+            menu.DropDown(activatorRect);
         }
 
         // ─── 工具分组 ───

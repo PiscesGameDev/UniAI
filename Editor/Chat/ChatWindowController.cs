@@ -82,7 +82,7 @@ namespace UniAI.Editor.Chat
         /// </summary>
         public void CreateNewSession(AgentDefinition agent = null)
         {
-            string modelId = _currentModelId ?? "";
+            string modelId = ResolveModelForAgent(agent);
             _activeSession = ChatSession.Create(modelId);
             _activeSession.AgentId = agent != null ? agent.Id : "";
             _history.Save(_activeSession);
@@ -138,6 +138,34 @@ namespace UniAI.Editor.Chat
         }
 
         // ─── 模型管理 ───
+
+        /// <summary>
+        /// 解析 Agent 会话应使用的模型：Agent 指定 > 当前选择 > 默认
+        /// </summary>
+        private string ResolveModelForAgent(AgentDefinition agent)
+        {
+            if (agent != null && !string.IsNullOrEmpty(agent.SpecifyModel))
+            {
+                // Agent 指定的模型在可用列表中，则切换到该模型
+                if (_modelEntries != null)
+                {
+                    for (int i = 0; i < _modelEntries.Count; i++)
+                    {
+                        if (_modelEntries[i].ModelId == agent.SpecifyModel)
+                        {
+                            _selectedModelIndex = i;
+                            _currentModelId = agent.SpecifyModel;
+                            return _currentModelId;
+                        }
+                    }
+                }
+                // Agent 指定的模型不可用，打印警告，回退到当前模型
+                Debug.LogWarning(
+                    $"[UniAI Chat] Agent \"{agent.AgentName}\" 指定模型 \"{agent.SpecifyModel}\" 不在可用渠道中，已回退到默认模型。");
+            }
+
+            return _currentModelId ?? "";
+        }
 
         public void SelectModel(int index)
         {
@@ -599,7 +627,12 @@ namespace UniAI.Editor.Chat
             _modelEntries = _config.GetAllModels();
             _modelNames = new string[_modelEntries.Count];
             for (int i = 0; i < _modelEntries.Count; i++)
-                _modelNames[i] = _modelEntries[i].ModelId;
+            {
+                var entry = ModelRegistry.Get(_modelEntries[i].ModelId);
+                string vendor = !string.IsNullOrEmpty(entry?.Vendor) ? entry.Vendor : "Unknown";
+                string display = !string.IsNullOrEmpty(entry?.DisplayName) ? entry.DisplayName : _modelEntries[i].ModelId;
+                _modelNames[i] = $"{vendor}/{display}";
+            }
 
             if (!string.IsNullOrEmpty(_currentModelId))
             {

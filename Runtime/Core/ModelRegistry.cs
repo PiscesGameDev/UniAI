@@ -94,7 +94,9 @@ namespace UniAI
             Add("gemini-2.0-flash", "Gemini 2.0 Flash", "Google", ModelCapability.Chat);
             Add("gemini-2.5-pro", "Gemini 2.5 Pro", "Google", ModelCapability.Chat);
             Add("gemini-2.5-flash", "Gemini 2.5 Flash", "Google", ModelCapability.Chat);
-            Add("gemini-imagen-3", "Imagen 3", "Google", ModelCapability.ImageGen);
+            Add("gemini-2.5-flash-image", "gemini-2.5-flash-image", "Google", ModelCapability.ImageGen);
+            Add("gemini-3-pro-image-preview", "gemini-3-pro-image-preview", "Google", ModelCapability.ImageGen);
+            Add("gemini-3.1-flash-image-preview", "gemini-3.1-flash-image-preview", "Google", ModelCapability.ImageGen);
 
             // DeepSeek
             Add("deepseek-chat", "DeepSeek Chat", "DeepSeek", ModelCapability.Chat);

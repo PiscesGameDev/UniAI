@@ -27,6 +27,7 @@ MonoBehaviour:
     Constraints\r\n- \u907F\u514D\u4F7F\u7528\u6A21\u68F1\u4E24\u53EF\u7684\u8BCD\u6C47\uFF0C\u591A\u4F7F\u7528\u5177\u4F53\u7684\u540D\u8BCD\u548C\u5F62\u5BB9\u8BCD\u3002\r\n-
     \u9ED8\u8BA4\u8F93\u51FA\u6BD4\u4F8B\u4E3A 1:1\uFF0C\u9664\u975E\u7528\u6237\u6307\u5B9A\u3002"
   _icon: {fileID: 2800000, guid: 03d721b5a411cac40933518b6ca56128, type: 3}
+  _specifyModel: gemini-3.1-flash-image-preview
   _temperature: 0.8
   _maxTokens: 2048
   _maxTurns: 5
