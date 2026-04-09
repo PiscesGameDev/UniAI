@@ -356,9 +356,31 @@ namespace UniAI
 
             try
             {
-                var args = string.IsNullOrEmpty(toolCall.Arguments)
-                    ? new JObject()
-                    : JObject.Parse(toolCall.Arguments);
+                JObject args;
+                if (string.IsNullOrEmpty(toolCall.Arguments))
+                {
+                    args = new JObject();
+                }
+                else
+                {
+                    try
+                    {
+                        args = JObject.Parse(toolCall.Arguments);
+                    }
+                    catch (JsonReaderException)
+                    {
+                        // 某些模型偶尔会返回拼接的多个 JSON 对象，
+                        // 尝试只解析第一个完整的 JSON 对象
+                        args = TryParseFirstJsonObject(toolCall.Arguments);
+                        if (args == null)
+                        {
+                            var parseError = $"Tool '{toolCall.Name}' received malformed arguments: {toolCall.Arguments.Substring(0, Math.Min(toolCall.Arguments.Length, 200))}";
+                            AILogger.Error(parseError);
+                            return (parseError, true);
+                        }
+                        AILogger.Warning($"Tool '{toolCall.Name}' received concatenated JSON arguments, using first object only");
+                    }
+                }
 
                 if (handler.RequiresPolling)
                     AILogger.Info($"Tool '{toolCall.Name}' running in polling mode (max {timeout:0}s)");
@@ -389,6 +411,28 @@ namespace UniAI
         {
             _mcpManager?.Dispose();
             _mcpManager = null;
+        }
+
+        /// <summary>
+        /// 尝试从可能拼接的多个 JSON 对象中解析出第一个完整对象。
+        /// 使用 JsonTextReader 逐 token 读取，遇到第一个对象结束即停止。
+        /// </summary>
+        private static JObject TryParseFirstJsonObject(string json)
+        {
+            try
+            {
+                using var reader = new JsonTextReader(new System.IO.StringReader(json))
+                {
+                    SupportMultipleContent = true
+                };
+                if (reader.Read())
+                    return JObject.Load(reader);
+            }
+            catch
+            {
+                // ignore
+            }
+            return null;
         }
 
         private static void AccumulateUsage(TokenUsage total, TokenUsage turn)
