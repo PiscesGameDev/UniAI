@@ -30,13 +30,18 @@ namespace UniAI.Editor.Chat
         private static string _copiedBlockId;
         private static double _copiedTime;
 
+        // ─── Block 解析缓存 ───
+        // key = markdown 内容的 hashCode + length 组合，避免每帧重新解析
+        private static readonly Dictionary<long, List<Block>> _blockCache = new();
+        private const int BLOCK_CACHE_MAX = 64;
+
         public static void Draw(string markdown, float width)
         {
             if (string.IsNullOrEmpty(markdown)) return;
             EnsureStyles();
             _codeBlockCounter = 0;
 
-            var blocks = ParseBlocks(markdown);
+            var blocks = GetCachedBlocks(markdown);
             foreach (var block in blocks)
             {
                 switch (block.Type)
@@ -60,13 +65,42 @@ namespace UniAI.Editor.Chat
                         DrawListItem(block.Prefix, block.Content);
                         break;
                     case BlockType.Image:
-                        DrawImageBlock(block.Content, block.Prefix, width);
+                        DrawImageBlock(block.Content, block.ImageKey, width);
                         break;
-                    default:
-                        DrawRichParagraph(block.Content, width);
+                    case BlockType.Paragraph:
+                        GUILayout.Label(block.Content, _normalStyle, GUILayout.MaxWidth(width));
                         break;
                 }
             }
+        }
+
+        /// <summary>
+        /// 清除所有缓存（会话切换/消息删除时调用）
+        /// </summary>
+        public static void InvalidateCache()
+        {
+            _blockCache.Clear();
+        }
+
+        private static long ComputeCacheKey(string markdown)
+        {
+            // 用 hashCode + length 组合作为缓存 key，避免对 1MB+ 字符串反复操作
+            return ((long)markdown.GetHashCode() << 32) | (uint)markdown.Length;
+        }
+
+        private static List<Block> GetCachedBlocks(string markdown)
+        {
+            long key = ComputeCacheKey(markdown);
+            if (_blockCache.TryGetValue(key, out var cached))
+                return cached;
+
+            // 防止缓存无限增长
+            if (_blockCache.Count >= BLOCK_CACHE_MAX)
+                _blockCache.Clear();
+
+            var blocks = ParseBlocks(markdown);
+            _blockCache[key] = blocks;
+            return blocks;
         }
 
         private static int _codeBlockCounter;
@@ -130,21 +164,20 @@ namespace UniAI.Editor.Chat
             EditorGUILayout.EndHorizontal();
         }
 
-        private static void DrawRichParagraph(string text, float width)
-        {
-            string rich = FormatInline(text);
-            GUILayout.Label(rich, _normalStyle, GUILayout.MaxWidth(width));
-        }
-
         // ─── Image Block ───
 
         private const float IMAGE_MAX_WIDTH = 384f;
+
+        // Texture 缓存：用短 key（imageKey）而不是完整的 data URL
         private static readonly Dictionary<string, Texture2D> _imageCache = new();
         private static readonly HashSet<string> _imageFailed = new();
 
-        private static void DrawImageBlock(string alt, string src, float width)
+        // src → imageKey 映射，保存下载按钮需要的原始 src
+        private static readonly Dictionary<string, string> _imageKeySrcMap = new();
+
+        private static void DrawImageBlock(string alt, string imageKey, float width)
         {
-            var tex = LoadImageTexture(src);
+            var tex = LoadImageTextureByKey(imageKey);
             if (tex == null)
             {
                 GUILayout.Label(string.IsNullOrEmpty(alt) ? "[图片加载失败]" : $"[图片加载失败: {alt}]",
@@ -164,7 +197,8 @@ namespace UniAI.Editor.Chat
             EditorGUILayout.BeginHorizontal(GUILayout.Width(displayWidth));
             if (GUILayout.Button("下载图片", EditorStyles.miniButton, GUILayout.Width(80), GUILayout.Height(18)))
             {
-                SaveImageToFile(src, alt);
+                _imageKeySrcMap.TryGetValue(imageKey, out var src);
+                SaveImageToFile(src ?? imageKey, alt);
             }
             GUILayout.FlexibleSpace();
             EditorGUILayout.EndHorizontal();
@@ -245,11 +279,35 @@ namespace UniAI.Editor.Chat
             return name.Trim();
         }
 
-        private static Texture2D LoadImageTexture(string src)
+        /// <summary>
+        /// 从原始 src 生成短 imageKey（用于 Texture 缓存和 Block 存储）
+        /// data URL → "data:{hashCode}:{length}"，其他 src 原样返回
+        /// </summary>
+        private static string MakeImageKey(string src)
         {
-            if (string.IsNullOrEmpty(src)) return null;
-            if (_imageCache.TryGetValue(src, out var cached) && cached != null) return cached;
-            if (_imageFailed.Contains(src)) return null;
+            if (string.IsNullOrEmpty(src)) return "";
+
+            if (src.StartsWith("data:", StringComparison.OrdinalIgnoreCase))
+            {
+                // 用 hash + length 生成短 key，避免在字典中存 1MB+ 的 key
+                return $"data:{src.GetHashCode():x8}:{src.Length}";
+            }
+
+            return src;
+        }
+
+        /// <summary>
+        /// 通过 imageKey 查找/加载 Texture。首次加载时需要原始 src（从 _imageKeySrcMap 取）
+        /// </summary>
+        private static Texture2D LoadImageTextureByKey(string imageKey)
+        {
+            if (string.IsNullOrEmpty(imageKey)) return null;
+            if (_imageCache.TryGetValue(imageKey, out var cached) && cached != null) return cached;
+            if (_imageFailed.Contains(imageKey)) return null;
+
+            // 从映射表取原始 src
+            if (!_imageKeySrcMap.TryGetValue(imageKey, out var src))
+                src = imageKey; // 非 data URL 的 key 就是原始 src
 
             try
             {
@@ -269,7 +327,7 @@ namespace UniAI.Editor.Chat
                     var assetTex = AssetDatabase.LoadAssetAtPath<Texture2D>(src);
                     if (assetTex != null)
                     {
-                        _imageCache[src] = assetTex;
+                        _imageCache[imageKey] = assetTex;
                         return assetTex;
                     }
                 }
@@ -284,7 +342,11 @@ namespace UniAI.Editor.Chat
                     if (tex.LoadImage(bytes))
                     {
                         tex.hideFlags = HideFlags.HideAndDontSave;
-                        _imageCache[src] = tex;
+                        _imageCache[imageKey] = tex;
+
+                        // Texture 加载成功后释放 src 映射中的原始 data URL 引用，
+                        // 只保留 SaveImageToFile 需要的原始 src
+                        // （下载时再从 src 解码，不影响渲染性能）
                         return tex;
                     }
                     UnityEngine.Object.DestroyImmediate(tex);
@@ -295,7 +357,7 @@ namespace UniAI.Editor.Chat
                 // fall through to failure mark
             }
 
-            _imageFailed.Add(src);
+            _imageFailed.Add(imageKey);
             return null;
         }
 
@@ -328,10 +390,19 @@ namespace UniAI.Editor.Chat
         private struct Block
         {
             public BlockType Type;
+            /// <summary>
+            /// 文本内容（Paragraph/Heading/List: 渲染文本；Image: alt 文本）。
+            /// 已在解析阶段剥离图片 markdown，Paragraph 不含任何 ![...](...) 语法。
+            /// </summary>
             public string Content;
             public string Language;
+            /// <summary>OrderedList: 序号前缀</summary>
             public string Prefix;
+            /// <summary>Image: 短 imageKey（非原始 data URL），用于 Texture 缓存查找</summary>
+            public string ImageKey;
         }
+
+        private static readonly Regex _imageRegex = new(@"!\[(.*?)\]\((.+?)\)", RegexOptions.Compiled);
 
         private static List<Block> ParseBlocks(string markdown)
         {
@@ -385,20 +456,6 @@ namespace UniAI.Editor.Chat
                     continue;
                 }
 
-                // Image (standalone line): ![alt](src)
-                var imgMatch = Regex.Match(trimmed, @"^!\[(.*?)\]\((.+)\)\s*$");
-                if (imgMatch.Success)
-                {
-                    blocks.Add(new Block
-                    {
-                        Type = BlockType.Image,
-                        Content = imgMatch.Groups[1].Value,
-                        Prefix = imgMatch.Groups[2].Value
-                    });
-                    i++;
-                    continue;
-                }
-
                 // Unordered list
                 if (trimmed.StartsWith("- ") || trimmed.StartsWith("* "))
                 {
@@ -437,16 +494,67 @@ namespace UniAI.Editor.Chat
                     && !lines[i].TrimStart().StartsWith("#")
                     && !lines[i].TrimStart().StartsWith("- ")
                     && !lines[i].TrimStart().StartsWith("* ")
-                    && !Regex.IsMatch(lines[i].TrimStart(), @"^\d+\.\s")
-                    && !Regex.IsMatch(lines[i].TrimStart(), @"^!\[(.*?)\]\((.+)\)\s*$"))
+                    && !Regex.IsMatch(lines[i].TrimStart(), @"^\d+\.\s"))
                 {
                     paragraphLines.Add(lines[i].TrimStart());
                     i++;
                 }
-                blocks.Add(new Block { Type = BlockType.Paragraph, Content = string.Join(" ", paragraphLines) });
+
+                // 在解析阶段将段落中的内联图片拆分为独立 Block
+                string paragraphText = string.Join(" ", paragraphLines);
+                SplitParagraphWithImages(paragraphText, blocks);
             }
 
             return blocks;
+        }
+
+        /// <summary>
+        /// 将可能含有 ![alt](src) 的段落文本拆分为 Paragraph + Image Block 序列。
+        /// 图片的 data URL 在此阶段转为短 imageKey 存入 Block，原始 src 存入 _imageKeySrcMap。
+        /// 后续渲染只操作短 key，不再接触 1MB+ 的原始字符串。
+        /// </summary>
+        private static void SplitParagraphWithImages(string text, List<Block> blocks)
+        {
+            var match = _imageRegex.Match(text);
+            if (!match.Success)
+            {
+                // 无图片，直接作为纯文本段落（应用行内格式）
+                blocks.Add(new Block { Type = BlockType.Paragraph, Content = FormatInline(text) });
+                return;
+            }
+
+            int pos = 0;
+            while (match.Success)
+            {
+                // 图片前的文本
+                if (match.Index > pos)
+                {
+                    string before = text.Substring(pos, match.Index - pos);
+                    if (!string.IsNullOrWhiteSpace(before))
+                        blocks.Add(new Block { Type = BlockType.Paragraph, Content = FormatInline(before) });
+                }
+
+                // 图片 Block — 用短 key
+                string alt = match.Groups[1].Value;
+                string src = match.Groups[2].Value;
+                string imageKey = MakeImageKey(src);
+
+                // 保存 imageKey → 原始 src 映射（供加载和下载使用）
+                _imageKeySrcMap[imageKey] = src;
+
+                blocks.Add(new Block { Type = BlockType.Image, Content = alt, ImageKey = imageKey });
+
+                pos = match.Index + match.Length;
+                match = match.NextMatch();
+            }
+
+            // 图片后的剩余文本
+            if (pos < text.Length)
+            {
+                string after = text.Substring(pos);
+                if (!string.IsNullOrWhiteSpace(after))
+                    blocks.Add(new Block { Type = BlockType.Paragraph, Content = FormatInline(after) });
+            }
         }
 
         // ─── Styles ───
@@ -463,7 +571,7 @@ namespace UniAI.Editor.Chat
                 fontSize = 13,
                 padding = new RectOffset(4, 4, 2, 2)
             };
-            
+
             _h1Style = new GUIStyle(EditorStyles.boldLabel)
             {
                 fontSize = 18,

@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Text.RegularExpressions;
 using System.Threading;
 using Cysharp.Threading.Tasks;
 using UnityEngine;
@@ -473,6 +474,14 @@ namespace UniAI.Editor.Chat
 
         // ─── 内部 ───
 
+        /// <summary>
+        /// 匹配 Markdown 图片语法 ![alt](data:image/...;base64,...) 的正则。
+        /// 用于在构建 AI 消息时剥离巨大的 base64 图片数据，避免浪费 token。
+        /// </summary>
+        private static readonly Regex _dataImageRegex = new(
+            @"!\[([^\]]*)\]\(data:image/[^)]+\)",
+            RegexOptions.Compiled);
+
         private List<AIMessage> BuildAIMessages()
         {
             var messages = new List<AIMessage>();
@@ -506,13 +515,28 @@ namespace UniAI.Editor.Chat
 
                 pendingAssistant = null;
 
+                string content = msg.Content;
+
+                // 剥离 Assistant 消息中的 base64 图片数据，替换为占位描述
+                if (msg.Role == AIRole.Assistant && !string.IsNullOrEmpty(content)
+                    && content.Contains("data:image/"))
+                {
+                    content = _dataImageRegex.Replace(content, m =>
+                    {
+                        string alt = m.Groups[1].Value;
+                        return string.IsNullOrWhiteSpace(alt)
+                            ? "[已生成图片]"
+                            : $"[已生成图片: {alt}]";
+                    });
+                }
+
                 if (msg.Role == AIRole.User)
                 {
-                    messages.Add(AIMessage.User(msg.Content));
+                    messages.Add(AIMessage.User(content));
                 }
                 else
                 {
-                    var assistantMsg = AIMessage.Assistant(msg.Content);
+                    var assistantMsg = AIMessage.Assistant(content);
                     messages.Add(assistantMsg);
                     pendingAssistant = assistantMsg;
                 }
