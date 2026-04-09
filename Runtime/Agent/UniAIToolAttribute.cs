@@ -95,5 +95,6 @@ namespace UniAI
         public const string Editor = "editor";
         public const string Testing = "testing";
         public const string Runtime = "runtime";
+        public const string Generate = "generate";
     }
 }

@@ -1,0 +1,841 @@
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using UnityEditor;
+using UnityEngine;
+
+namespace UniAI.Editor
+{
+    /// <summary>
+    /// 模型管理 Tab — Master-Detail 布局。
+    /// 左侧：紧凑工具栏 + 下拉过滤 + 表格列表（hover 显示操作）。
+    /// 右侧：选中模型的详情面板（基本信息 + API 配置 + 快速测试）。
+    /// </summary>
+    internal class ModelTab : ManagerTab
+    {
+        public override string TabName => "模型";
+        public override string TabIcon => "🧠";
+        public override int Order => 1;
+
+        private const float PAD = 10f;
+        private const float ROW_HEIGHT = 24f;
+        private const float DETAIL_WIDTH = 260f;
+        private const float LABEL_WIDTH = 70f;
+        private const float TOOLBAR_HEIGHT = 28f;
+
+        // ─── Column widths ───
+        private const float COL_TYPE = 20f;     // dot indicator
+        private const float COL_VENDOR = 72f;
+        private const float COL_CAP = 68f;
+        private const float COL_OPS = 52f;  // hover only
+
+        // ─── Colors ───
+        private static readonly Color _chatColor = new(0.5f, 0.75f, 1f);
+        private static readonly Color _imageGenColor = new(0.4f, 0.9f, 0.5f);
+        private static readonly Color _audioGenColor = new(0.95f, 0.75f, 0.3f);
+        private static readonly Color _videoGenColor = new(0.85f, 0.5f, 0.9f);
+        private static readonly Color _builtInColor = new(0.5f, 0.5f, 0.5f);
+        private static readonly Color _customColor = new(0.4f, 0.9f, 0.5f);
+        private static readonly Color _headerBg = new(0.16f, 0.16f, 0.16f);
+        private static readonly Color _rowAltBg = new(0.215f, 0.215f, 0.215f);
+        private static readonly Color _rowHoverBg = new(0.27f, 0.27f, 0.30f);
+        private static readonly Color _rowSelectedBg = new(0.22f, 0.30f, 0.42f);
+        private static readonly Color _detailBg = new(0.19f, 0.19f, 0.19f);
+        
+        // ─── Filter state ───
+        private int _vendorFilterIndex;   // 0 = All
+        private int _capFilterIndex;      // 0 = All
+        private int _sourceFilterIndex;   // 0 = All, 1 = Built-in, 2 = Custom
+        private string _searchText = "";
+
+        private static readonly string[] _capOptions = { "All", "Chat", "ImageGen", "AudioGen", "VideoGen" };
+        private static readonly string[] _sourceOptions = { "All", "Built-in", "Custom" };
+
+        // ─── Table state ───
+        private Vector2 _tableScroll;
+        private Vector2 _detailScroll;
+        private List<ModelRow> _rows;
+        private bool _rowsDirty = true;
+        private int _selectedRowIndex = -1;    // index in _rows
+
+        // ─── Edit state (inline for custom models) ───
+        private bool _isEditing;
+
+        // ─── Vendor list cache ───
+        private string[] _vendorOptions = { "All" };
+
+        // ─── Styles ───
+        private GUIStyle _toolbarTitleStyle;
+        private GUIStyle _headerStyle;
+        private GUIStyle _cellStyle;
+        private GUIStyle _cellBoldStyle;
+        private GUIStyle _badgeStyle;
+        private GUIStyle _detailTitleStyle;
+        private GUIStyle _detailSectionStyle;
+        private GUIStyle _detailLabelStyle;
+        private GUIStyle _detailValueStyle;
+        private GUIStyle _miniIconBtnStyle;
+        private GUIStyle _searchFieldStyle;
+        private bool _stylesReady;
+
+        private class ModelRow
+        {
+            public ModelEntry Entry;
+            public bool IsBuiltIn;
+            public int SourceIndex;
+            public List<string> ChannelNames;
+        }
+
+        // ────────────────────────────── Lifecycle ──────────────────────────────
+
+        protected override void OnInit() => _rowsDirty = true;
+
+        public override void EnsureStyles()
+        {
+            if (_stylesReady) return;
+            _stylesReady = true;
+
+            _toolbarTitleStyle = new GUIStyle(EditorStyles.boldLabel) { fontSize = 13 };
+
+            _headerStyle = new GUIStyle(EditorStyles.miniLabel)
+            {
+                fontStyle = FontStyle.Bold,
+                alignment = TextAnchor.MiddleLeft,
+                padding = new RectOffset(4, 4, 0, 0)
+            };
+            _headerStyle.normal.textColor = new Color(1f, 1f, 1f, 0.5f);
+
+            _cellStyle = new GUIStyle(EditorStyles.label)
+            {
+                fontSize = 11,
+                alignment = TextAnchor.MiddleLeft,
+                padding = new RectOffset(4, 2, 0, 0),
+                clipping = TextClipping.Clip
+            };
+            _cellBoldStyle = new GUIStyle(_cellStyle) { fontStyle = FontStyle.Bold };
+            
+            _badgeStyle = new GUIStyle(EditorStyles.miniLabel)
+            {
+                alignment = TextAnchor.MiddleCenter,
+                padding = new RectOffset(4, 4, 1, 1),
+                fontSize = 9
+            };
+
+            _detailTitleStyle = new GUIStyle(EditorStyles.boldLabel) { fontSize = 14 };
+            _detailSectionStyle = new GUIStyle(EditorStyles.boldLabel) { fontSize = 11 };
+            _detailSectionStyle.normal.textColor = new Color(1f, 1f, 1f, 0.7f);
+
+            _detailLabelStyle = new GUIStyle(EditorStyles.miniLabel);
+            _detailLabelStyle.normal.textColor = new Color(1f, 1f, 1f, 0.5f);
+
+            _detailValueStyle = new GUIStyle(EditorStyles.label) { fontSize = 11 };
+
+            _miniIconBtnStyle = new GUIStyle(EditorStyles.miniButton)
+            {
+                padding = new RectOffset(2, 2, 2, 2),
+                fixedHeight = 18,
+                fixedWidth = 22
+            };
+
+            _searchFieldStyle = new GUIStyle(EditorStyles.toolbarSearchField);
+        }
+
+        // ────────────────────────────── Main GUI ──────────────────────────────
+
+        public override void OnGUI(float width, float height)
+        {
+            if (_rowsDirty) RebuildRows();
+
+            // Detect hover row from mouse position (for hover-only ops)
+            
+            bool hasDetail = _selectedRowIndex >= 0 && _selectedRowIndex < _rows.Count;
+            float detailW = hasDetail ? DETAIL_WIDTH : 0f;
+            float tableAreaW = width - detailW;
+
+            // ── Left: Toolbar + Filters + Table ──
+            GUILayout.BeginArea(new Rect(0, 0, tableAreaW, height));
+            DrawToolbar(tableAreaW);
+            DrawFilterRow(tableAreaW);
+            DrawTable(tableAreaW, height - TOOLBAR_HEIGHT - 28f);
+            GUILayout.EndArea();
+
+            // ── Right: Detail panel ──
+            if (hasDetail)
+            {
+                EditorGUI.DrawRect(new Rect(tableAreaW, 0, 1, height), EditorGUIHelper.SeparatorColor);
+                var detailRect = new Rect(tableAreaW + 1, 0, detailW - 1, height);
+                EditorGUI.DrawRect(detailRect, _detailBg);
+
+                GUILayout.BeginArea(detailRect);
+                _detailScroll = EditorGUILayout.BeginScrollView(_detailScroll);
+                DrawDetailPanel(_rows[_selectedRowIndex]);
+                EditorGUILayout.EndScrollView();
+                GUILayout.EndArea();
+            }
+        }
+
+        // ────────────────────────────── Toolbar ──────────────────────────────
+
+        private void DrawToolbar(float width)
+        {
+            var toolbarRect = new Rect(0, 0, width, TOOLBAR_HEIGHT);
+            EditorGUI.DrawRect(toolbarRect, _headerBg);
+
+            GUILayout.BeginArea(toolbarRect);
+            EditorGUILayout.BeginHorizontal();
+            GUILayout.Space(PAD);
+
+            // Title
+            GUILayout.Label("UniAI Manager", _toolbarTitleStyle, GUILayout.Height(TOOLBAR_HEIGHT));
+            GUILayout.Space(8);
+
+            GUILayout.FlexibleSpace();
+
+            // Count
+            GUILayout.Label($"Total: {_rows.Count} Models", EditorStyles.miniLabel, GUILayout.Height(TOOLBAR_HEIGHT));
+            GUILayout.Space(12);
+
+            // Search
+            var newSearch = EditorGUILayout.TextField(_searchText ?? "", _searchFieldStyle,
+                GUILayout.Width(150), GUILayout.Height(18));
+            if (newSearch != _searchText)
+            {
+                _searchText = newSearch;
+                _rowsDirty = true;
+            }
+
+            GUILayout.Space(6);
+
+            // Refresh
+            if (GUILayout.Button("↻", _miniIconBtnStyle))
+                _rowsDirty = true;
+
+            GUILayout.Space(PAD);
+            EditorGUILayout.EndHorizontal();
+            GUILayout.EndArea();
+        }
+
+        // ────────────────────────────── Filter Row ──────────────────────────────
+
+        private void DrawFilterRow(float width)
+        {
+            var filterRect = new Rect(0, TOOLBAR_HEIGHT, width, 26f);
+            EditorGUI.DrawRect(filterRect, new Color(0.18f, 0.18f, 0.18f));
+
+            GUILayout.BeginArea(filterRect);
+            EditorGUILayout.BeginHorizontal();
+            GUILayout.Space(PAD);
+
+            // Provider dropdown
+            GUILayout.Label("Provider:", EditorStyles.miniLabel, GUILayout.Width(52), GUILayout.Height(22));
+            int newVendor = EditorGUILayout.Popup(_vendorFilterIndex, _vendorOptions,
+                EditorStyles.toolbarPopup, GUILayout.Width(80), GUILayout.Height(18));
+            if (newVendor != _vendorFilterIndex) { _vendorFilterIndex = newVendor; }
+
+            GUILayout.Space(10);
+
+            // Capability dropdown
+            GUILayout.Label("Capability:", EditorStyles.miniLabel, GUILayout.Width(62), GUILayout.Height(22));
+            int newCap = EditorGUILayout.Popup(_capFilterIndex, _capOptions,
+                EditorStyles.toolbarPopup, GUILayout.Width(80), GUILayout.Height(18));
+            if (newCap != _capFilterIndex) { _capFilterIndex = newCap; }
+
+            GUILayout.Space(10);
+
+            // Source dropdown
+            GUILayout.Label("Source:", EditorStyles.miniLabel, GUILayout.Width(44), GUILayout.Height(22));
+            int newSource = EditorGUILayout.Popup(_sourceFilterIndex, _sourceOptions,
+                EditorStyles.toolbarPopup, GUILayout.Width(80), GUILayout.Height(18));
+            if (newSource != _sourceFilterIndex) { _sourceFilterIndex = newSource; }
+
+            GUILayout.FlexibleSpace();
+
+            // + Add custom model button
+            if (GUILayout.Button("+", _miniIconBtnStyle))
+                AddCustomModel();
+
+            GUILayout.Space(PAD);
+            EditorGUILayout.EndHorizontal();
+            GUILayout.EndArea();
+        }
+
+        // ────────────────────────────── Table ──────────────────────────────
+
+        private void DrawTable(float tableWidth, float availableHeight)
+        {
+            float y = TOOLBAR_HEIGHT + 26f;
+            float colIdWidth = tableWidth - COL_TYPE - COL_VENDOR - COL_CAP - COL_OPS - PAD * 2;
+            if (colIdWidth < 80f) colIdWidth = 80f;
+
+            // Header row
+            var headerRect = new Rect(0, y, tableWidth, 20f);
+            EditorGUI.DrawRect(headerRect, _headerBg);
+
+            GUILayout.BeginArea(new Rect(0, y, tableWidth, 20f));
+            EditorGUILayout.BeginHorizontal();
+            GUILayout.Space(PAD);
+            GUILayout.Label("", _headerStyle, GUILayout.Width(COL_TYPE), GUILayout.Height(20));
+            GUILayout.Label("Model ID", _headerStyle, GUILayout.Width(colIdWidth), GUILayout.Height(20));
+            GUILayout.Label("Manufacturer", _headerStyle, GUILayout.Width(COL_VENDOR), GUILayout.Height(20));
+            GUILayout.Label("Capability", _headerStyle, GUILayout.Width(COL_CAP), GUILayout.Height(20));
+            GUILayout.Label("", _headerStyle, GUILayout.Width(COL_OPS), GUILayout.Height(20));
+            GUILayout.Space(PAD);
+            EditorGUILayout.EndHorizontal();
+            GUILayout.EndArea();
+
+            y += 20f;
+            float scrollHeight = availableHeight - 20f;
+            if (scrollHeight < 50f) scrollHeight = 50f;
+
+            // Scrollable rows
+            var scrollAreaRect = new Rect(0, y, tableWidth, scrollHeight);
+
+            var filteredRows = GetFilteredRows();
+            float contentHeight = filteredRows.Count * ROW_HEIGHT;
+
+            _tableScroll = GUI.BeginScrollView(scrollAreaRect, _tableScroll,
+                new Rect(0, 0, tableWidth - 16, contentHeight));
+
+            var mousePos = Event.current.mousePosition;
+
+            for (int i = 0; i < filteredRows.Count; i++)
+            {
+                var rowRect = new Rect(0, i * ROW_HEIGHT, tableWidth - 16, ROW_HEIGHT);
+                var row = filteredRows[i];
+                int globalIndex = _rows.IndexOf(row);
+                bool isSelected = globalIndex == _selectedRowIndex;
+                bool isHover = rowRect.Contains(mousePos);
+                
+                // Row background
+                Color bgColor;
+                if (isSelected) bgColor = _rowSelectedBg;
+                else if (isHover) bgColor = _rowHoverBg;
+                else bgColor = i % 2 == 1 ? _rowAltBg : EditorGUIHelper.CardBg;
+                EditorGUI.DrawRect(rowRect, bgColor);
+
+                // Cells
+                float cx = PAD;
+
+                // Type dot indicator (circle)
+                float dotRadius = 4f;
+                float dotCenterX = cx + COL_TYPE * 0.5f;
+                float dotCenterY = rowRect.y + ROW_HEIGHT * 0.5f;
+                var dotColor = row.IsBuiltIn ? _builtInColor : _customColor;
+                Handles.color = dotColor;
+                Handles.DrawSolidDisc(new Vector3(dotCenterX, dotCenterY, 0), Vector3.forward, dotRadius);
+                cx += COL_TYPE;
+
+                // Model ID
+                GUI.Label(new Rect(cx, rowRect.y, colIdWidth, ROW_HEIGHT),
+                    row.Entry.Id ?? "-", _cellBoldStyle);
+                cx += colIdWidth;
+
+                // Vendor
+                GUI.Label(new Rect(cx, rowRect.y, COL_VENDOR, ROW_HEIGHT),
+                    row.Entry.Vendor ?? "-", _cellStyle);
+                cx += COL_VENDOR;
+
+                // Capability badge
+                DrawBadgeAt(new Rect(cx + 2, rowRect.y + 4, COL_CAP - 4, 16),
+                    row.Entry.Capability.ToString(),
+                    GetCapabilityColor(row.Entry.Capability));
+                cx += COL_CAP;
+
+                // Operations (hover only, custom only)
+                if (isHover && !row.IsBuiltIn)
+                {
+                    float opX = cx + 2;
+                    float opY = rowRect.y + 3;
+                    if (GUI.Button(new Rect(opX, opY, 22, 18), "✎", _miniIconBtnStyle))
+                    {
+                        _selectedRowIndex = globalIndex;
+                        _isEditing = true;
+                        Window.Repaint();
+                    }
+                    if (GUI.Button(new Rect(opX + 24, opY, 22, 18), "✕", _miniIconBtnStyle))
+                    {
+                        DeleteCustomModel(row);
+                        return; // list changed, bail
+                    }
+                }
+
+                // Row click → select
+                if (Event.current.type == EventType.MouseDown && rowRect.Contains(Event.current.mousePosition))
+                {
+                    if (_selectedRowIndex == globalIndex)
+                    {
+                        _selectedRowIndex = -1; // deselect
+                        _isEditing = false;
+                    }
+                    else
+                    {
+                        _selectedRowIndex = globalIndex;
+                        _isEditing = false;
+                    }
+                    Event.current.Use();
+                    Window.Repaint();
+                }
+            }
+
+            GUI.EndScrollView();
+
+            // Empty state
+            if (filteredRows.Count == 0)
+            {
+                var emptyRect = new Rect(0, y + 30, tableWidth, 40);
+                var capName = _capFilterIndex > 0 ? _capOptions[_capFilterIndex] : "";
+                var emptyText = string.IsNullOrEmpty(capName) || capName == "All"
+                    ? "No matching models"
+                    : $"No {capName} models found. Click '+' in the filter row to add one.";
+                GUI.Label(emptyRect, emptyText, new GUIStyle(EditorStyles.centeredGreyMiniLabel) { wordWrap = true });
+            }
+
+            // Repaint for hover effects
+            if (Event.current.type == EventType.Repaint)
+                Window.Repaint();
+        }
+
+        // ────────────────────────────── Detail Panel ──────────────────────────────
+
+        private void DrawDetailPanel(ModelRow row)
+        {
+            var entry = row.Entry;
+
+            GUILayout.Space(PAD);
+
+            // Header: Icon + Title + Close
+            EditorGUILayout.BeginHorizontal();
+            GUILayout.Space(PAD);
+
+            // Model icon
+            if (entry.Icon != null)
+            {
+                var iconRect = GUILayoutUtility.GetRect(40, 40, GUILayout.Width(40), GUILayout.Height(40));
+                GUI.DrawTexture(iconRect, entry.Icon, ScaleMode.ScaleToFit);
+                GUILayout.Space(8);
+            }
+
+            EditorGUILayout.BeginVertical();
+            GUILayout.Label("Model Details: " + (entry.Id ?? ""), EditorStyles.miniLabel);
+            GUILayout.Label(entry.Id ?? "", _detailTitleStyle);
+            EditorGUILayout.EndVertical();
+
+            GUILayout.FlexibleSpace();
+            if (GUILayout.Button("✕", _miniIconBtnStyle))
+            {
+                _selectedRowIndex = -1;
+                _isEditing = false;
+                Window.Repaint();
+            }
+            GUILayout.Space(PAD);
+            EditorGUILayout.EndHorizontal();
+
+            GUILayout.Space(8);
+            DrawDetailSeparator();
+
+            // ── Basic Info ──
+            GUILayout.Space(6);
+
+            if (_isEditing && !row.IsBuiltIn)
+                DrawEditableInfo(entry);
+            else
+                DrawReadOnlyInfo(row);
+
+            GUILayout.Space(4);
+            DrawDetailSeparator();
+
+            // ── Channels ──
+            GUILayout.Space(6);
+            DrawDetailSection("Channels", () =>
+            {
+                if (row.ChannelNames.Count == 0)
+                {
+                    GUILayout.Label("Not configured in any channel", _detailLabelStyle);
+                }
+                else
+                {
+                    foreach (var ch in row.ChannelNames)
+                    {
+                        EditorGUILayout.BeginHorizontal();
+                        GUILayout.Space(4);
+                        GUILayout.Label("•", GUILayout.Width(10));
+                        GUILayout.Label(ch, _detailValueStyle);
+                        EditorGUILayout.EndHorizontal();
+                    }
+                }
+            });
+
+            // ── Edit/Delete (for custom) ──
+            if (!row.IsBuiltIn)
+            {
+                GUILayout.Space(8);
+                DrawDetailSeparator();
+                GUILayout.Space(6);
+
+                EditorGUILayout.BeginHorizontal();
+                GUILayout.Space(PAD);
+
+                if (!_isEditing)
+                {
+                    if (GUILayout.Button("Edit", GUILayout.Height(22), GUILayout.Width(60)))
+                    {
+                        _isEditing = true;
+                        Window.Repaint();
+                    }
+                }
+                else
+                {
+                    if (GUILayout.Button("Done", GUILayout.Height(22), GUILayout.Width(60)))
+                    {
+                        _isEditing = false;
+                        _rowsDirty = true;
+                        Window.Repaint();
+                    }
+                }
+
+                GUILayout.Space(8);
+
+                var oldBg = GUI.backgroundColor;
+                GUI.backgroundColor = new Color(0.8f, 0.3f, 0.3f);
+                if (GUILayout.Button("Delete", GUILayout.Height(22), GUILayout.Width(60)))
+                    DeleteCustomModel(row);
+                GUI.backgroundColor = oldBg;
+
+                GUILayout.FlexibleSpace();
+                GUILayout.Space(PAD);
+                EditorGUILayout.EndHorizontal();
+            }
+
+            GUILayout.Space(PAD);
+        }
+
+        private void DrawReadOnlyInfo(ModelRow row)
+        {
+            var entry = row.Entry;
+
+            EditorGUILayout.BeginHorizontal();
+            GUILayout.Space(PAD);
+            DrawDetailRow("Type", null);
+            DrawBadgeInline(row.IsBuiltIn ? "Built-in" : "Custom",
+                row.IsBuiltIn ? _builtInColor : _customColor);
+            GUILayout.FlexibleSpace();
+            GUILayout.Space(PAD);
+            EditorGUILayout.EndHorizontal();
+
+            DrawDetailKV("Provider", entry.Vendor ?? "Unknown");
+
+            EditorGUILayout.BeginHorizontal();
+            GUILayout.Space(PAD);
+            DrawDetailRow("Capability", null);
+            DrawBadgeInline(entry.Capability.ToString(), GetCapabilityColor(entry.Capability));
+            GUILayout.FlexibleSpace();
+            GUILayout.Space(PAD);
+            EditorGUILayout.EndHorizontal();
+        }
+
+        private void DrawEditableInfo(ModelEntry entry)
+        {
+            DrawEditField("Model ID", ref entry.Id);
+            DrawEditField("Vendor", ref entry.Vendor);
+
+            EditorGUILayout.BeginHorizontal();
+            GUILayout.Space(PAD);
+            GUILayout.Label("Capability", _detailLabelStyle, GUILayout.Width(LABEL_WIDTH));
+            var newCap = (ModelCapability)EditorGUILayout.EnumPopup(entry.Capability, GUILayout.Width(120));
+            if (newCap != entry.Capability) { entry.Capability = newCap; MarkDirty(); _rowsDirty = true; }
+            GUILayout.Space(PAD);
+            EditorGUILayout.EndHorizontal();
+            GUILayout.Space(2);
+
+            EditorGUILayout.BeginHorizontal();
+            GUILayout.Space(PAD);
+            GUILayout.Label("Icon", _detailLabelStyle, GUILayout.Width(LABEL_WIDTH));
+            var newIcon = (Texture2D)EditorGUILayout.ObjectField(entry.Icon, typeof(Texture2D), false,
+                GUILayout.Width(40), GUILayout.Height(40));
+            if (newIcon != entry.Icon) { entry.Icon = newIcon; MarkDirty(); }
+            GUILayout.Space(PAD);
+            EditorGUILayout.EndHorizontal();
+        }
+
+        private void DrawEditField(string label, ref string value)
+        {
+            EditorGUILayout.BeginHorizontal();
+            GUILayout.Space(PAD);
+            GUILayout.Label(label, _detailLabelStyle, GUILayout.Width(LABEL_WIDTH));
+            var newVal = EditorGUILayout.TextField(value ?? "");
+            if (newVal != value) { value = newVal; MarkDirty(); _rowsDirty = true; }
+            GUILayout.Space(PAD);
+            EditorGUILayout.EndHorizontal();
+            GUILayout.Space(2);
+        }
+
+        // ────────────────────────────── Detail Helpers ──────────────────────────────
+
+        private void DrawDetailSection(string title, Action drawContent)
+        {
+            EditorGUILayout.BeginHorizontal();
+            GUILayout.Space(PAD);
+            GUILayout.Label(title, _detailSectionStyle);
+            GUILayout.Space(PAD);
+            EditorGUILayout.EndHorizontal();
+            GUILayout.Space(4);
+
+            EditorGUILayout.BeginHorizontal();
+            GUILayout.Space(PAD);
+            EditorGUILayout.BeginVertical();
+            drawContent();
+            EditorGUILayout.EndVertical();
+            GUILayout.Space(PAD);
+            EditorGUILayout.EndHorizontal();
+        }
+
+        private void DrawDetailKV(string label, string value)
+        {
+            EditorGUILayout.BeginHorizontal();
+            GUILayout.Space(PAD);
+            GUILayout.Label(label, _detailLabelStyle, GUILayout.Width(LABEL_WIDTH));
+            GUILayout.Label(value ?? "-", _detailValueStyle);
+            GUILayout.Space(PAD);
+            EditorGUILayout.EndHorizontal();
+            GUILayout.Space(2);
+        }
+
+        private void DrawDetailRow(string label, string value)
+        {
+            GUILayout.Label(label, _detailLabelStyle, GUILayout.Width(LABEL_WIDTH));
+            if (value != null)
+                GUILayout.Label(value, _detailValueStyle);
+        }
+
+        private void DrawDetailSeparator()
+        {
+            EditorGUILayout.BeginHorizontal();
+            GUILayout.Space(PAD);
+            var rect = EditorGUILayout.GetControlRect(false, 1);
+            EditorGUI.DrawRect(rect, EditorGUIHelper.SeparatorColor);
+            GUILayout.Space(PAD);
+            EditorGUILayout.EndHorizontal();
+        }
+
+        // ────────────────────────────── Badge Drawing ──────────────────────────────
+
+        private void DrawBadgeAt(Rect rect, string text, Color color)
+        {
+            var bgColor = new Color(color.r, color.g, color.b, 0.15f);
+            EditorGUI.DrawRect(rect, bgColor);
+
+            var old = _badgeStyle.normal.textColor;
+            _badgeStyle.normal.textColor = color;
+            GUI.Label(rect, text, _badgeStyle);
+            _badgeStyle.normal.textColor = old;
+        }
+
+        private void DrawBadgeInline(string text, Color color)
+        {
+            var bgColor = new Color(color.r, color.g, color.b, 0.15f);
+            var content = new GUIContent(text);
+            var rect = GUILayoutUtility.GetRect(content, _badgeStyle, GUILayout.ExpandWidth(false));
+            EditorGUI.DrawRect(rect, bgColor);
+
+            var old = _badgeStyle.normal.textColor;
+            _badgeStyle.normal.textColor = color;
+            GUI.Label(rect, text, _badgeStyle);
+            _badgeStyle.normal.textColor = old;
+        }
+
+        // ────────────────────────────── Data ──────────────────────────────
+
+        private void RebuildRows()
+        {
+            _rowsDirty = false;
+            _rows = new List<ModelRow>();
+
+            var channelMap = BuildChannelMap();
+
+            // Built-in
+            foreach (var kvp in ModelRegistry.BuiltInModels)
+            {
+                channelMap.TryGetValue(kvp.Key, out var channels);
+                _rows.Add(new ModelRow
+                {
+                    Entry = kvp.Value,
+                    IsBuiltIn = true,
+                    SourceIndex = -1,
+                    ChannelNames = channels ?? new List<string>()
+                });
+            }
+
+            // Custom
+            var customModels = GetCustomModels();
+            for (int i = 0; i < customModels.Count; i++)
+            {
+                var entry = customModels[i];
+                channelMap.TryGetValue(entry.Id ?? "", out var channels);
+                _rows.Add(new ModelRow
+                {
+                    Entry = entry,
+                    IsBuiltIn = false,
+                    SourceIndex = i,
+                    ChannelNames = channels ?? new List<string>()
+                });
+            }
+
+            // Sort: custom first, then vendor, then id
+            _rows.Sort((a, b) =>
+            {
+                int c = a.IsBuiltIn.CompareTo(b.IsBuiltIn);
+                if (c != 0) return c;
+                c = string.Compare(a.Entry.Vendor, b.Entry.Vendor, StringComparison.Ordinal);
+                if (c != 0) return c;
+                return string.Compare(a.Entry.Id, b.Entry.Id, StringComparison.Ordinal);
+            });
+
+            // Rebuild vendor options
+            var vendors = _rows
+                .Where(r => !string.IsNullOrEmpty(r.Entry.Vendor))
+                .Select(r => r.Entry.Vendor)
+                .Distinct()
+                .OrderBy(v => v)
+                .ToList();
+            var opts = new List<string> { "All" };
+            opts.AddRange(vendors);
+            _vendorOptions = opts.ToArray();
+
+            // Clamp vendor filter
+            if (_vendorFilterIndex >= _vendorOptions.Length)
+                _vendorFilterIndex = 0;
+
+            // Clamp selection
+            if (_selectedRowIndex >= _rows.Count)
+                _selectedRowIndex = -1;
+        }
+
+        private Dictionary<string, List<string>> BuildChannelMap()
+        {
+            var map = new Dictionary<string, List<string>>();
+            if (Config?.Providers == null) return map;
+
+            foreach (var ch in Config.Providers)
+            {
+                if (!ch.Enabled || ch.Models == null) continue;
+                foreach (var modelId in ch.Models)
+                {
+                    if (!map.ContainsKey(modelId))
+                        map[modelId] = new List<string>();
+                    map[modelId].Add(ch.Name);
+                }
+            }
+            return map;
+        }
+
+        private List<ModelRow> GetFilteredRows()
+        {
+            var result = _rows.AsEnumerable();
+
+            // Vendor
+            if (_vendorFilterIndex > 0 && _vendorFilterIndex < _vendorOptions.Length)
+            {
+                var vendor = _vendorOptions[_vendorFilterIndex];
+                result = result.Where(r => r.Entry.Vendor == vendor);
+            }
+
+            // Capability
+            if (_capFilterIndex > 0)
+            {
+                var cap = (ModelCapability)(_capFilterIndex - 1);
+                result = result.Where(r => r.Entry.Capability == cap);
+            }
+
+            // Source
+            if (_sourceFilterIndex == 1) result = result.Where(r => r.IsBuiltIn);
+            else if (_sourceFilterIndex == 2) result = result.Where(r => !r.IsBuiltIn);
+
+            // Search
+            if (!string.IsNullOrEmpty(_searchText))
+            {
+                var lower = _searchText.ToLowerInvariant();
+                result = result.Where(r => MatchesFilter(r.Entry, lower));
+            }
+
+            return result.ToList();
+        }
+
+        // ────────────────────────────── Actions ──────────────────────────────
+
+        private void AddCustomModel()
+        {
+            var settings = UniAISettings.Instance;
+            if (settings == null)
+            {
+                EditorUtility.DisplayDialog("Error", "UniAISettings not found. Create one at Resources/UniAI/.", "OK");
+                return;
+            }
+
+            settings.CustomModels.Add(new ModelEntry
+            {
+                Id = "custom-model",
+                DisplayName = "New Model",
+                Vendor = "Custom",
+                Capability = ModelCapability.Chat
+            });
+
+            MarkDirty();
+            _rowsDirty = true;
+            RebuildRows();
+
+            _selectedRowIndex = _rows.FindIndex(r => !r.IsBuiltIn && r.SourceIndex == settings.CustomModels.Count - 1);
+            _isEditing = true;
+            Window.Repaint();
+        }
+
+        private void DeleteCustomModel(ModelRow row)
+        {
+            if (!EditorUtility.DisplayDialog("Delete Model",
+                $"Delete custom model '{row.Entry.DisplayName ?? row.Entry.Id}'?", "Delete", "Cancel"))
+                return;
+
+            var customModels = GetCustomModels();
+            if (row.SourceIndex >= 0 && row.SourceIndex < customModels.Count)
+            {
+                customModels.RemoveAt(row.SourceIndex);
+                _selectedRowIndex = -1;
+                _isEditing = false;
+                MarkDirty();
+                _rowsDirty = true;
+                Window.Repaint();
+            }
+        }
+
+        // ────────────────────────────── Helpers ──────────────────────────────
+
+        private List<ModelEntry> GetCustomModels()
+        {
+            var settings = UniAISettings.Instance;
+            return settings != null ? settings.CustomModels : new List<ModelEntry>();
+        }
+
+        private bool MatchesFilter(ModelEntry entry, string filter)
+        {
+            return (entry.Id != null && entry.Id.ToLowerInvariant().Contains(filter))
+                || (entry.DisplayName != null && entry.DisplayName.ToLowerInvariant().Contains(filter))
+                || (entry.Vendor != null && entry.Vendor.ToLowerInvariant().Contains(filter))
+                || entry.Capability.ToString().ToLowerInvariant().Contains(filter);
+        }
+
+        private static Color GetCapabilityColor(ModelCapability cap) => cap switch
+        {
+            ModelCapability.Chat => _chatColor,
+            ModelCapability.ImageGen => _imageGenColor,
+            ModelCapability.AudioGen => _audioGenColor,
+            ModelCapability.VideoGen => _videoGenColor,
+            _ => _chatColor
+        };
+
+        private void MarkDirty()
+        {
+            var settings = UniAISettings.Instance;
+            if (settings != null)
+                EditorUtility.SetDirty(settings);
+        }
+    }
+}

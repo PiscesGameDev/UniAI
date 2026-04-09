@@ -50,12 +50,21 @@ namespace UniAI.Editor
             w.SwitchTo<AgentTab>();
         }
 
+        /// <summary>打开并跳转到模型页</summary>
+        public static void OpenModel()
+        {
+            Open();
+            var w = GetWindow<UniAIManagerWindow>();
+            w.SwitchTo<ModelTab>();
+        }
+
         private void OnEnable()
         {
             Config = AIConfigManager.LoadConfig();
             _tabs = new List<ManagerTab>
             {
                 new ChannelTab(),
+                new ModelTab(),
                 new AgentTab(),
                 new McpTab(),
                 new ToolsTab(),

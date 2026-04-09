@@ -12,6 +12,7 @@ namespace UniAI
     {
         [SerializeField] private List<ChannelEntry> _providers = new();
         [SerializeField] private GeneralConfig _general = new();
+        [SerializeField] private List<ModelEntry> _customModels = new();
 
         /// <summary>
         /// 渠道列表
@@ -22,6 +23,11 @@ namespace UniAI
         /// 通用设置
         /// </summary>
         public GeneralConfig General => _general;
+
+        /// <summary>
+        /// 用户自定义模型列表（补充内置预设未覆盖的模型）
+        /// </summary>
+        public List<ModelEntry> CustomModels => _customModels;
 
         /// <summary>
         /// 转换为 AIConfig（供 AIClient.Create 使用）

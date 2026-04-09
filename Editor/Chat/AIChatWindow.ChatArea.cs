@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using Newtonsoft.Json.Linq;
 using UnityEditor;
 using UnityEngine;
 
@@ -491,6 +492,9 @@ namespace UniAI.Editor.Chat
                     : msg.ToolResult;
                 var resultStyle = msg.IsToolError ? _toolCallErrorStyle : EditorStyles.miniLabel;
                 GUILayout.Label($"  Result: {resultDisplay}", resultStyle, GUILayout.MaxWidth(maxContentWidth));
+
+                // 内联渲染生成的图片
+                TryDrawGeneratedAssets(msg.ToolResult, maxContentWidth);
             }
 
             GUILayout.Space(2);
@@ -500,6 +504,53 @@ namespace UniAI.Editor.Chat
             EditorGUILayout.EndHorizontal();
 
             GUILayout.Space(2);
+        }
+
+        // ─── Generated Asset Inline Rendering ───
+
+        private const float GENERATED_IMAGE_MAX_WIDTH = 256f;
+
+        /// <summary>
+        /// 检测 ToolResult JSON 中是否含 generatedAssets 数组，如有则内联渲染图片缩略图。
+        /// </summary>
+        private void TryDrawGeneratedAssets(string toolResult, float maxContentWidth)
+        {
+            if (string.IsNullOrEmpty(toolResult) || !toolResult.Contains("generatedAssets"))
+                return;
+
+            try
+            {
+                var json = JObject.Parse(toolResult);
+                var data = json["data"] ?? json["Data"];
+                if (data == null) return;
+
+                var assets = data["generatedAssets"] ?? data["GeneratedAssets"];
+                if (assets is not JArray assetArray || assetArray.Count == 0) return;
+
+                GUILayout.Space(4);
+
+                foreach (var asset in assetArray)
+                {
+                    var path = (string)(asset["path"] ?? asset["Path"]);
+                    if (string.IsNullOrEmpty(path)) continue;
+
+                    var texture = AssetDatabase.LoadAssetAtPath<Texture2D>(path);
+                    if (texture == null) continue;
+
+                    float displayWidth = Mathf.Min(texture.width, GENERATED_IMAGE_MAX_WIDTH, maxContentWidth - 16);
+                    float displayHeight = displayWidth * texture.height / texture.width;
+
+                    GUILayout.Space(2);
+                    var rect = GUILayoutUtility.GetRect(displayWidth, displayHeight,
+                        GUILayout.Width(displayWidth), GUILayout.Height(displayHeight));
+                    GUI.DrawTexture(rect, texture, ScaleMode.ScaleToFit);
+                    GUILayout.Space(2);
+                }
+            }
+            catch
+            {
+                // JSON 解析失败时静默忽略
+            }
         }
     }
 }
