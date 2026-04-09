@@ -1,4 +1,6 @@
+using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Text.RegularExpressions;
 using UnityEditor;
 using UnityEngine;
@@ -56,6 +58,9 @@ namespace UniAI.Editor.Chat
                         break;
                     case BlockType.OrderedList:
                         DrawListItem(block.Prefix, block.Content);
+                        break;
+                    case BlockType.Image:
+                        DrawImageBlock(block.Content, block.Prefix, width);
                         break;
                     default:
                         DrawRichParagraph(block.Content, width);
@@ -131,6 +136,169 @@ namespace UniAI.Editor.Chat
             GUILayout.Label(rich, _normalStyle, GUILayout.MaxWidth(width));
         }
 
+        // ─── Image Block ───
+
+        private const float IMAGE_MAX_WIDTH = 384f;
+        private static readonly Dictionary<string, Texture2D> _imageCache = new();
+        private static readonly HashSet<string> _imageFailed = new();
+
+        private static void DrawImageBlock(string alt, string src, float width)
+        {
+            var tex = LoadImageTexture(src);
+            if (tex == null)
+            {
+                GUILayout.Label(string.IsNullOrEmpty(alt) ? "[图片加载失败]" : $"[图片加载失败: {alt}]",
+                    _normalStyle, GUILayout.MaxWidth(width));
+                return;
+            }
+
+            float displayWidth = Mathf.Min(tex.width, IMAGE_MAX_WIDTH, width - 8);
+            float displayHeight = displayWidth * tex.height / Mathf.Max(1, tex.width);
+
+            GUILayout.Space(4);
+            var rect = GUILayoutUtility.GetRect(displayWidth, displayHeight,
+                GUILayout.Width(displayWidth), GUILayout.Height(displayHeight));
+            GUI.DrawTexture(rect, tex, ScaleMode.ScaleToFit);
+
+            // 下载按钮
+            EditorGUILayout.BeginHorizontal(GUILayout.Width(displayWidth));
+            if (GUILayout.Button("下载图片", EditorStyles.miniButton, GUILayout.Width(80), GUILayout.Height(18)))
+            {
+                SaveImageToFile(src, alt);
+            }
+            GUILayout.FlexibleSpace();
+            EditorGUILayout.EndHorizontal();
+
+            GUILayout.Space(4);
+        }
+
+        private static void SaveImageToFile(string src, string alt)
+        {
+            string ext = GuessImageExtension(src);
+            string defaultName = string.IsNullOrWhiteSpace(alt) ? "image" : SanitizeFileName(alt);
+            string path = EditorUtility.SaveFilePanel("保存图片", "", $"{defaultName}.{ext}", ext);
+            if (string.IsNullOrEmpty(path)) return;
+
+            try
+            {
+                byte[] bytes = GetImageBytes(src);
+                if (bytes == null || bytes.Length == 0)
+                {
+                    EditorUtility.DisplayDialog("保存失败", "无法读取图片数据。", "确定");
+                    return;
+                }
+                File.WriteAllBytes(path, bytes);
+                EditorUtility.RevealInFinder(path);
+            }
+            catch (Exception e)
+            {
+                EditorUtility.DisplayDialog("保存失败", e.Message, "确定");
+            }
+        }
+
+        private static byte[] GetImageBytes(string src)
+        {
+            if (src.StartsWith("data:", StringComparison.OrdinalIgnoreCase))
+            {
+                int comma = src.IndexOf(',');
+                if (comma > 0 && src.IndexOf(";base64", 0, comma, StringComparison.OrdinalIgnoreCase) > 0)
+                    return Convert.FromBase64String(src.Substring(comma + 1));
+            }
+            else if (src.StartsWith("Assets/", StringComparison.Ordinal))
+            {
+                string abs = Path.Combine(Directory.GetCurrentDirectory(), src);
+                if (File.Exists(abs)) return File.ReadAllBytes(abs);
+            }
+            else if (File.Exists(src))
+            {
+                return File.ReadAllBytes(src);
+            }
+            return null;
+        }
+
+        private static string GuessImageExtension(string src)
+        {
+            if (src.StartsWith("data:image/", StringComparison.OrdinalIgnoreCase))
+            {
+                int slash = src.IndexOf('/');
+                int semi = src.IndexOf(';');
+                if (slash > 0 && semi > slash)
+                {
+                    string mime = src.Substring(slash + 1, semi - slash - 1).ToLowerInvariant();
+                    return mime switch
+                    {
+                        "jpeg" => "jpg",
+                        "svg+xml" => "svg",
+                        _ => mime
+                    };
+                }
+            }
+            string ext = Path.GetExtension(src);
+            if (!string.IsNullOrEmpty(ext)) return ext.TrimStart('.').ToLowerInvariant();
+            return "png";
+        }
+
+        private static string SanitizeFileName(string name)
+        {
+            foreach (char c in Path.GetInvalidFileNameChars())
+                name = name.Replace(c, '_');
+            return name.Trim();
+        }
+
+        private static Texture2D LoadImageTexture(string src)
+        {
+            if (string.IsNullOrEmpty(src)) return null;
+            if (_imageCache.TryGetValue(src, out var cached) && cached != null) return cached;
+            if (_imageFailed.Contains(src)) return null;
+
+            try
+            {
+                byte[] bytes = null;
+
+                if (src.StartsWith("data:", StringComparison.OrdinalIgnoreCase))
+                {
+                    int comma = src.IndexOf(',');
+                    if (comma > 0 && src.IndexOf(";base64", 0, comma, StringComparison.OrdinalIgnoreCase) > 0)
+                    {
+                        string b64 = src.Substring(comma + 1);
+                        bytes = Convert.FromBase64String(b64);
+                    }
+                }
+                else if (src.StartsWith("Assets/", StringComparison.Ordinal))
+                {
+                    var assetTex = AssetDatabase.LoadAssetAtPath<Texture2D>(src);
+                    if (assetTex != null)
+                    {
+                        _imageCache[src] = assetTex;
+                        return assetTex;
+                    }
+                }
+                else if (File.Exists(src))
+                {
+                    bytes = File.ReadAllBytes(src);
+                }
+
+                if (bytes != null && bytes.Length > 0)
+                {
+                    var tex = new Texture2D(2, 2, TextureFormat.RGBA32, false);
+                    if (tex.LoadImage(bytes))
+                    {
+                        tex.hideFlags = HideFlags.HideAndDontSave;
+                        _imageCache[src] = tex;
+                        return tex;
+                    }
+                    UnityEngine.Object.DestroyImmediate(tex);
+                }
+            }
+            catch
+            {
+                // fall through to failure mark
+            }
+
+            _imageFailed.Add(src);
+            return null;
+        }
+
         /// <summary>
         /// 行内格式: **bold**, `code`
         /// </summary>
@@ -153,7 +321,8 @@ namespace UniAI.Editor.Chat
             Heading2,
             Heading3,
             UnorderedList,
-            OrderedList
+            OrderedList,
+            Image
         }
 
         private struct Block
@@ -216,6 +385,20 @@ namespace UniAI.Editor.Chat
                     continue;
                 }
 
+                // Image (standalone line): ![alt](src)
+                var imgMatch = Regex.Match(trimmed, @"^!\[(.*?)\]\((.+)\)\s*$");
+                if (imgMatch.Success)
+                {
+                    blocks.Add(new Block
+                    {
+                        Type = BlockType.Image,
+                        Content = imgMatch.Groups[1].Value,
+                        Prefix = imgMatch.Groups[2].Value
+                    });
+                    i++;
+                    continue;
+                }
+
                 // Unordered list
                 if (trimmed.StartsWith("- ") || trimmed.StartsWith("* "))
                 {
@@ -254,7 +437,8 @@ namespace UniAI.Editor.Chat
                     && !lines[i].TrimStart().StartsWith("#")
                     && !lines[i].TrimStart().StartsWith("- ")
                     && !lines[i].TrimStart().StartsWith("* ")
-                    && !Regex.IsMatch(lines[i].TrimStart(), @"^\d+\.\s"))
+                    && !Regex.IsMatch(lines[i].TrimStart(), @"^\d+\.\s")
+                    && !Regex.IsMatch(lines[i].TrimStart(), @"^!\[(.*?)\]\((.+)\)\s*$"))
                 {
                     paragraphLines.Add(lines[i].TrimStart());
                     i++;
