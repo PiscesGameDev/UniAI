@@ -19,6 +19,7 @@ namespace UniAI.Editor
         internal static readonly Color SeparatorColor = new(0.12f, 0.12f, 0.12f);
         internal static readonly Color SectionBg = new(0.21f, 0.21f, 0.21f);
         internal static readonly Color AccentColor = new(0.2f, 0.5f, 0.9f);
+        internal static readonly Color BorderColor = new(0.35f, 0.35f, 0.35f);
 
         // ─── Drawing Helpers ───
 
@@ -32,6 +33,31 @@ namespace UniAI.Editor
             var r = EditorGUILayout.BeginVertical();
             if (r.width > 1)
                 EditorGUI.DrawRect(new Rect(r.x, r.y, r.width, r.height), SectionBg);
+            GUILayout.Space(8);
+            drawContent();
+            GUILayout.Space(8);
+            EditorGUILayout.EndVertical();
+            GUILayout.Space(pad);
+            EditorGUILayout.EndHorizontal();
+        }
+
+        /// <summary>
+        /// 绘制带背景色 + 边框的 Box 容器
+        /// </summary>
+        internal static void DrawBox(float pad, Action drawContent)
+        {
+            EditorGUILayout.BeginHorizontal();
+            GUILayout.Space(pad);
+            var r = EditorGUILayout.BeginVertical();
+            if (r.width > 1)
+            {
+                EditorGUI.DrawRect(new Rect(r.x, r.y, r.width, r.height), SectionBg);
+                // 绘制 1px 边框
+                EditorGUI.DrawRect(new Rect(r.x, r.y, r.width, 1), BorderColor);                 // top
+                EditorGUI.DrawRect(new Rect(r.x, r.yMax - 1, r.width, 1), BorderColor);           // bottom
+                EditorGUI.DrawRect(new Rect(r.x, r.y, 1, r.height), BorderColor);                 // left
+                EditorGUI.DrawRect(new Rect(r.xMax - 1, r.y, 1, r.height), BorderColor);          // right
+            }
             GUILayout.Space(8);
             drawContent();
             GUILayout.Space(8);

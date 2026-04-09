@@ -32,7 +32,7 @@ ContextPipeline.ProcessAsync()（上下文窗口管理）
   3. 超限时 → 摘要压缩旧消息 / 截断
         ↓
 AIAgentRunner / ChatRunner（对话运行器）
-  ├── 本地 AIToolAsset                   ← 内置工具
+  ├── 本地 [UniAITool] 注册表             ← 内置工具
   └── McpClientManager（Tools 动态合并）   ← MCP 外部工具
         ↓
 AIClient（API 入口）
@@ -108,13 +108,22 @@ McpClient → IMcpTransport
 
 | 类 | 路径 | 职责 |
 |----|------|------|
-| `AIToolAsset` | `Runtime/Agent/AIToolAsset.cs` | Tool ScriptableObject 基类，子类实现 `ExecuteAsync` |
-| `AgentDefinition` | `Runtime/Agent/AgentDefinition.cs` | Agent 配置 SO（名称、SystemPrompt、工具集、温度、MaxTurns） |
-| `AIAgentRunner` | `Runtime/Agent/AIAgentRunner.cs` | Agent 运行器，封装 Tool 调用循环（实现 `IConversationRunner`） |
+| `UniAIToolAttribute` | `Runtime/Agent/UniAIToolAttribute.cs` | 工具声明特性：`Name` / `Group` / `Description` / `Actions`。+ `ToolGroups` 常量（core/scene/asset/editor/testing/runtime）+ `ToolParamAttribute`（字段级 schema 描述） |
+| `UniAIToolRegistry` | `Runtime/Agent/UniAIToolRegistry.cs` | 反射扫描所有程序集中带 `[UniAITool]` 的静态类，按组注册 `HandleAsync` 委托 |
+| `ToolSchemaGenerator` | `Runtime/Agent/ToolSchemaGenerator.cs` | 从工具类嵌套的 `<PascalCaseAction>Args` 类自动生成 JSON Schema（支持 Args 类继承） |
+| `ToolResponse` | `Runtime/Agent/ToolResponse.cs` | 统一返回包装：`Success(data, message)` / `Error(error, code)` |
+| `ToolPathHelper` | `Runtime/Agent/ToolPathHelper.cs` | 工具路径解析（`TryResolveProjectPath` — 拒绝 `..` 穿越与项目外路径） |
+| `AgentDefinition` | `Runtime/Agent/AgentDefinition.cs` | Agent 配置 SO（名称、SystemPrompt、**ToolGroups** 字符串列表、温度、MaxTurns、MCP Servers） |
+| `AIAgentRunner` | `Runtime/Agent/AIAgentRunner.cs` | Agent 运行器，按 `AgentDefinition.ToolGroups` 从注册表拉取 `HandleAsync` 委托，封装 Tool 调用循环 |
 | `AgentEvent` | `Runtime/Agent/AgentEvent.cs` | Agent 流式事件（TextDelta/ToolCallStart/ToolCallResult/TurnComplete/Error） |
 | `AgentResult` | `Runtime/Agent/AgentResult.cs` | Agent 非流式运行结果 |
+| `EditorAgentGuard` | `Editor/Agent/EditorAgentGuard.cs` | Tool 执行期间锁定 AssetDatabase 刷新；`NotifyAssetsModified()` 用于资产变更工具标记延后刷新 |
 
-**核心设计**: `ChatRunner` 处理纯对话（无 Tool），`AIAgentRunner` 处理 Agent 对话（含 Tool 循环）。两者共享 `IConversationRunner` 接口，由上层根据是否选择 Agent 决定使用哪个运行器。
+**核心设计**:
+- **声明式工具**: 工具是带 `[UniAITool]` 特性的静态类，无需 ScriptableObject，启动时自动反射发现。
+- **聚合工具 + action 派发**: 一个工具类包含多个 action（如 `manage_scene` 有 15 个 action），通过根字段 `action` 分发到对应实现。
+- **Args 类嵌套**: 每个 action 对应 `<PascalCaseAction>Args` 嵌套类描述参数，`ToolSchemaGenerator` 自动合并为带 `action` 枚举的 JSON Schema，支持继承链复用公共字段。
+- **分组而非列表**: `AgentDefinition.ToolGroups` 存储字符串分组名，启用某组即解锁该组所有工具，新增工具只需加文件无需改 Agent。
 
 ### 3.6 Runtime - Chat（会话管理）
 
@@ -220,25 +229,22 @@ McpClient → IMcpTransport
 | `McpTab` | `Editor/MCP/McpTab.cs` | 管理窗口的 MCP Server Tab，创建/选择/删除 + 详情内嵌 Inspector |
 | `EditorGUIHelper` | `Editor/EditorGUIHelper.cs` | 编辑器 GUI 工具（Section 绘制、颜色常量） |
 
-**内置 Editor Tools**（`Editor/Tools/`）:
+**内置聚合工具**（`Editor/Tools/`）— 所有工具均为带 `[UniAITool]` 的静态类，自动按 `Group` 注册到 `UniAIToolRegistry`：
 
-| Tool | 职责 |
-|------|------|
-| `ReadFileTool` | 读取指定路径的文件内容 |
-| `WriteFileTool` | 写入文件内容 |
-| `ListFilesTool` | 列出目录下的文件 |
-| `SearchFilesTool` | 搜索文件内容 |
-| `RunTestsTool` | 运行 Unity 测试 |
-| `RuntimeQueryTool` | 查询运行时状态（Play Mode 只读反射） |
-| `SceneEditTool` | Edit Mode 场景写操作：创建/销毁/变换/组件/属性/场景 IO（含 Undo） |
-| `AssetEditTool` | AssetDatabase 元操作：创建文件夹、复制/移动/重命名/删除、find、依赖查询、GUID 互转 |
-| `PrefabEditTool` | 预制体生命周期：从 GameObject 创建、实例化、拆包、apply/revert overrides |
-| `MaterialEditTool` | 材质球创建 + Shader 属性（颜色/float/int/vector/texture）编辑 |
-| `ConsoleLogTool` | 读取 Unity Console 日志（运行时 + 编译错误/警告），支持按级别过滤 |
-| `MenuItemTool` | 执行任意 Unity 编辑器菜单项（`EditorApplication.ExecuteMenuItem`），支持列出可用菜单 |
-| `ProjectSettingsTool` | 项目设置读写：Tags / Layers / Physics / Time / Quality |
-| `SelectionTool` | Unity Selection 读写（场景 GameObject 和 Project 资产） |
-| `ScriptableObjectEditTool` | 通用 SO 属性编辑（基于 SerializedObject，自动标脏） |
+| Tool | Group | Actions |
+|------|-------|---------|
+| `ManageFile` | core | read / write / list / search |
+| `ManageScene` | scene | create_empty / create_primitive / create_camera / create_light / destroy / set_transform / set_active / set_parent / rename / add_component / remove_component / set_property / save_scene / open_scene / new_scene |
+| `ManageAsset` | asset | create_folder / copy / move / rename / delete / refresh / find / dependencies / guid_to_path / path_to_guid |
+| `ManagePrefab` | asset | create_from_gameobject / instantiate / unpack / apply_overrides / revert_overrides |
+| `ManageMaterial` | asset | create / set_shader / set_color / set_float / set_int / set_vector / set_texture |
+| `ManageScriptableObject` | asset | list_fields / get / set |
+| `ManageConsole` | editor | get_recent / get_errors / get_warnings / get_compile_errors / count / clear |
+| `ManageMenu` | editor | execute / list |
+| `ManageSelection` | editor | get / set / clear / get_assets |
+| `ManageProjectSettings` | editor | list_tags / add_tag / remove_tag / list_layers / set_layer / get_physics / set_physics / get_time / set_time / get_quality / set_quality |
+| `ManageTest` | testing | run_editmode / run_playmode / run_both |
+| `RuntimeQuery` | runtime | scene / find / inspect / component / find_type |
 
 ## 4. 数据流
 
@@ -402,19 +408,34 @@ UniAISettings.asset (Resources/UniAI/)   ← 运行时 ScriptableObject
 
 ### 创建自定义 Tool
 
-1. 继承 `AIToolAsset`，实现 `ExecuteAsync(string arguments, CancellationToken ct)`
-2. 添加 `[CreateAssetMenu]` 特性
-3. 在 Inspector 中填写 `ToolName`、`Description`、`ParametersSchema`（JSON Schema）
-4. 创建 SO 实例并添加到 `AgentDefinition.Tools` 列表
+1. 在 `Editor/Tools/` 或 `Runtime/...` 创建 `internal static` 类，添加 `[UniAITool]` 特性
+2. 声明 `public static UniTask<object> HandleAsync(JObject args, CancellationToken ct)`
+3. 为每个 action 声明嵌套 `<PascalCaseAction>Args` 类，用 `[ToolParam(Description, Required)]` 标注字段
+4. 使用 `ToolResponse.Success(data)` / `ToolResponse.Error(message)` 返回结果
+5. 启动时 `UniAIToolRegistry` 自动反射注册 — 无需创建 SO 资产、无需改 `AgentDefinition`
 
 ```csharp
-[CreateAssetMenu(menuName = "UniAI/Tools/Read File")]
-public class ReadFileTool : AIToolAsset
+[UniAITool(
+    Name = "my_tool",
+    Group = ToolGroups.Core,
+    Description = "Demo. Actions: 'greet'.",
+    Actions = new[] { "greet" })]
+internal static class MyTool
 {
-    public override async UniTask<string> ExecuteAsync(string arguments, CancellationToken ct)
+    public static UniTask<object> HandleAsync(JObject args, CancellationToken ct)
     {
-        var args = JsonConvert.DeserializeObject<ReadFileArgs>(arguments);
-        return await File.ReadAllTextAsync(args.Path, ct);
+        var action = (string)args["action"];
+        return action switch
+        {
+            "greet" => UniTask.FromResult<object>(ToolResponse.Success(new { msg = $"Hello {args["name"]}" })),
+            _ => UniTask.FromResult<object>(ToolResponse.Error($"Unknown action '{action}'."))
+        };
+    }
+
+    public class GreetArgs
+    {
+        [ToolParam(Description = "Target name.")]
+        public string Name;
     }
 }
 ```
@@ -423,7 +444,7 @@ public class ReadFileTool : AIToolAsset
 
 1. 在 Project 中创建: Create > UniAI > Agent Definition
 2. 配置 AgentName、SystemPrompt、Temperature、MaxTokens、MaxTurns
-3. 将自定义 Tool SO 拖入 Tools 列表
+3. 在 Inspector 的 Tool Groups 复选框中勾选所需分组（core/scene/asset/editor/testing/runtime）
 4. （可选）将 MCP Server Config 拖入 McpServers 列表，Agent 启动时自动连接并合并远端 Tools/Resources
 5. Agent 会自动出现在 AIChatWindow 的 Agent 下拉菜单中
 
@@ -476,5 +497,5 @@ pipeline.AddProvider(new MyRagProvider());
 - **EditorAgentGuard**: Agent Tool 执行期间锁定 AssetDatabase 刷新，防止 Tool 写入文件后触发重编译导致状态丢失。
 - **MCP 超时层次**: `InitTimeoutSeconds` / `ToolCallTimeoutSeconds` 都由 `TimeoutHelper` 在 orchestration 层包裹，真正截止时间由 CancellationToken 传导；HTTP transport 的 socket 超时只是底层兜底，不应设得比 orchestration 超时更短。
 - **MCP 懒初始化**: `AIAgentRunner._mcpInitTask` 存储飞行中的初始化 Task，并发调用共享同一次 await；失败时清空字段允许重试，成功后 `_mcpInitialized = true` 永久缓存。
-- **MCP Tool 命名冲突**: 本地 `AIToolAsset` 与 MCP Tool 同名时，本地优先，MCP 版本会被丢弃并打印 `Warning`；跨 Server 的同名 Tool 由后加载者覆盖前者，也会打印 `Warning`。
+- **MCP Tool 命名冲突**: 本地 `[UniAITool]` 工具与 MCP Tool 同名时，本地优先，MCP 版本会被丢弃并打印 `Warning`；跨 Server 的同名 Tool 由后加载者覆盖前者，也会打印 `Warning`。
 - **Stdio 平台限制**: `StdioMcpTransport` 仅在 `UNITY_EDITOR || UNITY_STANDALONE` 下可用，移动平台会抛 `PlatformNotSupportedException`。

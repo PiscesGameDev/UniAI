@@ -19,7 +19,7 @@ namespace UniAI
         [SerializeField, Range(0f, 1f)] private float _temperature = 0.7f;
         [SerializeField] private int _maxTokens = 4096;
         [SerializeField, Range(1, 50)] private int _maxTurns = 10;
-        [SerializeField] private List<AIToolAsset> _tools = new();
+        [SerializeField] private List<string> _toolGroups = new();
         [SerializeField] private List<McpServerConfig> _mcpServers = new();
 
         /// <summary>
@@ -74,14 +74,14 @@ namespace UniAI
         public int MaxTurns => _maxTurns;
 
         /// <summary>
-        /// 注册的工具列表
+        /// 启用的工具分组。通过 <see cref="UniAIToolRegistry"/> 按组加载 <see cref="UniAITool"/> 标记的工具。
         /// </summary>
-        public IReadOnlyList<AIToolAsset> Tools => _tools;
+        public IReadOnlyList<string> ToolGroups => _toolGroups;
 
         /// <summary>
-        /// 是否包含工具
+        /// 是否启用了任何工具分组
         /// </summary>
-        public bool HasTools => _tools is { Count: > 0 };
+        public bool HasTools => _toolGroups is { Count: > 0 };
 
         /// <summary>
         /// 绑定的 MCP Server 配置列表

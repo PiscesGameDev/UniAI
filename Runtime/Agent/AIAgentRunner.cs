@@ -3,6 +3,8 @@ using System.Collections.Generic;
 using System.Threading;
 using Cysharp.Threading.Tasks;
 using Cysharp.Threading.Tasks.Linq;
+using Newtonsoft.Json;
+using Newtonsoft.Json.Linq;
 
 namespace UniAI
 {
@@ -14,7 +16,7 @@ namespace UniAI
     {
         private readonly AIClient _client;
         private readonly AgentDefinition _definition;
-        private readonly Dictionary<string, AIToolAsset> _toolMap = new();
+        private readonly Dictionary<string, ToolHandlerInfo> _localHandlers = new(StringComparer.Ordinal);
         private readonly List<AITool> _toolDefs = new();
         private McpClientManager _mcpManager;
         private UniTask? _mcpInitTask;
@@ -26,9 +28,9 @@ namespace UniAI
         public bool HasTools => _toolDefs.Count > 0;
 
         /// <summary>
-        /// 已注册的工具资产
+        /// 已注册的本地工具处理器
         /// </summary>
-        public IReadOnlyCollection<AIToolAsset> ToolAssets => _toolMap.Values;
+        public IReadOnlyCollection<ToolHandlerInfo> LocalHandlers => _localHandlers.Values;
 
         /// <summary>
         /// MCP 客户端管理器（可能为 null，表示未使用 MCP）
@@ -50,13 +52,13 @@ namespace UniAI
             _client = client ?? throw new ArgumentNullException(nameof(client));
             _definition = definition ?? throw new ArgumentNullException(nameof(definition));
 
+            // 从 Registry 按组加载本地代码工具
             if (definition.HasTools)
             {
-                foreach (var tool in definition.Tools)
+                foreach (var handler in UniAIToolRegistry.GetHandlers(definition.ToolGroups))
                 {
-                    if (tool == null) continue;
-                    _toolMap[tool.ToolName] = tool;
-                    _toolDefs.Add(tool.ToDefinition());
+                    _localHandlers[handler.Name] = handler;
+                    _toolDefs.Add(handler.Definition);
                 }
             }
         }
@@ -96,10 +98,10 @@ namespace UniAI
                 {
                     if (string.IsNullOrEmpty(tool.Name)) continue;
 
-                    // MCP Tool 名与本地 AIToolAsset 冲突时，本地优先
-                    if (_toolMap.ContainsKey(tool.Name))
+                    // MCP Tool 名与本地代码工具冲突时，本地优先
+                    if (_localHandlers.ContainsKey(tool.Name))
                     {
-                        AILogger.Warning($"MCP tool '{tool.Name}' shadowed by local AIToolAsset");
+                        AILogger.Warning($"MCP tool '{tool.Name}' shadowed by local [UniAITool]");
                         continue;
                     }
                     _toolDefs.Add(tool);
@@ -315,9 +317,9 @@ namespace UniAI
 
         private async UniTask<(string result, bool isError)> ExecuteToolAsync(AIToolCall toolCall, CancellationToken ct)
         {
-            // 1. 本地 AIToolAsset 优先
-            if (_toolMap.TryGetValue(toolCall.Name, out var tool))
-                return await ExecuteLocalToolAsync(tool, toolCall, ct);
+            // 1. 本地代码工具优先
+            if (_localHandlers.TryGetValue(toolCall.Name, out var handler))
+                return await ExecuteLocalHandlerAsync(handler, toolCall, ct);
 
             // 2. MCP Tool
             if (_mcpManager != null && _mcpManager.HasTool(toolCall.Name))
@@ -344,19 +346,34 @@ namespace UniAI
             return (error, true);
         }
 
-        private async UniTask<(string result, bool isError)> ExecuteLocalToolAsync(AIToolAsset tool, AIToolCall toolCall, CancellationToken ct)
+        private async UniTask<(string result, bool isError)> ExecuteLocalHandlerAsync(ToolHandlerInfo handler, AIToolCall toolCall, CancellationToken ct)
         {
+            // 长耗时工具（RequiresPolling）使用自身声明的 MaxPollSeconds，
+            // 绕过全局 ToolTimeoutSeconds，避免被短超时截断。
+            float timeout = handler.RequiresPolling
+                ? handler.MaxPollSeconds
+                : ToolTimeoutSeconds;
+
             try
             {
-                var result = await TimeoutHelper.WithTimeout(
-                    token => tool.ExecuteAsync(toolCall.Arguments, token),
-                    ToolTimeoutSeconds, ct);
+                var args = string.IsNullOrEmpty(toolCall.Arguments)
+                    ? new JObject()
+                    : JObject.Parse(toolCall.Arguments);
+
+                if (handler.RequiresPolling)
+                    AILogger.Info($"Tool '{toolCall.Name}' running in polling mode (max {timeout:0}s)");
+
+                var raw = await TimeoutHelper.WithTimeout(
+                    token => handler.Invoke(args, token),
+                    timeout, ct);
+
+                var json = JsonConvert.SerializeObject(raw);
                 AILogger.Verbose($"Tool '{toolCall.Name}' executed successfully");
-                return (result, false);
+                return (json, false);
             }
             catch (OperationCanceledException) when (!ct.IsCancellationRequested)
             {
-                var error = $"Tool '{toolCall.Name}' timed out after {ToolTimeoutSeconds}s";
+                var error = $"Tool '{toolCall.Name}' timed out after {timeout}s";
                 AILogger.Warning(error);
                 return (error, true);
             }

@@ -1,3 +1,4 @@
+using System.Linq;
 using UnityEditor;
 using UnityEditorInternal;
 using UnityEngine;
@@ -14,12 +15,12 @@ namespace UniAI.Editor
         private SerializedProperty _temperature;
         private SerializedProperty _maxTokens;
         private SerializedProperty _maxTurns;
-        private SerializedProperty _tools;
+        private SerializedProperty _toolGroups;
         private SerializedProperty _mcpServers;
         private SerializedProperty _systemPrompt;
 
-        private ReorderableList _toolList;
         private ReorderableList _mcpServerList;
+        private ReorderableList _toolGroupList;
 
         // Styles
         private static readonly Color _promptBg = new(0.16f, 0.18f, 0.20f);
@@ -37,17 +38,9 @@ namespace UniAI.Editor
             _temperature = serializedObject.FindProperty("_temperature");
             _maxTokens = serializedObject.FindProperty("_maxTokens");
             _maxTurns = serializedObject.FindProperty("_maxTurns");
-            _tools = serializedObject.FindProperty("_tools");
+            _toolGroups = serializedObject.FindProperty("_toolGroups");
             _mcpServers = serializedObject.FindProperty("_mcpServers");
             _systemPrompt = serializedObject.FindProperty("_systemPrompt");
-
-            _toolList = new ReorderableList(serializedObject, _tools, true, true, true, true)
-            {
-                drawHeaderCallback = rect => EditorGUI.LabelField(rect, "工具列表"),
-                drawElementCallback = DrawToolElement,
-                elementHeight = EditorGUIUtility.singleLineHeight + 4,
-                drawNoneElementCallback = rect => EditorGUI.LabelField(rect, "无工具 — 点击 + 添加", EditorStyles.centeredGreyMiniLabel)
-            };
 
             _mcpServerList = new ReorderableList(serializedObject, _mcpServers, true, true, true, true)
             {
@@ -55,6 +48,15 @@ namespace UniAI.Editor
                 drawElementCallback = DrawMcpServerElement,
                 elementHeight = EditorGUIUtility.singleLineHeight + 4,
                 drawNoneElementCallback = rect => EditorGUI.LabelField(rect, "无 MCP Server — 点击 + 添加", EditorStyles.centeredGreyMiniLabel)
+            };
+
+            _toolGroupList = new ReorderableList(serializedObject, _toolGroups, true, true, true, true)
+            {
+                drawHeaderCallback = rect => EditorGUI.LabelField(rect, "工具分组"),
+                drawElementCallback = DrawToolGroupElement,
+                elementHeight = EditorGUIUtility.singleLineHeight + 4,
+                drawNoneElementCallback = rect => EditorGUI.LabelField(rect, "无工具分组 — 点击 + 添加", EditorStyles.centeredGreyMiniLabel),
+                onAddDropdownCallback = OnToolGroupAddDropdown
             };
         }
 
@@ -128,22 +130,78 @@ namespace UniAI.Editor
             EditorGUILayout.EndVertical();
         }
 
-        // ─── 工具列表 ───
+        // ─── 工具分组 ───
 
         private void DrawTools()
         {
             EditorGUILayout.BeginVertical(EditorStyles.helpBox);
-            _toolList.DoLayoutList();
+
+            if (UniAIToolRegistry.AllGroups.Count == 0)
+            {
+                EditorGUILayout.LabelField("工具分组", EditorStyles.boldLabel);
+                GUILayout.Space(4);
+                EditorGUILayout.HelpBox("未发现任何 [UniAITool] 工具。", MessageType.Info);
+            }
+            else
+            {
+                _toolGroupList.DoLayoutList();
+            }
+
             EditorGUILayout.EndVertical();
         }
 
-        private void DrawToolElement(Rect rect, int index, bool isActive, bool isFocused)
+        private void DrawToolGroupElement(Rect rect, int index, bool isActive, bool isFocused)
         {
-            var element = _tools.GetArrayElementAtIndex(index);
+            var element = _toolGroups.GetArrayElementAtIndex(index);
             rect.y += 2;
             rect.height = EditorGUIUtility.singleLineHeight;
 
-            EditorGUI.PropertyField(rect, element, GUIContent.none);
+            string groupName = element.stringValue;
+            bool isKnown = UniAIToolRegistry.AllGroups.Contains(groupName);
+            int count = isKnown
+                ? UniAIToolRegistry.GetHandlers(new[] { groupName }).Count
+                : 0;
+
+            string label = isKnown
+                ? $"{groupName}  ({count})"
+                : $"{groupName}  (未注册)";
+
+            var oldColor = GUI.color;
+            if (!isKnown) GUI.color = new Color(1f, 0.7f, 0.4f);
+            EditorGUI.LabelField(rect, label);
+            GUI.color = oldColor;
+        }
+
+        private void OnToolGroupAddDropdown(Rect buttonRect, ReorderableList list)
+        {
+            var menu = new GenericMenu();
+
+            var enabled = new System.Collections.Generic.HashSet<string>();
+            for (int i = 0; i < _toolGroups.arraySize; i++)
+                enabled.Add(_toolGroups.GetArrayElementAtIndex(i).stringValue);
+
+            foreach (var group in UniAIToolRegistry.AllGroups)
+            {
+                int count = UniAIToolRegistry.GetHandlers(new[] { group }).Count;
+                var content = new GUIContent($"{group}  ({count})");
+                bool alreadyAdded = enabled.Contains(group);
+
+                if (alreadyAdded)
+                    menu.AddDisabledItem(content, true);
+                else
+                    menu.AddItem(content, false, () => AddToolGroup(group));
+            }
+
+            menu.DropDown(buttonRect);
+        }
+
+        private void AddToolGroup(string group)
+        {
+            serializedObject.Update();
+            int idx = _toolGroups.arraySize;
+            _toolGroups.InsertArrayElementAtIndex(idx);
+            _toolGroups.GetArrayElementAtIndex(idx).stringValue = group;
+            serializedObject.ApplyModifiedProperties();
         }
 
         // ─── MCP Servers ───

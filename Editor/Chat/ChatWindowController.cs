@@ -277,12 +277,10 @@ namespace UniAI.Editor.Chat
             EditorAgentGuard guard = null;
             try
             {
-                if (_runner is AIAgentRunner { HasTools: true } agentRunner)
+                if (_runner is AIAgentRunner { HasTools: true })
                 {
                     guard = new EditorAgentGuard();
                     guard.Lock();
-                    foreach (var tool in agentRunner.ToolAssets)
-                        tool.OnFileModified += guard.MarkDirty;
                 }
 
                 var aiMessages = BuildAIMessages();
@@ -380,11 +378,6 @@ namespace UniAI.Editor.Chat
             }
             finally
             {
-                if (guard != null && _runner is AIAgentRunner agentRunnerCleanup)
-                {
-                    foreach (var tool in agentRunnerCleanup.ToolAssets)
-                        tool.OnFileModified -= guard.MarkDirty;
-                }
                 guard?.Dispose();
 
                 assistantMsg.IsStreaming = false;
