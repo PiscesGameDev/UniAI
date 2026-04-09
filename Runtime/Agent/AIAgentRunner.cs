@@ -141,6 +141,7 @@ namespace UniAI
 
                 if (response.HasToolCalls)
                 {
+                    SanitizeToolCallArguments(response.ToolCalls);
                     workingMessages.Add(BuildAssistantMessage(response.Text, response.ToolCalls));
 
                     // 执行 Tool 并追加结果
@@ -230,6 +231,7 @@ namespace UniAI
 
                     if (toolCalls.Count > 0)
                     {
+                        SanitizeToolCallArguments(toolCalls);
                         workingMessages.Add(BuildAssistantMessage(responseText, toolCalls));
 
                         // 执行 Tool
@@ -298,6 +300,36 @@ namespace UniAI
                 request.Tools = _toolDefs;
 
             return request;
+        }
+
+        /// <summary>
+        /// 修正 tool call 中可能损坏的 arguments JSON（如多个 JSON 对象拼接），
+        /// 确保 BuildAssistantMessage 写入合法 JSON，避免下一轮请求被 API 拒绝。
+        /// </summary>
+        private static void SanitizeToolCallArguments(List<AIToolCall> toolCalls)
+        {
+            foreach (var tc in toolCalls)
+            {
+                if (string.IsNullOrEmpty(tc.Arguments)) continue;
+                try
+                {
+                    JObject.Parse(tc.Arguments);
+                }
+                catch (JsonReaderException)
+                {
+                    var fixed_ = TryParseFirstJsonObject(tc.Arguments);
+                    if (fixed_ != null)
+                    {
+                        tc.Arguments = fixed_.ToString(Newtonsoft.Json.Formatting.None);
+                        AILogger.Warning($"Tool '{tc.Name}' had concatenated JSON arguments, sanitized before building message");
+                    }
+                    else
+                    {
+                        AILogger.Error($"Tool '{tc.Name}' has unparseable arguments, replacing with empty object");
+                        tc.Arguments = "{}";
+                    }
+                }
+            }
         }
 
         private static AIMessage BuildAssistantMessage(string text, List<AIToolCall> toolCalls)
@@ -376,8 +408,13 @@ namespace UniAI
                         {
                             var parseError = $"Tool '{toolCall.Name}' received malformed arguments: {toolCall.Arguments.Substring(0, Math.Min(toolCall.Arguments.Length, 200))}";
                             AILogger.Error(parseError);
+                            // 回写空对象，避免损坏的 JSON 导致下一轮 API 400 错误
+                            toolCall.Arguments = "{}";
                             return (parseError, true);
                         }
+                        // 回写修正后的 arguments，确保 BuildAssistantMessage 使用合法 JSON，
+                        // 否则下一轮请求中 tool_use block 的 input 会因 JSON 损坏导致 API 400 错误
+                        toolCall.Arguments = args.ToString(Newtonsoft.Json.Formatting.None);
                         AILogger.Warning($"Tool '{toolCall.Name}' received concatenated JSON arguments, using first object only");
                     }
                 }

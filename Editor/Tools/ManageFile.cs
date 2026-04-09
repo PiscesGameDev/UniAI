@@ -205,6 +205,18 @@ namespace UniAI.Editor.Tools
             if (string.IsNullOrEmpty(pattern)) pattern = "*";
             bool recursive = (bool?)args["recursive"] ?? false;
 
+            // AI 可能将 glob 混入 path（如 "Assets/UniAI/**"），需分离
+            if (basePath.Contains("*") || basePath.Contains("?"))
+            {
+                int globStart = basePath.IndexOfAny(new[] { '*', '?' });
+                string extractedPattern = basePath.Substring(globStart);
+                basePath = basePath.Substring(0, globStart).TrimEnd('/', '\\');
+                if (string.IsNullOrEmpty(basePath)) basePath = ".";
+                // 仅在用户未显式指定 pattern 时使用提取的 glob
+                if (string.IsNullOrEmpty((string)args["pattern"]))
+                    pattern = extractedPattern;
+            }
+
             if (!ToolPathHelper.TryResolveProjectPath(basePath, out var fullBase, out var error))
                 return ToolResponse.Error(error);
             if (!Directory.Exists(fullBase))
