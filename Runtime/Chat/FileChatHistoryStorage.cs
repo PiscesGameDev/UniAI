@@ -4,24 +4,30 @@ using System.IO;
 using Newtonsoft.Json;
 using UnityEngine;
 
-namespace UniAI.Editor.Chat
+namespace UniAI
 {
     /// <summary>
-    /// 编辑器聊天历史存储实现 — 基于文件系统
-    /// 存储路径: Library/UniAI/History/{sessionId}.json
+    /// 基于文件系统的聊天历史存储实现
     /// </summary>
-    public class EditorChatHistoryStorage : IChatHistoryStorage
+    public class FileChatHistoryStorage : IChatHistoryStorage
     {
-        private const string HistoryDir = "Library/UniAI/History";
+        private readonly string _directory;
+        private readonly int _maxSessions;
+
+        public FileChatHistoryStorage(string directory, int maxSessions = 50)
+        {
+            _directory = directory;
+            _maxSessions = maxSessions;
+        }
 
         public List<ChatSession> LoadAll()
         {
             var sessions = new List<ChatSession>();
 
-            if (!Directory.Exists(HistoryDir))
+            if (!Directory.Exists(_directory))
                 return sessions;
 
-            foreach (var file in Directory.GetFiles(HistoryDir, "*.json"))
+            foreach (var file in Directory.GetFiles(_directory, "*.json"))
             {
                 try
                 {
@@ -43,8 +49,8 @@ namespace UniAI.Editor.Chat
         {
             if (session == null) return;
 
-            if (!Directory.Exists(HistoryDir))
-                Directory.CreateDirectory(HistoryDir);
+            if (!Directory.Exists(_directory))
+                Directory.CreateDirectory(_directory);
 
             string path = GetPath(session.Id);
             string json = JsonConvert.SerializeObject(session, Formatting.Indented);
@@ -62,10 +68,10 @@ namespace UniAI.Editor.Chat
 
         public void DeleteAll()
         {
-            if (!Directory.Exists(HistoryDir))
+            if (!Directory.Exists(_directory))
                 return;
 
-            foreach (var file in Directory.GetFiles(HistoryDir, "*.json"))
+            foreach (var file in Directory.GetFiles(_directory, "*.json"))
             {
                 try
                 {
@@ -80,13 +86,12 @@ namespace UniAI.Editor.Chat
 
         private void EnforceLimit()
         {
-            if (!Directory.Exists(HistoryDir))
+            if (!Directory.Exists(_directory))
                 return;
 
-            var files = Directory.GetFiles(HistoryDir, "*.json");
-            int maxSessions = AIConfigManager.Prefs.MaxHistorySessions;
+            var files = Directory.GetFiles(_directory, "*.json");
 
-            if (files.Length <= maxSessions)
+            if (files.Length <= _maxSessions)
                 return;
 
             // 按修改时间排序，删除最旧的
@@ -96,7 +101,7 @@ namespace UniAI.Editor.Chat
 
             fileInfos.Sort((a, b) => b.LastWriteTime.CompareTo(a.LastWriteTime));
 
-            for (int i = maxSessions; i < fileInfos.Count; i++)
+            for (int i = _maxSessions; i < fileInfos.Count; i++)
             {
                 try
                 {
@@ -109,6 +114,6 @@ namespace UniAI.Editor.Chat
             }
         }
 
-        private static string GetPath(string sessionId) => $"{HistoryDir}/{sessionId}.json";
+        private string GetPath(string sessionId) => $"{_directory}/{sessionId}.json";
     }
 }

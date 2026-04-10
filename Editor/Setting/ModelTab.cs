@@ -70,12 +70,9 @@ namespace UniAI.Editor
         private GUIStyle _headerStyle;
         private GUIStyle _cellStyle;
         private GUIStyle _cellBoldStyle;
-        private GUIStyle _badgeStyle;
         private GUIStyle _detailTitleStyle;
         private GUIStyle _detailSectionStyle;
-        private GUIStyle _detailLabelStyle;
         private GUIStyle _detailValueStyle;
-        private GUIStyle _miniIconBtnStyle;
         private GUIStyle _searchFieldStyle;
         private bool _stylesReady;
 
@@ -114,29 +111,12 @@ namespace UniAI.Editor
                 clipping = TextClipping.Clip
             };
             _cellBoldStyle = new GUIStyle(_cellStyle) { fontStyle = FontStyle.Bold };
-            
-            _badgeStyle = new GUIStyle(EditorStyles.miniLabel)
-            {
-                alignment = TextAnchor.MiddleCenter,
-                padding = new RectOffset(4, 4, 1, 1),
-                fontSize = 9
-            };
 
             _detailTitleStyle = new GUIStyle(EditorStyles.boldLabel) { fontSize = 14 };
             _detailSectionStyle = new GUIStyle(EditorStyles.boldLabel) { fontSize = 11 };
             _detailSectionStyle.normal.textColor = new Color(1f, 1f, 1f, 0.7f);
 
-            _detailLabelStyle = new GUIStyle(EditorStyles.miniLabel);
-            _detailLabelStyle.normal.textColor = new Color(1f, 1f, 1f, 0.5f);
-
             _detailValueStyle = new GUIStyle(EditorStyles.label) { fontSize = 11 };
-
-            _miniIconBtnStyle = new GUIStyle(EditorStyles.miniButton)
-            {
-                padding = new RectOffset(2, 2, 2, 2),
-                fixedHeight = 18,
-                fixedWidth = 22
-            };
 
             _searchFieldStyle = new GUIStyle(EditorStyles.toolbarSearchField);
         }
@@ -208,7 +188,7 @@ namespace UniAI.Editor
             GUILayout.Space(6);
 
             // Refresh
-            if (GUILayout.Button("↻", _miniIconBtnStyle))
+            if (GUILayout.Button("↻", EditorGUIHelper.MiniIconBtnStyle))
                 _rowsDirty = true;
 
             GUILayout.Space(PAD);
@@ -252,7 +232,7 @@ namespace UniAI.Editor
             GUILayout.FlexibleSpace();
 
             // + Add custom model button
-            if (GUILayout.Button("+", _miniIconBtnStyle))
+            if (GUILayout.Button("+", EditorGUIHelper.MiniIconBtnStyle))
                 AddCustomModel();
 
             GUILayout.Space(PAD);
@@ -345,13 +325,13 @@ namespace UniAI.Editor
                 {
                     float opX = cx + 2;
                     float opY = rowRect.y + 3;
-                    if (GUI.Button(new Rect(opX, opY, 22, 18), "✎", _miniIconBtnStyle))
+                    if (GUI.Button(new Rect(opX, opY, 22, 18), "✎", EditorGUIHelper.MiniIconBtnStyle))
                     {
                         _selectedRowIndex = globalIndex;
                         _isEditing = true;
                         Window.Repaint();
                     }
-                    if (GUI.Button(new Rect(opX + 24, opY, 22, 18), "✕", _miniIconBtnStyle))
+                    if (GUI.Button(new Rect(opX + 24, opY, 22, 18), "✕", EditorGUIHelper.MiniIconBtnStyle))
                     {
                         DeleteCustomModel(row);
                         return; // list changed, bail
@@ -420,7 +400,7 @@ namespace UniAI.Editor
             EditorGUILayout.EndVertical();
 
             GUILayout.FlexibleSpace();
-            if (GUILayout.Button("✕", _miniIconBtnStyle))
+            if (GUILayout.Button("✕", EditorGUIHelper.MiniIconBtnStyle))
             {
                 _selectedRowIndex = -1;
                 _isEditing = false;
@@ -449,7 +429,7 @@ namespace UniAI.Editor
             {
                 if (row.ChannelNames.Count == 0)
                 {
-                    GUILayout.Label("Not configured in any channel", _detailLabelStyle);
+                    GUILayout.Label("Not configured in any channel", EditorGUIHelper.DetailLabelStyle);
                 }
                 else
                 {
@@ -515,7 +495,7 @@ namespace UniAI.Editor
             EditorGUILayout.BeginHorizontal();
             GUILayout.Space(PAD);
             DrawDetailRow("Type", null);
-            DrawBadgeInline(row.IsBuiltIn ? "Built-in" : "Custom",
+            EditorGUIHelper.DrawBadgeInline(row.IsBuiltIn ? "Built-in" : "Custom",
                 row.IsBuiltIn ? _builtInColor : _customColor);
             GUILayout.FlexibleSpace();
             GUILayout.Space(PAD);
@@ -545,7 +525,7 @@ namespace UniAI.Editor
 
             EditorGUILayout.BeginHorizontal();
             GUILayout.Space(PAD);
-            GUILayout.Label("Capabilities", _detailLabelStyle, GUILayout.Width(LABEL_WIDTH));
+            GUILayout.Label("Capabilities", EditorGUIHelper.DetailLabelStyle, GUILayout.Width(LABEL_WIDTH));
             var newCap = (ModelCapability)EditorGUILayout.EnumFlagsField(entry.Capabilities, GUILayout.Width(120));
             if (newCap != entry.Capabilities) { entry.Capabilities = newCap; MarkDirty(); _rowsDirty = true; }
             GUILayout.Space(PAD);
@@ -554,7 +534,7 @@ namespace UniAI.Editor
 
             EditorGUILayout.BeginHorizontal();
             GUILayout.Space(PAD);
-            GUILayout.Label("Endpoint", _detailLabelStyle, GUILayout.Width(LABEL_WIDTH));
+            GUILayout.Label("Endpoint", EditorGUIHelper.DetailLabelStyle, GUILayout.Width(LABEL_WIDTH));
             var newEndpoint = (ModelEndpoint)EditorGUILayout.EnumPopup(entry.Endpoint, GUILayout.Width(120));
             if (newEndpoint != entry.Endpoint) { entry.Endpoint = newEndpoint; MarkDirty(); }
             GUILayout.Space(PAD);
@@ -563,7 +543,7 @@ namespace UniAI.Editor
 
             EditorGUILayout.BeginHorizontal();
             GUILayout.Space(PAD);
-            GUILayout.Label("Icon", _detailLabelStyle, GUILayout.Width(LABEL_WIDTH));
+            GUILayout.Label("Icon", EditorGUIHelper.DetailLabelStyle, GUILayout.Width(LABEL_WIDTH));
             var newIcon = (Texture2D)EditorGUILayout.ObjectField(entry.Icon, typeof(Texture2D), false,
                 GUILayout.Width(40), GUILayout.Height(40));
             if (newIcon != entry.Icon) { entry.Icon = newIcon; MarkDirty(); }
@@ -575,7 +555,7 @@ namespace UniAI.Editor
         {
             EditorGUILayout.BeginHorizontal();
             GUILayout.Space(PAD);
-            GUILayout.Label(label, _detailLabelStyle, GUILayout.Width(LABEL_WIDTH));
+            GUILayout.Label(label, EditorGUIHelper.DetailLabelStyle, GUILayout.Width(LABEL_WIDTH));
             var newVal = EditorGUILayout.TextField(value ?? "");
             if (newVal != value) { value = newVal; MarkDirty(); _rowsDirty = true; }
             GUILayout.Space(PAD);
@@ -607,7 +587,7 @@ namespace UniAI.Editor
         {
             EditorGUILayout.BeginHorizontal();
             GUILayout.Space(PAD);
-            GUILayout.Label(label, _detailLabelStyle, GUILayout.Width(LABEL_WIDTH));
+            GUILayout.Label(label, EditorGUIHelper.DetailLabelStyle, GUILayout.Width(LABEL_WIDTH));
             GUILayout.Label(value ?? "-", _detailValueStyle);
             GUILayout.Space(PAD);
             EditorGUILayout.EndHorizontal();
@@ -616,7 +596,7 @@ namespace UniAI.Editor
 
         private void DrawDetailRow(string label, string value)
         {
-            GUILayout.Label(label, _detailLabelStyle, GUILayout.Width(LABEL_WIDTH));
+            GUILayout.Label(label, EditorGUIHelper.DetailLabelStyle, GUILayout.Width(LABEL_WIDTH));
             if (value != null)
                 GUILayout.Label(value, _detailValueStyle);
         }
@@ -631,33 +611,40 @@ namespace UniAI.Editor
             EditorGUILayout.EndHorizontal();
         }
 
-        // ────────────────────────────── Badge Drawing ──────────────────────────────
+        // ────────────────────────────── Badge Drawing (delegates to EditorGUIHelper) ──────────────────────────────
 
-        private void DrawBadgeAt(Rect rect, string text, Color color)
+        /// <summary>列表行：在指定位置绘制所有能力标签（固定宽度）</summary>
+        private void DrawCapabilityBadgesAt(float x, float y, float width, ModelCapability caps)
         {
-            var bgColor = new Color(color.r, color.g, color.b, 0.15f);
-            EditorGUI.DrawRect(rect, bgColor);
+            const float badgeWidth = 38f;
+            const float badgeHeight = 16f;
+            const float gap = 2f;
+            float cx = x;
+            float maxX = x + width;
 
-            var old = _badgeStyle.normal.textColor;
-            _badgeStyle.normal.textColor = color;
-            GUI.Label(rect, text, _badgeStyle);
-            _badgeStyle.normal.textColor = old;
+            foreach (ModelCapability flag in Enum.GetValues(typeof(ModelCapability)))
+            {
+                if (flag == ModelCapability.None) continue;
+                if ((caps & flag) == 0) continue;
+                if (cx + badgeWidth > maxX) break;
+
+                EditorGUIHelper.DrawBadge(new Rect(cx, y, badgeWidth, badgeHeight),
+                    GetCapabilityShortName(flag), GetCapabilityColor(flag));
+                cx += badgeWidth + gap;
+            }
         }
 
-        private void DrawBadgeInline(string text, Color color)
+        /// <summary>详情面板：内联绘制所有能力标签</summary>
+        private void DrawCapabilityBadgesInline(ModelCapability caps)
         {
-            var bgColor = new Color(color.r, color.g, color.b, 0.15f);
-            var content = new GUIContent(text);
-            var rect = GUILayoutUtility.GetRect(content, _badgeStyle, GUILayout.ExpandWidth(false));
-            EditorGUI.DrawRect(rect, bgColor);
-
-            var old = _badgeStyle.normal.textColor;
-            _badgeStyle.normal.textColor = color;
-            GUI.Label(rect, text, _badgeStyle);
-            _badgeStyle.normal.textColor = old;
+            foreach (ModelCapability flag in Enum.GetValues(typeof(ModelCapability)))
+            {
+                if (flag == ModelCapability.None) continue;
+                if ((caps & flag) == 0) continue;
+                EditorGUIHelper.DrawBadgeInline(flag.ToString(), GetCapabilityColor(flag));
+                GUILayout.Space(2);
+            }
         }
-
-        // ────────────────────────────── Data ──────────────────────────────
 
         private void RebuildRows()
         {
@@ -856,39 +843,6 @@ namespace UniAI.Editor
             ModelCapability.VideoGen => "Video",
             _ => cap.ToString()
         };
-
-        /// <summary>列表行：在指定位置绘制所有能力标签（固定宽度）</summary>
-        private void DrawCapabilityBadgesAt(float x, float y, float width, ModelCapability caps)
-        {
-            const float badgeWidth = 38f;
-            const float badgeHeight = 16f;
-            const float gap = 2f;
-            float cx = x;
-            float maxX = x + width;
-
-            foreach (ModelCapability flag in Enum.GetValues(typeof(ModelCapability)))
-            {
-                if (flag == ModelCapability.None) continue;
-                if ((caps & flag) == 0) continue;
-                if (cx + badgeWidth > maxX) break;
-
-                DrawBadgeAt(new Rect(cx, y, badgeWidth, badgeHeight),
-                    GetCapabilityShortName(flag), GetCapabilityColor(flag));
-                cx += badgeWidth + gap;
-            }
-        }
-
-        /// <summary>详情面板：内联绘制所有能力标签</summary>
-        private void DrawCapabilityBadgesInline(ModelCapability caps)
-        {
-            foreach (ModelCapability flag in Enum.GetValues(typeof(ModelCapability)))
-            {
-                if (flag == ModelCapability.None) continue;
-                if ((caps & flag) == 0) continue;
-                DrawBadgeInline(flag.ToString(), GetCapabilityColor(flag));
-                GUILayout.Space(2);
-            }
-        }
 
         private void MarkDirty()
         {

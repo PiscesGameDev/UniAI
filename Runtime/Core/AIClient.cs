@@ -3,8 +3,6 @@ using System.Collections.Generic;
 using System.Threading;
 using Cysharp.Threading.Tasks;
 using UniAI.Providers;
-using UniAI.Providers.Claude;
-using UniAI.Providers.OpenAI;
 
 namespace UniAI
 {
@@ -102,25 +100,19 @@ namespace UniAI
         /// </summary>
         private static IAIProvider CreateProvider(ChannelEntry entry, string modelId, GeneralConfig general)
         {
+            var config = new ProviderBase.ProviderConfig
+            {
+                ApiKey = entry.ApiKey,
+                BaseUrl = entry.BaseUrl,
+                Model = modelId ?? entry.DefaultModel,
+                TimeoutSeconds = general.TimeoutSeconds,
+                ApiVersion = entry.ApiVersion ?? "2023-06-01"
+            };
+
             return entry.Protocol switch
             {
-                ProviderProtocol.Claude => new ClaudeProvider(
-                    new ClaudeConfig
-                    {
-                        ApiKey = entry.ApiKey,
-                        BaseUrl = entry.BaseUrl,
-                        Model = modelId ?? entry.DefaultModel,
-                        ApiVersion = entry.ApiVersion ?? "2023-06-01"
-                    },
-                    general.TimeoutSeconds),
-                ProviderProtocol.OpenAI => new OpenAIProvider(
-                    new OpenAIConfig
-                    {
-                        ApiKey = entry.ApiKey,
-                        BaseUrl = entry.BaseUrl,
-                        Model = modelId ?? entry.DefaultModel
-                    },
-                    general.TimeoutSeconds),
+                ProviderProtocol.Claude => new Providers.Claude.ClaudeProvider(config),
+                ProviderProtocol.OpenAI => new Providers.OpenAI.OpenAIProvider(config),
                 _ => throw new NotSupportedException(
                     $"Protocol '{entry.Protocol}' is not supported. Use AIClient(IAIProvider) for custom protocols.")
             };

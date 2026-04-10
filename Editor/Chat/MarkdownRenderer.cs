@@ -34,6 +34,7 @@ namespace UniAI.Editor.Chat
         // key = markdown 内容的 hashCode + length 组合，避免每帧重新解析
         private static readonly Dictionary<long, List<Block>> _blockCache = new();
         private const int BLOCK_CACHE_MAX = 64;
+        private const int IMAGE_CACHE_MAX = 32;
 
         public static void Draw(string markdown, float width)
         {
@@ -80,6 +81,11 @@ namespace UniAI.Editor.Chat
         public static void InvalidateCache()
         {
             _blockCache.Clear();
+            foreach (var tex in _imageCache.Values)
+                if (tex != null) UnityEngine.Object.DestroyImmediate(tex);
+            _imageCache.Clear();
+            _imageFailed.Clear();
+            _imageKeySrcMap.Clear();
         }
 
         private static long ComputeCacheKey(string markdown)
@@ -304,6 +310,15 @@ namespace UniAI.Editor.Chat
             if (string.IsNullOrEmpty(imageKey)) return null;
             if (_imageCache.TryGetValue(imageKey, out var cached) && cached != null) return cached;
             if (_imageFailed.Contains(imageKey)) return null;
+
+            // 防止图片缓存无限增长
+            if (_imageCache.Count >= IMAGE_CACHE_MAX)
+            {
+                foreach (var tex in _imageCache.Values)
+                    if (tex != null) UnityEngine.Object.DestroyImmediate(tex);
+                _imageCache.Clear();
+                _imageFailed.Clear();
+            }
 
             // 从映射表取原始 src
             if (!_imageKeySrcMap.TryGetValue(imageKey, out var src))

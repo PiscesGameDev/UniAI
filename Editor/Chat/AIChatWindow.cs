@@ -235,5 +235,47 @@ namespace UniAI.Editor.Chat
             var prefs = AIConfigManager.Prefs;
             _aiAvatar = prefs.AiAvatar;
         }
+
+        // ─── Session Helpers (inlined from AIChatWindow.Session.cs) ───
+
+        private void ExecuteQuickAction(ContextCollector.ContextSlot requiredSlot, string message)
+        {
+            _controller?.ExecuteQuickAction(requiredSlot, message, ref _contextSlots);
+        }
+
+        private void CreateNewSession(AgentDefinition agent = null)
+        {
+            _controller?.CreateNewSession(agent);
+            _chatScroll = UnityEngine.Vector2.zero;
+            RefreshAIAvatar();
+            UnityEngine.GUI.FocusControl("ChatInput");
+        }
+
+        private void SwitchToSession(ChatSession session)
+        {
+            _controller?.SwitchToSession(session);
+            _chatScroll.y = float.MaxValue;
+            RefreshAIAvatar();
+        }
+
+        // ─── Streaming Helpers (inlined from AIChatWindow.Streaming.cs) ───
+
+        private void SendMessage()
+        {
+            string text = _inputText.Trim();
+            _inputText = "";
+
+            if (_controller == null) return;
+
+            if (_controller.ActiveSession == null)
+                CreateNewSession();
+
+            _controller.SendMessage(text, _contextSlots);
+        }
+
+        private void CancelStream()
+        {
+            _controller?.CancelStream();
+        }
     }
 }

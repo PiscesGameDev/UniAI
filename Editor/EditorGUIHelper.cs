@@ -74,5 +74,92 @@ namespace UniAI.Editor
             var rect = EditorGUILayout.GetControlRect(false, 1);
             EditorGUI.DrawRect(rect, SeparatorColor);
         }
+
+        // ─── Badge Drawing ───
+
+        private static GUIStyle _badgeStyle;
+
+        private static GUIStyle BadgeStyle
+        {
+            get
+            {
+                if (_badgeStyle == null)
+                {
+                    _badgeStyle = new GUIStyle(EditorStyles.miniLabel)
+                    {
+                        alignment = TextAnchor.MiddleCenter,
+                        padding = new RectOffset(4, 4, 1, 1),
+                        fontSize = 9
+                    };
+                }
+                return _badgeStyle;
+            }
+        }
+
+        /// <summary>
+        /// 在指定 Rect 位置绘制 Badge（带半透明背景 + 彩色文字）
+        /// </summary>
+        internal static void DrawBadge(Rect rect, string text, Color color)
+        {
+            var bgColor = new Color(color.r, color.g, color.b, 0.15f);
+            EditorGUI.DrawRect(rect, bgColor);
+
+            var old = BadgeStyle.normal.textColor;
+            BadgeStyle.normal.textColor = color;
+            GUI.Label(rect, text, BadgeStyle);
+            BadgeStyle.normal.textColor = old;
+        }
+
+        /// <summary>
+        /// 在当前 GUILayout 位置内联绘制 Badge
+        /// </summary>
+        internal static void DrawBadgeInline(string text, Color color)
+        {
+            var bgColor = new Color(color.r, color.g, color.b, 0.15f);
+            var content = new GUIContent(text);
+            var rect = GUILayoutUtility.GetRect(content, BadgeStyle, GUILayout.ExpandWidth(false));
+            EditorGUI.DrawRect(rect, bgColor);
+
+            var old = BadgeStyle.normal.textColor;
+            BadgeStyle.normal.textColor = color;
+            GUI.Label(rect, text, BadgeStyle);
+            BadgeStyle.normal.textColor = old;
+        }
+
+        // ─── Shared Styles ───
+
+        private static GUIStyle _miniIconBtnStyle;
+
+        internal static GUIStyle MiniIconBtnStyle
+        {
+            get
+            {
+                if (_miniIconBtnStyle == null)
+                {
+                    _miniIconBtnStyle = new GUIStyle(EditorStyles.miniButton)
+                    {
+                        padding = new RectOffset(2, 2, 2, 2),
+                        fixedHeight = 18,
+                        fixedWidth = 22
+                    };
+                }
+                return _miniIconBtnStyle;
+            }
+        }
+
+        private static GUIStyle _detailLabelStyle;
+
+        internal static GUIStyle DetailLabelStyle
+        {
+            get
+            {
+                if (_detailLabelStyle == null)
+                {
+                    _detailLabelStyle = new GUIStyle(EditorStyles.miniLabel);
+                    _detailLabelStyle.normal.textColor = new Color(1f, 1f, 1f, 0.5f);
+                }
+                return _detailLabelStyle;
+            }
+        }
     }
 }

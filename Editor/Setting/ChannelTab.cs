@@ -304,11 +304,7 @@ namespace UniAI.Editor
 
         private void DrawApiKeyRow(ChannelEntry entry)
         {
-            var envVarName = EditorPreferences.GetEnvVarName(entry.Id);
-            string envVal = null;
-            if (!string.IsNullOrEmpty(envVarName))
-                envVal = Environment.GetEnvironmentVariable(envVarName);
-            bool hasEnv = !string.IsNullOrEmpty(envVal);
+            bool hasEnv = entry.IsApiKeyFromEnv();
             bool isVisible = _showApiKey.Contains(entry.Id);
 
             EditorGUILayout.BeginHorizontal();
@@ -317,7 +313,9 @@ namespace UniAI.Editor
             if (hasEnv)
             {
                 EditorGUI.BeginDisabledGroup(true);
-                EditorGUILayout.PasswordField(envVal, GUILayout.ExpandWidth(true));
+                EditorGUILayout.PasswordField(
+                    Environment.GetEnvironmentVariable(entry.EnvVarName) ?? "",
+                    GUILayout.ExpandWidth(true));
                 EditorGUI.EndDisabledGroup();
             }
             else if (isVisible)
@@ -349,9 +347,18 @@ namespace UniAI.Editor
             {
                 EditorGUILayout.BeginHorizontal();
                 GUILayout.Space(LABEL_WIDTH + 4);
-                EditorGUILayout.LabelField($"来自环境变量 ${envVarName}", EditorStyles.miniLabel);
+                EditorGUILayout.LabelField($"来自环境变量 ${entry.EnvVarName}", EditorStyles.miniLabel);
                 EditorGUILayout.EndHorizontal();
             }
+
+            // Env Var 配置
+            EditorGUILayout.BeginHorizontal();
+            EditorGUILayout.LabelField("环境变量", GUILayout.Width(LABEL_WIDTH));
+            entry.UseEnvVar = EditorGUILayout.Toggle(entry.UseEnvVar, GUILayout.Width(16));
+            EditorGUI.BeginDisabledGroup(!entry.UseEnvVar);
+            entry.EnvVarName = EditorGUILayout.TextField(entry.EnvVarName ?? "");
+            EditorGUI.EndDisabledGroup();
+            EditorGUILayout.EndHorizontal();
         }
 
         private void DrawTextField(string label, ref string value)
@@ -599,8 +606,9 @@ namespace UniAI.Editor
                 var testEntry = new ChannelEntry
                 {
                     Id = entry.Id, Name = entry.Name, Protocol = entry.Protocol,
-                    ApiKey = AIConfigManager.GetEffectiveApiKey(entry),
-                    BaseUrl = entry.BaseUrl, Models = entry.Models, ApiVersion = entry.ApiVersion
+                    ApiKey = entry.GetEffectiveApiKey(),
+                    BaseUrl = entry.BaseUrl, Models = entry.Models, ApiVersion = entry.ApiVersion,
+                    EnvVarName = entry.EnvVarName, UseEnvVar = entry.UseEnvVar
                 };
 
                 var client = AIClient.Create(testEntry, modelId, Config.General);
@@ -655,7 +663,7 @@ namespace UniAI.Editor
 
             try
             {
-                var apiKey = EditorPreferences.GetEffectiveApiKey(entry);
+                var apiKey = entry.GetEffectiveApiKey();
                 var timeout = Config.General?.TimeoutSeconds ?? 30;
                 var result = await ModelListService.FetchModelsAsync(entry, apiKey, timeout);
 
@@ -769,7 +777,7 @@ namespace UniAI.Editor
 
         private bool HasApiKey(ChannelEntry entry)
         {
-            return !string.IsNullOrEmpty(AIConfigManager.GetEffectiveApiKey(entry));
+            return !string.IsNullOrEmpty(entry.GetEffectiveApiKey());
         }
     }
 }

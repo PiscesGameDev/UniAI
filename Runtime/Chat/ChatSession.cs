@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Text.RegularExpressions;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Converters;
 
@@ -85,6 +86,78 @@ namespace UniAI
                 foreach (var msg in Messages) total += msg.OutputTokens;
                 return total;
             }
+        }
+
+        // ─── 消息转换 ───
+
+        private static readonly Regex _dataImageRegex = new(
+            @"!\[([^\]]*)\]\(data:image/[^)]+\)",
+            RegexOptions.Compiled);
+
+        /// <summary>
+        /// 将 ChatMessage 列表转换为 AI 消息列表，供 Provider 使用
+        /// </summary>
+        public List<AIMessage> BuildAIMessages()
+        {
+            var messages = new List<AIMessage>();
+            AIMessage pendingAssistant = null;
+
+            foreach (var msg in Messages)
+            {
+                if (msg.IsStreaming && string.IsNullOrEmpty(msg.Content))
+                    continue;
+
+                if (msg.IsToolCall)
+                {
+                    if (pendingAssistant == null)
+                    {
+                        pendingAssistant = new AIMessage
+                            { Role = AIRole.Assistant, Contents = new List<AIContent>() };
+                        messages.Add(pendingAssistant);
+                    }
+
+                    pendingAssistant.Contents.Add(new AIToolUseContent
+                    {
+                        Id = msg.ToolUseId,
+                        Name = msg.ToolName,
+                        Arguments = msg.ToolArguments
+                    });
+
+                    if (!string.IsNullOrEmpty(msg.ToolResult))
+                        messages.Add(AIMessage.ToolResult(msg.ToolUseId, msg.ToolResult, msg.IsToolError));
+
+                    continue;
+                }
+
+                pendingAssistant = null;
+                string content = msg.Content;
+
+                // 剥离 Assistant 消息中的 base64 图片数据，替换为占位描述
+                if (msg.Role == AIRole.Assistant && !string.IsNullOrEmpty(content)
+                                                 && content.Contains("data:image/"))
+                {
+                    content = _dataImageRegex.Replace(content, m =>
+                    {
+                        string alt = m.Groups[1].Value;
+                        return string.IsNullOrWhiteSpace(alt)
+                            ? "[已生成图片]"
+                            : $"[已生成图片: {alt}]";
+                    });
+                }
+
+                if (msg.Role == AIRole.User)
+                {
+                    messages.Add(AIMessage.User(content));
+                }
+                else
+                {
+                    var assistantAiMsg = AIMessage.Assistant(content);
+                    messages.Add(assistantAiMsg);
+                    pendingAssistant = assistantAiMsg;
+                }
+            }
+
+            return messages;
         }
     }
 }

@@ -309,26 +309,38 @@ namespace UniAI
         private static void SanitizeToolCallArguments(List<AIToolCall> toolCalls)
         {
             foreach (var tc in toolCalls)
+                ParseToolArguments(tc);
+        }
+
+        /// <summary>
+        /// 统一的 JSON 解析 + 修复 + 回写逻辑。
+        /// 返回解析后的 JObject，解析失败时回写 "{}" 并返回空 JObject。
+        /// </summary>
+        private static JObject ParseToolArguments(AIToolCall toolCall)
+        {
+            if (string.IsNullOrEmpty(toolCall.Arguments))
             {
-                if (string.IsNullOrEmpty(tc.Arguments)) continue;
-                try
+                toolCall.Arguments = "{}";
+                return new JObject();
+            }
+
+            try
+            {
+                return JObject.Parse(toolCall.Arguments);
+            }
+            catch (JsonReaderException)
+            {
+                var fixed_ = TryParseFirstJsonObject(toolCall.Arguments);
+                if (fixed_ != null)
                 {
-                    JObject.Parse(tc.Arguments);
+                    toolCall.Arguments = fixed_.ToString(Formatting.None);
+                    AILogger.Warning($"Tool '{toolCall.Name}' had concatenated JSON arguments, sanitized");
+                    return fixed_;
                 }
-                catch (JsonReaderException)
-                {
-                    var fixed_ = TryParseFirstJsonObject(tc.Arguments);
-                    if (fixed_ != null)
-                    {
-                        tc.Arguments = fixed_.ToString(Newtonsoft.Json.Formatting.None);
-                        AILogger.Warning($"Tool '{tc.Name}' had concatenated JSON arguments, sanitized before building message");
-                    }
-                    else
-                    {
-                        AILogger.Error($"Tool '{tc.Name}' has unparseable arguments, replacing with empty object");
-                        tc.Arguments = "{}";
-                    }
-                }
+
+                AILogger.Error($"Tool '{toolCall.Name}' has unparseable arguments, replacing with empty object");
+                toolCall.Arguments = "{}";
+                return new JObject();
             }
         }
 
@@ -388,36 +400,7 @@ namespace UniAI
 
             try
             {
-                JObject args;
-                if (string.IsNullOrEmpty(toolCall.Arguments))
-                {
-                    args = new JObject();
-                }
-                else
-                {
-                    try
-                    {
-                        args = JObject.Parse(toolCall.Arguments);
-                    }
-                    catch (JsonReaderException)
-                    {
-                        // 某些模型偶尔会返回拼接的多个 JSON 对象，
-                        // 尝试只解析第一个完整的 JSON 对象
-                        args = TryParseFirstJsonObject(toolCall.Arguments);
-                        if (args == null)
-                        {
-                            var parseError = $"Tool '{toolCall.Name}' received malformed arguments: {toolCall.Arguments.Substring(0, Math.Min(toolCall.Arguments.Length, 200))}";
-                            AILogger.Error(parseError);
-                            // 回写空对象，避免损坏的 JSON 导致下一轮 API 400 错误
-                            toolCall.Arguments = "{}";
-                            return (parseError, true);
-                        }
-                        // 回写修正后的 arguments，确保 BuildAssistantMessage 使用合法 JSON，
-                        // 否则下一轮请求中 tool_use block 的 input 会因 JSON 损坏导致 API 400 错误
-                        toolCall.Arguments = args.ToString(Newtonsoft.Json.Formatting.None);
-                        AILogger.Warning($"Tool '{toolCall.Name}' received concatenated JSON arguments, using first object only");
-                    }
-                }
+                var args = ParseToolArguments(toolCall);
 
                 if (handler.RequiresPolling)
                     AILogger.Info($"Tool '{toolCall.Name}' running in polling mode (max {timeout:0}s)");

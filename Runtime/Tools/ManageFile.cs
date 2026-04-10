@@ -6,7 +6,7 @@ using System.Threading;
 using Cysharp.Threading.Tasks;
 using Newtonsoft.Json.Linq;
 
-namespace UniAI.Editor.Tools
+namespace UniAI.Tools
 {
     /// <summary>
     /// 文件管理聚合工具：read / write / list / search。
@@ -26,8 +26,8 @@ namespace UniAI.Editor.Tools
         private const int MAX_SEARCH_FILES = 5000;
         private const int MAX_LINE_LEN = 200;
 
-        private static int MaxOutputChars => EditorPreferences.instance.ToolMaxOutputChars;
-        private static int MaxSearchMatches => EditorPreferences.instance.SearchMaxMatches;
+        private static int MaxOutputChars => ToolConfig.MaxOutputChars;
+        private static int MaxSearchMatches => ToolConfig.SearchMaxMatches;
 
         public static async UniTask<object> HandleAsync(JObject args, CancellationToken ct)
         {
@@ -149,7 +149,7 @@ namespace UniAI.Editor.Tools
             else
                 result = await WriteFullAsync(fullPath, path, content, ct);
 
-            EditorAgentGuard.NotifyAssetsModified();
+            ToolCallbacks.OnAssetsModified?.Invoke();
             return result;
         }
 

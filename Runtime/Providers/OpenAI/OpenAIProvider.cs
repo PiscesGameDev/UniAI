@@ -13,19 +13,13 @@ namespace UniAI.Providers.OpenAI
     {
         public override string Name => "OpenAI";
 
-        private readonly OpenAIConfig _config;
+        public OpenAIProvider(ProviderConfig config) : base(config) { }
 
-        public OpenAIProvider(OpenAIConfig config, int timeoutSeconds = 60)
-            : base(timeoutSeconds)
-        {
-            _config = config;
-        }
-
-        protected override string BuildUrl() => $"{_config.BaseUrl.TrimEnd('/')}/chat/completions";
+        protected override string BuildUrl() => $"{Config.BaseUrl.TrimEnd('/')}/chat/completions";
 
         protected override Dictionary<string, string> BuildHeaders() => new()
         {
-            { "Authorization", $"Bearer {_config.ApiKey}" }
+            { "Authorization", $"Bearer {Config.ApiKey}" }
         };
 
         protected override string GetModelFromBody(object body) => ((OpenAIRequest)body).Model;
@@ -36,7 +30,7 @@ namespace UniAI.Providers.OpenAI
 
             var openAIRequest = new OpenAIRequest
             {
-                Model = string.IsNullOrEmpty(request.Model) ? _config.Model : request.Model,
+                Model = string.IsNullOrEmpty(request.Model) ? Config.Model : request.Model,
                 Messages = messages,
                 MaxTokens = request.MaxTokens,
                 Temperature = request.Temperature,

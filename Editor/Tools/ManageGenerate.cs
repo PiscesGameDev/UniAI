@@ -86,7 +86,7 @@ namespace UniAI.Editor.Tools
                 return ToolResponse.Error($"Model '{model}' not found in any enabled channel. Add it to a channel's model list first.");
 
             var channel = channels[0];
-            var apiKey = AIConfigManager.GetEffectiveApiKey(channel);
+            var apiKey = channel.GetEffectiveApiKey();
             if (string.IsNullOrEmpty(apiKey))
                 return ToolResponse.Error($"Channel '{channel.Name}' has no API key configured.");
 

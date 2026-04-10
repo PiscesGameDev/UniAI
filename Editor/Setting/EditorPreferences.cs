@@ -1,5 +1,3 @@
-using System;
-using System.Collections.Generic;
 using UnityEditor;
 using UnityEngine;
 
@@ -154,51 +152,6 @@ namespace UniAI.Editor
         {
             get => string.IsNullOrEmpty(_mcpServerDirectory) ? "Assets/Agents/MCP" : _mcpServerDirectory;
             set => _mcpServerDirectory = value;
-        }
-
-        // ─── 环境变量映射（按预设 ID，跟随 AI 供应商） ───
-
-        private static readonly Dictionary<string, string> _presetEnvVars = new()
-        {
-            { "claude", "ANTHROPIC_API_KEY" },
-            { "openai", "OPENAI_API_KEY" },
-            { "gemini", "GEMINI_API_KEY" },
-            { "deepseek", "DEEPSEEK_API_KEY" }
-        };
-
-        /// <summary>
-        /// 获取预设渠道对应的环境变量名（非预设渠道返回 null）
-        /// </summary>
-        internal static string GetEnvVarName(string channelId)
-        {
-            return _presetEnvVars.GetValueOrDefault(channelId);
-        }
-
-        /// <summary>
-        /// 获取有效的 API Key（环境变量优先，其次使用配置值）
-        /// </summary>
-        internal static string GetEffectiveApiKey(ChannelEntry entry)
-        {
-            var envVarName = GetEnvVarName(entry.Id);
-            if (!string.IsNullOrEmpty(envVarName))
-            {
-                var envKey = Environment.GetEnvironmentVariable(envVarName);
-                if (!string.IsNullOrEmpty(envKey))
-                    return envKey;
-            }
-            return entry.ApiKey;
-        }
-
-        /// <summary>
-        /// 当前 ApiKey 是否来自环境变量
-        /// </summary>
-        internal static bool IsApiKeyFromEnv(ChannelEntry entry)
-        {
-            var envVarName = GetEnvVarName(entry.Id);
-            if (string.IsNullOrEmpty(envVarName))
-                return false;
-            var envKey = Environment.GetEnvironmentVariable(envVarName);
-            return !string.IsNullOrEmpty(envKey);
         }
 
         /// <summary>

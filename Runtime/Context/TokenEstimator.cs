@@ -44,14 +44,19 @@ namespace UniAI
                 total += EstimateTokens(systemPrompt) + MESSAGE_OVERHEAD;
 
             foreach (var msg in messages)
-            {
-                total += MESSAGE_OVERHEAD;
-                foreach (var content in msg.Contents)
-                {
-                    total += EstimateContent(content);
-                }
-            }
+                total += EstimateMessage(msg);
 
+            return total;
+        }
+
+        /// <summary>
+        /// 估算单条消息的 token 数（含 role 开销）
+        /// </summary>
+        public static int EstimateMessage(AIMessage msg)
+        {
+            int total = MESSAGE_OVERHEAD;
+            foreach (var content in msg.Contents)
+                total += EstimateContent(content);
             return total;
         }
 

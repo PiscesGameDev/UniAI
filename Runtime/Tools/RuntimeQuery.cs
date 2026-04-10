@@ -8,7 +8,7 @@ using Newtonsoft.Json.Linq;
 using UnityEngine;
 using UnityEngine.SceneManagement;
 
-namespace UniAI.Editor.Tools
+namespace UniAI.Tools
 {
     /// <summary>
     /// Play Mode 运行时查询聚合工具：scene / find / inspect / component / find_type。

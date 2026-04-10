@@ -21,9 +21,25 @@ namespace UniAI.Providers
             NullValueHandling = NullValueHandling.Ignore
         };
 
-        protected ProviderBase(int timeoutSeconds)
+        /// <summary>
+        /// Provider 配置 — 从 ChannelEntry 直接构造，替代协议特定的 ClaudeConfig / OpenAIConfig
+        /// </summary>
+        public class ProviderConfig
         {
-            _timeoutSeconds = timeoutSeconds;
+            public string ApiKey;
+            public string BaseUrl;
+            public string Model;
+            public int TimeoutSeconds;
+            public string ApiVersion; // Claude 专用
+        }
+
+        /// <summary>当前 Provider 的配置</summary>
+        protected ProviderConfig Config { get; }
+
+        protected ProviderBase(ProviderConfig config)
+        {
+            Config = config ?? throw new ArgumentNullException(nameof(config));
+            _timeoutSeconds = config.TimeoutSeconds;
         }
 
         // ────────────────────────── SendAsync 模板方法 ──────────────────────────

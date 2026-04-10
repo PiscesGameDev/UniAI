@@ -186,12 +186,15 @@ namespace UniAI
             catch { return Array.Empty<Type>(); }
         }
 
-        private const string BUILTIN_ASSEMBLY = "UniAI.Editor";
+        private static bool IsBuiltInAssembly(string assemblyName)
+        {
+            return assemblyName == "UniAI" || assemblyName == "UniAI.Editor";
+        }
 
         private static bool TryRegister(Type type, UniAIToolAttribute attr)
         {
             var name = string.IsNullOrEmpty(attr.Name) ? ToSnakeCase(type.Name) : attr.Name;
-            bool isBuiltIn = type.Assembly.GetName().Name == BUILTIN_ASSEMBLY;
+            bool isBuiltIn = IsBuiltInAssembly(type.Assembly.GetName().Name);
 
             if (_handlers.ContainsKey(name))
             {

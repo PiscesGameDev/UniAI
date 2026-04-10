@@ -10,7 +10,7 @@ namespace UniAI.Editor
     public static class AIConfigManager
     {
         private const string SettingsAssetPath = "Assets/Resources/UniAI/UniAISettings.asset";
-        
+
         /// <summary>
         /// 编辑器偏好（ScriptableSingleton）
         /// </summary>
@@ -30,7 +30,7 @@ namespace UniAI.Editor
             // 环境变量覆盖 API Key
             foreach (var provider in config.Providers)
             {
-                var effectiveKey = EditorPreferences.GetEffectiveApiKey(provider);
+                var effectiveKey = provider.GetEffectiveApiKey();
                 if (effectiveKey != provider.ApiKey)
                     provider.ApiKey = effectiveKey;
             }
@@ -48,7 +48,7 @@ namespace UniAI.Editor
             // 清除来自环境变量的 Key，避免写入资产
             foreach (var provider in config.Providers)
             {
-                if (EditorPreferences.IsApiKeyFromEnv(provider))
+                if (provider.IsApiKeyFromEnv())
                     provider.ApiKey = null;
             }
 
@@ -73,7 +73,7 @@ namespace UniAI.Editor
             // 恢复环境变量覆盖的 Key（内存中保持有效值）
             foreach (var provider in config.Providers)
             {
-                var effectiveKey = EditorPreferences.GetEffectiveApiKey(provider);
+                var effectiveKey = provider.GetEffectiveApiKey();
                 if (effectiveKey != provider.ApiKey)
                     provider.ApiKey = effectiveKey;
             }
@@ -90,22 +90,6 @@ namespace UniAI.Editor
             Prefs.SaveToFile();
         }
 
-        /// <summary>
-        /// 获取有效的 API Key（环境变量优先）
-        /// </summary>
-        public static string GetEffectiveApiKey(ChannelEntry entry)
-        {
-            return EditorPreferences.GetEffectiveApiKey(entry);
-        }
-
-        /// <summary>
-        /// 当前 ApiKey 是否来自环境变量
-        /// </summary>
-        public static bool IsApiKeyFromEnv(ChannelEntry entry)
-        {
-            return EditorPreferences.IsApiKeyFromEnv(entry);
-        }
-
         // ─── SO 管理 ───
 
         private static UniAISettings LoadOrCreateSettings()
@@ -113,7 +97,7 @@ namespace UniAI.Editor
             // 从 AssetDatabase 加载
             var settings = AssetDatabase.LoadAssetAtPath<UniAISettings>(SettingsAssetPath);
             if (settings != null) return settings;
-            
+
             // 创建默认
             return CreateDefaultSettings();
         }
@@ -130,7 +114,7 @@ namespace UniAI.Editor
             Debug.Log("[UniAI] Created default UniAISettings asset.");
             return settings;
         }
-        
+
 
         private static void EnsureResourcesDir()
         {

@@ -123,13 +123,13 @@ namespace UniAI.Editor.Tools
             public string LightType;
         }
 
-        public class DestroyArgs
+        public class TargetArgs
         {
             [ToolParam(Description = "Hierarchy path or name of the target GameObject.")]
             public string Path;
         }
 
-        public class SetTransformArgs : DestroyArgs
+        public class SetTransformArgs : TargetArgs
         {
             [ToolParam(Description = "Position [x,y,z].", Required = false)]
             public float[] Position;
@@ -141,25 +141,25 @@ namespace UniAI.Editor.Tools
             public string Space;
         }
 
-        public class SetActiveArgs : DestroyArgs
+        public class SetActiveArgs : TargetArgs
         {
             [ToolParam(Description = "true/false.")]
             public bool Value;
         }
 
-        public class SetParentArgs : DestroyArgs
+        public class SetParentArgs : TargetArgs
         {
             [ToolParam(Description = "New parent path. Empty/null = move to root.", Required = false)]
             public string Parent;
         }
 
-        public class RenameArgs : DestroyArgs
+        public class RenameArgs : TargetArgs
         {
             [ToolParam(Description = "New name.")]
             public string Name;
         }
 
-        public class AddComponentArgs : DestroyArgs
+        public class AddComponentArgs : TargetArgs
         {
             [ToolParam(Description = "Component type name (e.g. 'Rigidbody', 'UnityEngine.BoxCollider').")]
             public string ComponentType;
@@ -295,14 +295,27 @@ namespace UniAI.Editor.Tools
 
         // ─── 创建 ───
 
+        /// <summary>
+        /// 创建方法的公共后续步骤：设置父级、应用 Transform、注册 Undo、标脏。
+        /// </summary>
+        private static object FinishCreate(GameObject go, JObject args, string undoLabel,
+            string message = null, object extra = null)
+        {
+            AttachParent(go, (string)args["parent"]);
+            ApplyTransform(go, args);
+            SceneEdit.RegisterCreated(go, undoLabel);
+            SceneEdit.MarkDirty(go);
+
+            var result = new Dictionary<string, object> { { "path", GetFullPath(go) } };
+            if (extra is Dictionary<string, object> dict)
+                foreach (var kvp in dict) result[kvp.Key] = kvp.Value;
+            return ToolResponse.Success(result, message);
+        }
+
         private static object CreateEmpty(JObject args)
         {
             var go = new GameObject(StringOr(args["name"], "GameObject"));
-            AttachParent(go, (string)args["parent"]);
-            ApplyTransform(go, args);
-            SceneEdit.RegisterCreated(go, "UniAI: create_empty");
-            SceneEdit.MarkDirty(go);
-            return ToolResponse.Success(new { path = GetFullPath(go) }, "Empty GameObject created.");
+            return FinishCreate(go, args, "UniAI: create_empty", "Empty GameObject created.");
         }
 
         private static object CreatePrimitive(JObject args)
@@ -316,22 +329,15 @@ namespace UniAI.Editor.Tools
             var go = GameObject.CreatePrimitive(type);
             var name = (string)args["name"];
             if (!string.IsNullOrEmpty(name)) go.name = name;
-            AttachParent(go, (string)args["parent"]);
-            ApplyTransform(go, args);
-            SceneEdit.RegisterCreated(go, "UniAI: create_primitive");
-            SceneEdit.MarkDirty(go);
-            return ToolResponse.Success(new { path = GetFullPath(go), primitive = type.ToString() });
+            return FinishCreate(go, args, "UniAI: create_primitive",
+                extra: new Dictionary<string, object> { { "primitive", type.ToString() } });
         }
 
         private static object CreateCamera(JObject args)
         {
             var go = new GameObject(StringOr(args["name"], "Camera"));
             go.AddComponent<Camera>();
-            AttachParent(go, (string)args["parent"]);
-            ApplyTransform(go, args);
-            SceneEdit.RegisterCreated(go, "UniAI: create_camera");
-            SceneEdit.MarkDirty(go);
-            return ToolResponse.Success(new { path = GetFullPath(go) }, "Camera created.");
+            return FinishCreate(go, args, "UniAI: create_camera", "Camera created.");
         }
 
         private static object CreateLight(JObject args)
@@ -341,11 +347,8 @@ namespace UniAI.Editor.Tools
             var lt = (string)args["lightType"];
             if (!string.IsNullOrEmpty(lt) && Enum.TryParse<LightType>(lt, true, out var parsed))
                 light.type = parsed;
-            AttachParent(go, (string)args["parent"]);
-            ApplyTransform(go, args);
-            SceneEdit.RegisterCreated(go, "UniAI: create_light");
-            SceneEdit.MarkDirty(go);
-            return ToolResponse.Success(new { path = GetFullPath(go), lightType = light.type.ToString() });
+            return FinishCreate(go, args, "UniAI: create_light",
+                extra: new Dictionary<string, object> { { "lightType", light.type.ToString() } });
         }
 
         // ─── 修改 ───

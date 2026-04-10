@@ -14,25 +14,19 @@ namespace UniAI.Providers.Claude
     {
         public override string Name => "Claude";
 
-        private readonly ClaudeConfig _config;
-
         /// <summary>
         /// 当前请求使用的结构化输出虚拟 Tool 名称（非 null 时 ParseResponse 需特殊处理）
         /// </summary>
         private string _structuredToolName;
 
-        public ClaudeProvider(ClaudeConfig config, int timeoutSeconds = 60)
-            : base(timeoutSeconds)
-        {
-            _config = config;
-        }
+        public ClaudeProvider(ProviderConfig config) : base(config) { }
 
-        protected override string BuildUrl() => $"{_config.BaseUrl.TrimEnd('/')}/v1/messages";
+        protected override string BuildUrl() => $"{Config.BaseUrl.TrimEnd('/')}/v1/messages";
 
         protected override Dictionary<string, string> BuildHeaders() => new()
         {
-            { "x-api-key", _config.ApiKey },
-            { "anthropic-version", _config.ApiVersion }
+            { "x-api-key", Config.ApiKey },
+            { "anthropic-version", Config.ApiVersion }
         };
 
         protected override string GetModelFromBody(object body) => ((ClaudeRequest)body).Model;
@@ -43,7 +37,7 @@ namespace UniAI.Providers.Claude
 
             var claudeRequest = new ClaudeRequest
             {
-                Model = string.IsNullOrEmpty(request.Model) ? _config.Model : request.Model,
+                Model = string.IsNullOrEmpty(request.Model) ? Config.Model : request.Model,
                 MaxTokens = request.MaxTokens,
                 Temperature = request.Temperature,
                 System = request.SystemPrompt,

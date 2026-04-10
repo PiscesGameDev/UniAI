@@ -32,6 +32,16 @@ namespace UniAI
         }
 
         /// <summary>
+        /// 在消息列表头部注入一对伪造的对话（User 上下文 + Assistant 确认），
+        /// 用于向模型传递摘要、RAG 上下文等带外信息。
+        /// </summary>
+        internal static void InjectContextPair(List<AIMessage> messages, string tag, string content, string ack)
+        {
+            messages.Insert(0, AIMessage.User($"[{tag}]\n{content}"));
+            messages.Insert(1, AIMessage.Assistant(ack));
+        }
+
+        /// <summary>
         /// 处理消息列表，确保不超过上下文窗口限制
         /// </summary>
         /// <param name="messages">原始消息列表（会被修改）</param>
@@ -130,8 +140,7 @@ namespace UniAI
                 var result = await provider.RetrieveAsync(query, ct);
                 if (result != null && !string.IsNullOrEmpty(result.Content) && result.Relevance > 0.3f)
                 {
-                    messages.Insert(0, AIMessage.User($"[相关上下文]\n{result.Content}"));
-                    messages.Insert(1, AIMessage.Assistant("已收到相关上下文信息，我会结合这些内容回答。"));
+                    InjectContextPair(messages, "相关上下文", result.Content, "已收到相关上下文信息，我会结合这些内容回答。");
                 }
             }
         }
@@ -141,8 +150,7 @@ namespace UniAI
         /// </summary>
         private static void InjectSummary(List<AIMessage> messages, string summaryText)
         {
-            messages.Insert(0, AIMessage.User($"[对话摘要]\n{summaryText}"));
-            messages.Insert(1, AIMessage.Assistant("已了解之前的对话内容，请继续。"));
+            InjectContextPair(messages, "对话摘要", summaryText, "已了解之前的对话内容，请继续。");
         }
 
         /// <summary>
@@ -182,8 +190,7 @@ namespace UniAI
 
             // 组装新消息列表：摘要 + 保留的消息
             var result = new List<AIMessage>();
-            result.Add(AIMessage.User($"[对话摘要]\n{summary}"));
-            result.Add(AIMessage.Assistant("已了解之前的对话内容，请继续。"));
+            InjectContextPair(result, "对话摘要", summary, "已了解之前的对话内容，请继续。");
             result.AddRange(toKeep);
 
             // 如果仍然超限，继续截断
@@ -195,7 +202,8 @@ namespace UniAI
         }
 
         /// <summary>
-        /// 从最早消息开始移除，保留至少 minRecentMessages 条
+        /// 从最早消息开始移除，保留至少 minRecentMessages 条。
+        /// O(n) 预计算每条消息 token，避免每次循环重新估算整个列表。
         /// </summary>
         private static List<AIMessage> TruncateMessages(
             List<AIMessage> messages,
@@ -203,12 +211,24 @@ namespace UniAI
             int availableTokens,
             int minRecentMessages)
         {
-            while (messages.Count > minRecentMessages)
+            int total = TokenEstimator.EstimateTokens(systemPrompt) + 4; // system 开销
+            var perMsg = new int[messages.Count];
+            for (int i = 0; i < messages.Count; i++)
             {
-                int estimated = TokenEstimator.EstimateMessages(messages, systemPrompt);
-                if (estimated <= availableTokens) break;
-                messages.RemoveAt(0);
+                perMsg[i] = TokenEstimator.EstimateMessage(messages[i]);
+                total += perMsg[i];
             }
+
+            int removeCount = 0;
+            int maxRemovable = messages.Count - minRecentMessages;
+            while (removeCount < maxRemovable && total > availableTokens)
+            {
+                total -= perMsg[removeCount];
+                removeCount++;
+            }
+
+            if (removeCount > 0)
+                messages.RemoveRange(0, removeCount);
             return messages;
         }
 
