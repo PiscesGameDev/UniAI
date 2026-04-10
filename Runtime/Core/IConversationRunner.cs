@@ -14,6 +14,7 @@ namespace UniAI
         /// </summary>
         /// <param name="messages">对话历史</param>
         /// <param name="requestOverride">可选请求参数覆盖（SystemPrompt/Temperature/MaxTokens）</param>
+        /// <param name="ct"></param>
         UniTask<AgentResult> RunAsync(
             List<AIMessage> messages,
             AIRequest requestOverride = null,

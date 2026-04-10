@@ -208,7 +208,7 @@ namespace UniAI.Editor
 
             if (SelectedEntry != null)
             {
-                DrawSection(DrawProviderConfig);
+                DrawSection(DrawChannelConfig);
                 GUILayout.Space(12);
                 DrawSection(() => DrawModelDiagnostics(SelectedEntry));
             }
@@ -226,7 +226,7 @@ namespace UniAI.Editor
             EditorGUIHelper.DrawSection(PAD, drawContent);
         }
 
-        private void DrawProviderConfig()
+        private void DrawChannelConfig()
         {
             var entry = SelectedEntry;
 
@@ -250,7 +250,15 @@ namespace UniAI.Editor
             EditorGUILayout.EndHorizontal();
 
             GUILayout.Space(4);
-
+            
+            EditorGUI.BeginDisabledGroup(true);
+            EditorGUILayout.BeginHorizontal();
+            EditorGUILayout.LabelField("Id", GUILayout.Width(LABEL_WIDTH));
+            EditorGUILayout.TextField(entry.Id);
+            EditorGUILayout.EndHorizontal();
+            EditorGUI.EndDisabledGroup();
+            
+            GUILayout.Space(4);
             // Name
             EditorGUILayout.BeginHorizontal();
             EditorGUILayout.LabelField("名称", GUILayout.Width(LABEL_WIDTH));
@@ -588,14 +596,7 @@ namespace UniAI.Editor
 
             try
             {
-                var testEntry = new ChannelEntry
-                {
-                    Id = entry.Id, Name = entry.Name, Protocol = entry.Protocol,
-                    ApiKey = entry.GetEffectiveApiKey(),
-                    BaseUrl = entry.BaseUrl, Models = entry.Models, ApiVersion = entry.ApiVersion,
-                    EnvVarName = entry.EnvVarName, UseEnvVar = entry.UseEnvVar
-                };
-
+                var testEntry = entry.Clone();
                 var client = AIClient.Create(testEntry, modelId, Config.General);
 
                 var sw = Stopwatch.StartNew();
@@ -700,10 +701,8 @@ namespace UniAI.Editor
             menu.AddSeparator("");
             menu.AddItem(new GUIContent("自定义 (OpenAI 兼容)"), false, () =>
             {
-                var id = $"custom_{DateTime.Now.Ticks}";
                 Config.ChannelEntries.Add(new ChannelEntry
                 {
-                    Id = id,
                     Name = "Custom",
                     Protocol = ProviderProtocol.OpenAI,
                     BaseUrl = "https://",

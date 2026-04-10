@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using UnityEngine;
 
 namespace UniAI
 {
@@ -18,8 +19,9 @@ namespace UniAI
     [Serializable]
     public class ChannelEntry
     {
-        
-        public string Id;
+        [SerializeField]
+        private string _id = Guid.NewGuid().ToString("N");
+        public string Id => _id;
         public string Name;
         public ProviderProtocol Protocol;
 
@@ -55,7 +57,28 @@ namespace UniAI
         /// 默认模型（Models 列表中的第一个）
         /// </summary>
         public string DefaultModel => Models?.Count > 0 ? Models[0] : null;
-
+        
+        /// <summary>
+        /// 克隆
+        /// </summary>
+        /// <returns></returns>
+        public ChannelEntry Clone()
+        {
+            var channelEntry = new ChannelEntry
+            {
+                _id = Id,
+                Name = Name,
+                Protocol = Protocol,
+                ApiKey = GetEffectiveApiKey(),
+                BaseUrl = BaseUrl,
+                EnvVarName = EnvVarName,
+                UseEnvVar = UseEnvVar,
+                Models = new List<string>(Models),
+                ApiVersion = ApiVersion
+            };
+            return channelEntry;
+        }
+        
         /// <summary>
         /// 获取有效的 API Key（UseEnvVar 启用时优先读取环境变量）
         /// </summary>
@@ -84,7 +107,7 @@ namespace UniAI
         #region 预设 Channel
         public static ChannelEntry Claude() => new()
         {
-            Id = "claude", Name = "Claude", Protocol = ProviderProtocol.Claude,
+            Name = "Claude", Protocol = ProviderProtocol.Claude,
             BaseUrl = "https://api.anthropic.com",
             Models = new List<string> { "claude-sonnet-4-20250514", "claude-opus-4-6" },
             ApiVersion = "2023-06-01",
@@ -93,7 +116,7 @@ namespace UniAI
 
         public static ChannelEntry OpenAI() => new()
         {
-            Id = "openai", Name = "OpenAI", Protocol = ProviderProtocol.OpenAI,
+            Name = "OpenAI", Protocol = ProviderProtocol.OpenAI,
             BaseUrl = "https://api.openai.com/v1",
             Models = new List<string> { "gpt-4o", "gpt-4o-mini", "o1" },
             EnvVarName = "OPENAI_API_KEY", UseEnvVar = true
@@ -101,7 +124,7 @@ namespace UniAI
 
         public static ChannelEntry Gemini() => new()
         {
-            Id = "gemini", Name = "Gemini", Protocol = ProviderProtocol.OpenAI,
+            Name = "Gemini", Protocol = ProviderProtocol.OpenAI,
             BaseUrl = "https://generativelanguage.googleapis.com/v1beta/openai",
             Models = new List<string> { "gemini-2.0-flash", "gemini-2.5-pro" },
             EnvVarName = "GEMINI_API_KEY", UseEnvVar = true
@@ -109,7 +132,7 @@ namespace UniAI
 
         public static ChannelEntry DeepSeek() => new()
         {
-            Id = "deepseek", Name = "DeepSeek", Protocol = ProviderProtocol.OpenAI,
+            Name = "DeepSeek", Protocol = ProviderProtocol.OpenAI,
             BaseUrl = "https://api.deepseek.com/v1",
             Models = new List<string> { "deepseek-chat", "deepseek-reasoner" },
             EnvVarName = "DEEPSEEK_API_KEY", UseEnvVar = true

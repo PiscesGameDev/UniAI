@@ -34,14 +34,5 @@ namespace UniAI
             if (LogLevel <= AILogLevel.Error)
                 Debug.LogError($"{TAG} {message}");
         }
-
-        /// <summary>
-        /// API Key 脱敏：仅显示前 8 位 + ***
-        /// </summary>
-        internal static string MaskApiKey(string apiKey)
-        {
-            if (string.IsNullOrEmpty(apiKey)) return "(empty)";
-            return apiKey.Length <= 8 ? "***" : apiKey[..8] + "***";
-        }
     }
 }
