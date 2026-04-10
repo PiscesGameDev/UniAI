@@ -74,10 +74,10 @@ namespace UniAI.Editor.Tools
             if (string.IsNullOrEmpty(model))
                 return ToolResponse.Error("'model' is required. Use 'list_models' to see available models and their capabilities.");
 
-            // 查询模型能力
-            var capability = ModelRegistry.GetCapability(model);
-            if (capability == ModelCapability.Chat)
-                return ToolResponse.Error($"Model '{model}' is a chat model, not a generative model. Use an image model like 'dall-e-3' or 'gemini-imagen-3'. Use 'list_models' to see available generative models.");
+            // 查询模型能力 — 必须支持至少一种生成能力
+            var capabilities = ModelRegistry.GetCapabilities(model);
+            if (capabilities == ModelCapability.Chat)
+                return ToolResponse.Error($"Model '{model}' is a chat-only model. Use 'list_models' to see available generative models.");
 
             // 查找渠道
             var config = AIConfigManager.LoadConfig();
@@ -90,15 +90,14 @@ namespace UniAI.Editor.Tools
             if (string.IsNullOrEmpty(apiKey))
                 return ToolResponse.Error($"Channel '{channel.Name}' has no API key configured.");
 
-            // 根据能力类型执行生成
+            // 根据能力路由到对应生成器
             GenerateResult result;
             try
             {
-                result = capability switch
-                {
-                    ModelCapability.ImageGen => await GenerateImage(channel, apiKey, model, args, ct),
-                    _ => GenerateResult.Fail($"Capability '{capability}' is not yet supported.")
-                };
+                if (ModelRegistry.HasCapability(model, ModelCapability.ImageGen))
+                    result = await GenerateImage(channel, apiKey, model, args, ct);
+                else
+                    result = GenerateResult.Fail($"Model '{model}' capabilities ({capabilities}) are not yet supported for generation.");
             }
             catch (OperationCanceledException)
             {
@@ -205,17 +204,18 @@ namespace UniAI.Editor.Tools
             foreach (var (modelId, channels) in channelModels)
             {
                 var entry = ModelRegistry.Get(modelId);
-                var capability = entry?.Capability ?? ModelCapability.Chat;
+                var capabilities = entry?.Capabilities ?? ModelCapability.Chat;
                 var info = new
                 {
                     model = modelId,
-                    displayName = entry?.DisplayName ?? modelId,
                     vendor = entry?.Vendor ?? "Unknown",
-                    capability = capability.ToString(),
+                    capabilities = capabilities.ToString(),
+                    endpoint = (entry?.Endpoint ?? ModelEndpoint.ChatCompletions).ToString(),
+                    description = entry?.Description ?? "",
                     channels
                 };
 
-                if (capability == ModelCapability.Chat)
+                if (capabilities == ModelCapability.Chat)
                     chat.Add(info);
                 else
                     generative.Add(info);

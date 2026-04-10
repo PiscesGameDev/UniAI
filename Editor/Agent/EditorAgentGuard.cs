@@ -49,7 +49,7 @@ namespace UniAI.Editor
             if (ReferenceEquals(_current, this)) _current = null;
             EditorApplication.UnlockReloadAssemblies();
             if (_isDirty)
-                EditorApplication.delayCall += () => AssetDatabase.Refresh();
+                EditorApplication.delayCall += AssetDatabase.Refresh;
         }
     }
 }

@@ -177,8 +177,7 @@ namespace UniAI.Editor
                     foreach (var modelId in kv.Value)
                     {
                         var entry = ModelRegistry.Get(modelId);
-                        string display = !string.IsNullOrEmpty(entry?.DisplayName) ? entry.DisplayName : modelId;
-                        var label = new GUIContent($"{kv.Key}/{display}");
+                        var label = new GUIContent($"{kv.Key}/{modelId}");
                         string captured = modelId;
                         menu.AddItem(label, modelId == current, () =>
                         {

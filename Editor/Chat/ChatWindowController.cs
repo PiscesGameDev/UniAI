@@ -654,8 +654,7 @@ namespace UniAI.Editor.Chat
             {
                 var entry = ModelRegistry.Get(_modelEntries[i].ModelId);
                 string vendor = !string.IsNullOrEmpty(entry?.Vendor) ? entry.Vendor : "Unknown";
-                string display = !string.IsNullOrEmpty(entry?.DisplayName) ? entry.DisplayName : _modelEntries[i].ModelId;
-                _modelNames[i] = $"{vendor}/{display}";
+                _modelNames[i] = $"{vendor}/{_modelEntries[i].ModelId}";
             }
 
             if (!string.IsNullOrEmpty(_currentModelId))

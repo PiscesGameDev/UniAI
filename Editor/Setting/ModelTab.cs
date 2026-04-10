@@ -25,13 +25,14 @@ namespace UniAI.Editor
 
         // ─── Column widths ───
         private const float COL_TYPE = 20f;     // dot indicator
-        private const float COL_VENDOR = 72f;
-        private const float COL_CAP = 68f;
+        private const float COL_VENDOR = 150f;
+        private const float COL_CAP = 120f;
         private const float COL_OPS = 52f;  // hover only
 
         // ─── Colors ───
         private static readonly Color _chatColor = new(0.5f, 0.75f, 1f);
         private static readonly Color _imageGenColor = new(0.4f, 0.9f, 0.5f);
+        private static readonly Color _imageEditColor = new(0.3f, 0.8f, 0.7f);
         private static readonly Color _audioGenColor = new(0.95f, 0.75f, 0.3f);
         private static readonly Color _videoGenColor = new(0.85f, 0.5f, 0.9f);
         private static readonly Color _builtInColor = new(0.5f, 0.5f, 0.5f);
@@ -48,7 +49,7 @@ namespace UniAI.Editor
         private int _sourceFilterIndex;   // 0 = All, 1 = Built-in, 2 = Custom
         private string _searchText = "";
 
-        private static readonly string[] _capOptions = { "All", "Chat", "ImageGen", "AudioGen", "VideoGen" };
+        private static readonly string[] _capOptions = { "All", "Chat", "ImageGen", "ImageEdit", "AudioGen", "VideoGen" };
         private static readonly string[] _sourceOptions = { "All", "Built-in", "Custom" };
 
         // ─── Table state ───
@@ -160,7 +161,7 @@ namespace UniAI.Editor
             GUILayout.EndArea();
 
             // ── Right: Detail panel ──
-            if (hasDetail)
+            if (hasDetail && _selectedRowIndex >= 0 && _selectedRowIndex < _rows.Count)
             {
                 EditorGUI.DrawRect(new Rect(tableAreaW, 0, 1, height), EditorGUIHelper.SeparatorColor);
                 var detailRect = new Rect(tableAreaW + 1, 0, detailW - 1, height);
@@ -335,10 +336,8 @@ namespace UniAI.Editor
                     row.Entry.Vendor ?? "-", _cellStyle);
                 cx += COL_VENDOR;
 
-                // Capability badge
-                DrawBadgeAt(new Rect(cx + 2, rowRect.y + 4, COL_CAP - 4, 16),
-                    row.Entry.Capability.ToString(),
-                    GetCapabilityColor(row.Entry.Capability));
+                // Capability badges (support multi-capability)
+                DrawCapabilityBadgesAt(cx + 2, rowRect.y + 4, COL_CAP - 4, row.Entry.Capabilities);
                 cx += COL_CAP;
 
                 // Operations (hover only, custom only)
@@ -527,22 +526,37 @@ namespace UniAI.Editor
             EditorGUILayout.BeginHorizontal();
             GUILayout.Space(PAD);
             DrawDetailRow("Capability", null);
-            DrawBadgeInline(entry.Capability.ToString(), GetCapabilityColor(entry.Capability));
+            DrawCapabilityBadgesInline(entry.Capabilities);
             GUILayout.FlexibleSpace();
             GUILayout.Space(PAD);
             EditorGUILayout.EndHorizontal();
+
+            if (!string.IsNullOrEmpty(entry.Description))
+                DrawDetailKV("Description", entry.Description);
+
+            DrawDetailKV("Endpoint", entry.Endpoint.ToString());
         }
 
         private void DrawEditableInfo(ModelEntry entry)
         {
             DrawEditField("Model ID", ref entry.Id);
             DrawEditField("Vendor", ref entry.Vendor);
+            DrawEditField("Description", ref entry.Description);
 
             EditorGUILayout.BeginHorizontal();
             GUILayout.Space(PAD);
-            GUILayout.Label("Capability", _detailLabelStyle, GUILayout.Width(LABEL_WIDTH));
-            var newCap = (ModelCapability)EditorGUILayout.EnumPopup(entry.Capability, GUILayout.Width(120));
-            if (newCap != entry.Capability) { entry.Capability = newCap; MarkDirty(); _rowsDirty = true; }
+            GUILayout.Label("Capabilities", _detailLabelStyle, GUILayout.Width(LABEL_WIDTH));
+            var newCap = (ModelCapability)EditorGUILayout.EnumFlagsField(entry.Capabilities, GUILayout.Width(120));
+            if (newCap != entry.Capabilities) { entry.Capabilities = newCap; MarkDirty(); _rowsDirty = true; }
+            GUILayout.Space(PAD);
+            EditorGUILayout.EndHorizontal();
+            GUILayout.Space(2);
+
+            EditorGUILayout.BeginHorizontal();
+            GUILayout.Space(PAD);
+            GUILayout.Label("Endpoint", _detailLabelStyle, GUILayout.Width(LABEL_WIDTH));
+            var newEndpoint = (ModelEndpoint)EditorGUILayout.EnumPopup(entry.Endpoint, GUILayout.Width(120));
+            if (newEndpoint != entry.Endpoint) { entry.Endpoint = newEndpoint; MarkDirty(); }
             GUILayout.Space(PAD);
             EditorGUILayout.EndHorizontal();
             GUILayout.Space(2);
@@ -739,11 +753,11 @@ namespace UniAI.Editor
                 result = result.Where(r => r.Entry.Vendor == vendor);
             }
 
-            // Capability
+            // Capability (flags filter — match if any flag overlaps)
             if (_capFilterIndex > 0)
             {
-                var cap = (ModelCapability)(_capFilterIndex - 1);
-                result = result.Where(r => r.Entry.Capability == cap);
+                var cap = (ModelCapability)(1 << (_capFilterIndex - 1));
+                result = result.Where(r => r.Entry.HasCapability(cap));
             }
 
             // Source
@@ -774,9 +788,9 @@ namespace UniAI.Editor
             settings.CustomModels.Add(new ModelEntry
             {
                 Id = "custom-model",
-                DisplayName = "New Model",
                 Vendor = "Custom",
-                Capability = ModelCapability.Chat
+                Capabilities = ModelCapability.Chat,
+                Endpoint = ModelEndpoint.ChatCompletions
             });
 
             MarkDirty();
@@ -791,7 +805,7 @@ namespace UniAI.Editor
         private void DeleteCustomModel(ModelRow row)
         {
             if (!EditorUtility.DisplayDialog("Delete Model",
-                $"Delete custom model '{row.Entry.DisplayName ?? row.Entry.Id}'?", "Delete", "Cancel"))
+                $"Delete custom model '{row.Entry.Id}'?", "Delete", "Cancel"))
                 return;
 
             var customModels = GetCustomModels();
@@ -817,19 +831,64 @@ namespace UniAI.Editor
         private bool MatchesFilter(ModelEntry entry, string filter)
         {
             return (entry.Id != null && entry.Id.ToLowerInvariant().Contains(filter))
-                || (entry.DisplayName != null && entry.DisplayName.ToLowerInvariant().Contains(filter))
                 || (entry.Vendor != null && entry.Vendor.ToLowerInvariant().Contains(filter))
-                || entry.Capability.ToString().ToLowerInvariant().Contains(filter);
+                || entry.Capabilities.ToString().ToLowerInvariant().Contains(filter);
         }
 
+        /// <summary>获取单个能力的颜色</summary>
         private static Color GetCapabilityColor(ModelCapability cap) => cap switch
         {
             ModelCapability.Chat => _chatColor,
             ModelCapability.ImageGen => _imageGenColor,
+            ModelCapability.ImageEdit => _imageEditColor,
             ModelCapability.AudioGen => _audioGenColor,
             ModelCapability.VideoGen => _videoGenColor,
             _ => _chatColor
         };
+
+        /// <summary>能力缩写映射，用于列表行紧凑显示</summary>
+        private static string GetCapabilityShortName(ModelCapability cap) => cap switch
+        {
+            ModelCapability.Chat => "Chat",
+            ModelCapability.ImageGen => "ImgGen",
+            ModelCapability.ImageEdit => "ImgEdit",
+            ModelCapability.AudioGen => "Audio",
+            ModelCapability.VideoGen => "Video",
+            _ => cap.ToString()
+        };
+
+        /// <summary>列表行：在指定位置绘制所有能力标签（固定宽度）</summary>
+        private void DrawCapabilityBadgesAt(float x, float y, float width, ModelCapability caps)
+        {
+            const float badgeWidth = 38f;
+            const float badgeHeight = 16f;
+            const float gap = 2f;
+            float cx = x;
+            float maxX = x + width;
+
+            foreach (ModelCapability flag in Enum.GetValues(typeof(ModelCapability)))
+            {
+                if (flag == ModelCapability.None) continue;
+                if ((caps & flag) == 0) continue;
+                if (cx + badgeWidth > maxX) break;
+
+                DrawBadgeAt(new Rect(cx, y, badgeWidth, badgeHeight),
+                    GetCapabilityShortName(flag), GetCapabilityColor(flag));
+                cx += badgeWidth + gap;
+            }
+        }
+
+        /// <summary>详情面板：内联绘制所有能力标签</summary>
+        private void DrawCapabilityBadgesInline(ModelCapability caps)
+        {
+            foreach (ModelCapability flag in Enum.GetValues(typeof(ModelCapability)))
+            {
+                if (flag == ModelCapability.None) continue;
+                if ((caps & flag) == 0) continue;
+                DrawBadgeInline(flag.ToString(), GetCapabilityColor(flag));
+                GUILayout.Space(2);
+            }
+        }
 
         private void MarkDirty()
         {
