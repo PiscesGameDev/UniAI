@@ -468,8 +468,7 @@ namespace UniAI.Editor
 
         private void DrawAddModelRow(ChannelEntry entry, bool hasApiKey)
         {
-            if (!_modelInput.ContainsKey(entry.Id))
-                _modelInput[entry.Id] = "";
+            _modelInput.TryAdd(entry.Id, "");
 
             EditorGUILayout.BeginHorizontal();
             _modelInput[entry.Id] = EditorGUILayout.TextField(_modelInput[entry.Id], GUILayout.Height(20));
