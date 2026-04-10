@@ -515,6 +515,7 @@ namespace UniAI.Editor
                 DrawDetailKV("Description", entry.Description);
 
             DrawDetailKV("Endpoint", entry.Endpoint.ToString());
+            DrawDetailKV("Context Window", FormatContextWindow(ModelRegistry.GetContextWindow(entry.Id)));
         }
 
         private void DrawEditableInfo(ModelEntry entry)
@@ -537,6 +538,17 @@ namespace UniAI.Editor
             GUILayout.Label("Endpoint", EditorGUIHelper.DetailLabelStyle, GUILayout.Width(LABEL_WIDTH));
             var newEndpoint = (ModelEndpoint)EditorGUILayout.EnumPopup(entry.Endpoint, GUILayout.Width(120));
             if (newEndpoint != entry.Endpoint) { entry.Endpoint = newEndpoint; MarkDirty(); }
+            GUILayout.Space(PAD);
+            EditorGUILayout.EndHorizontal();
+            GUILayout.Space(2);
+
+            EditorGUILayout.BeginHorizontal();
+            GUILayout.Space(PAD);
+            GUILayout.Label("Context Window", EditorGUIHelper.DetailLabelStyle, GUILayout.Width(LABEL_WIDTH));
+            var newContextWindow = EditorGUILayout.IntField(entry.ContextWindow, GUILayout.Width(120));
+            if (newContextWindow < 0) newContextWindow = 0;
+            if (newContextWindow != entry.ContextWindow) { entry.ContextWindow = newContextWindow; MarkDirty(); }
+            GUILayout.Label("tokens (0 = auto)", EditorGUIHelper.DetailLabelStyle);
             GUILayout.Space(PAD);
             EditorGUILayout.EndHorizontal();
             GUILayout.Space(2);
@@ -592,6 +604,14 @@ namespace UniAI.Editor
             GUILayout.Space(PAD);
             EditorGUILayout.EndHorizontal();
             GUILayout.Space(2);
+        }
+
+        private static string FormatContextWindow(int tokens)
+        {
+            if (tokens <= 0) return "-";
+            if (tokens >= 1_000_000) return $"{tokens / 1000_000f:0.#}M tokens";
+            if (tokens >= 1_000) return $"{tokens / 1000f:0.#}K tokens";
+            return $"{tokens} tokens";
         }
 
         private void DrawDetailRow(string label, string value)

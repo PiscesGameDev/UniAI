@@ -28,16 +28,21 @@ namespace UniAI
         /// <summary>模型图标（可选，用于 UI 展示）</summary>
         public Texture2D Icon;
 
+        /// <summary>上下文窗口大小（tokens），0 表示由 ModelRegistry 前缀表兜底</summary>
+        public int ContextWindow;
+
         public ModelEntry() { }
 
         public ModelEntry(string id, string vendor,
-            ModelCapability capabilities, ModelEndpoint endpoint, string description = null)
+            ModelCapability capabilities, ModelEndpoint endpoint,
+            string description = null, int contextWindow = 0)
         {
             Id = id;
             Vendor = vendor;
             Capabilities = capabilities;
             Endpoint = endpoint;
             Description = description;
+            ContextWindow = contextWindow;
         }
 
         /// <summary>判断模型是否支持指定能力</summary>

@@ -72,7 +72,7 @@ namespace UniAI
             }
 
             // 3. 计算可用 token
-            int modelContextWindow = ModelContextLimits.GetContextWindow(modelId);
+            int modelContextWindow = ModelRegistry.GetContextWindow(modelId);
             int maxTokens = config.MaxContextTokens > 0
                 ? config.MaxContextTokens
                 : (int)(modelContextWindow * 0.8f);
