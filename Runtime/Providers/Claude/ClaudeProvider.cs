@@ -98,7 +98,7 @@ namespace UniAI.Providers.Claude
                 else
                 {
                     bool hasMultipleContentTypes = msg.Contents.Count > 1 ||
-                        msg.Contents.Any(c => c is AIImageContent);
+                        msg.Contents.Any(c => c is AIImageContent or AIFileContent);
 
                     object content;
                     if (hasMultipleContentTypes)
@@ -116,6 +116,8 @@ namespace UniAI.Providers.Claude
                                         Data = Convert.ToBase64String(img.Data)
                                     }
                                 };
+                            if (c is AIFileContent file)
+                                return new ClaudeTextBlock { Text = $"[File: {file.FileName}]\n{file.Text}" };
                             return null;
                         }).Where(x => x != null).ToList();
                     }

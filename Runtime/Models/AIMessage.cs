@@ -39,6 +39,27 @@ namespace UniAI
         };
 
         /// <summary>
+        /// 快捷创建含文件附件的用户消息
+        /// </summary>
+        public static AIMessage UserWithFiles(string text, List<AIFileContent> files) => new()
+        {
+            Role = AIRole.User,
+            Contents = BuildFileContents(text, files)
+        };
+
+        private static List<AIContent> BuildFileContents(string text, List<AIFileContent> files)
+        {
+            var contents = new List<AIContent>();
+            if (files != null)
+            {
+                foreach (var f in files)
+                    contents.Add(f);
+            }
+            contents.Add(new AITextContent(text));
+            return contents;
+        }
+
+        /// <summary>
         /// 快捷创建助手消息
         /// </summary>
         public static AIMessage Assistant(string text) => new()

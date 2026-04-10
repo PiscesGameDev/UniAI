@@ -36,6 +36,22 @@ namespace UniAI
     }
 
     /// <summary>
+    /// 文本文件附件（作为上下文注入）
+    /// </summary>
+    public class AIFileContent : AIContent
+    {
+        public override string Type => "file";
+        public string FileName { get; set; }
+        public string Text { get; set; }
+
+        public AIFileContent(string fileName, string text)
+        {
+            FileName = fileName;
+            Text = text;
+        }
+    }
+
+    /// <summary>
     /// AI 发起的 Tool 调用（出现在 assistant 消息中）
     /// </summary>
     public class AIToolUseContent : AIContent

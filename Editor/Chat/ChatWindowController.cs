@@ -199,20 +199,27 @@ namespace UniAI.Editor.Chat
                 FindAgentById, _history, GenerateTitle).Forget();
         }
 
-        public void SendMessage(string text, ContextCollector.ContextSlot contextSlots)
+        public void SendMessage(string text, ContextCollector.ContextSlot contextSlots,
+            List<ChatAttachment> attachments = null)
         {
-            if (string.IsNullOrWhiteSpace(text)) return;
+            if (string.IsNullOrWhiteSpace(text) && (attachments == null || attachments.Count == 0))
+                return;
 
             if (_activeSession == null)
                 CreateNewSession();
             if (_activeSession == null) return;
 
-            _activeSession.Messages.Add(new ChatMessage
+            var chatMsg = new ChatMessage
             {
                 Role = AIRole.User,
-                Content = text.Trim(),
+                Content = text?.Trim() ?? "",
                 Timestamp = DateTimeOffset.UtcNow.ToUnixTimeSeconds()
-            });
+            };
+
+            if (attachments != null && attachments.Count > 0)
+                chatMsg.Attachments = attachments;
+
+            _activeSession.Messages.Add(chatMsg);
             OnScrollToBottom?.Invoke();
 
             _streaming.StreamResponseAsync(

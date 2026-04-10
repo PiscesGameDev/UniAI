@@ -245,6 +245,11 @@ namespace UniAI.Editor.Chat
             var contentRect = EditorGUILayout.BeginVertical(GUILayout.MaxWidth(maxBubbleWidth));
             DrawBubbleBackground(contentRect, _userMsgBg, true);
             GUILayout.Space(2);
+
+            // 渲染附件
+            if (msg.Attachments is { Count: > 0 })
+                DrawMessageAttachments(msg.Attachments, maxContentWidth);
+
             GUILayout.Label(msg.Content, _userMsgStyle, GUILayout.MaxWidth(maxContentWidth));
             GUILayout.Space(2);
             EditorGUILayout.EndVertical();
@@ -380,6 +385,69 @@ namespace UniAI.Editor.Chat
                 GUILayout.Space(MSG_HORIZONTAL_PAD + 8);
 
             EditorGUILayout.EndHorizontal();
+        }
+
+        // ─── Message Attachment Rendering ───
+
+        private const float ATTACHMENT_THUMB_SIZE = 80f;
+        private readonly Dictionary<string, Texture2D> _msgAttachmentCache = new();
+
+        private void DrawMessageAttachments(List<ChatAttachment> attachments, float maxWidth)
+        {
+            foreach (var att in attachments)
+            {
+                switch (att.Type)
+                {
+                    case ChatAttachmentType.Image:
+                        DrawInlineImageAttachment(att, maxWidth);
+                        break;
+                    case ChatAttachmentType.File:
+                        DrawInlineFileAttachment(att, maxWidth);
+                        break;
+                }
+            }
+
+            GUILayout.Space(4);
+        }
+
+        private void DrawInlineImageAttachment(ChatAttachment att, float maxWidth)
+        {
+            string cacheKey = $"msgatt_{att.FileName}_{att.Content?.Length}";
+            if (!_msgAttachmentCache.TryGetValue(cacheKey, out var tex) || tex == null)
+            {
+                if (!string.IsNullOrEmpty(att.Content))
+                {
+                    tex = new Texture2D(2, 2);
+                    tex.LoadImage(Convert.FromBase64String(att.Content));
+                    _msgAttachmentCache[cacheKey] = tex;
+                }
+            }
+
+            if (tex != null)
+            {
+                float displayW = Mathf.Min(tex.width, ATTACHMENT_THUMB_SIZE, maxWidth);
+                float displayH = displayW * tex.height / tex.width;
+                var rect = GUILayoutUtility.GetRect(displayW, displayH,
+                    GUILayout.Width(displayW), GUILayout.Height(displayH));
+                GUI.DrawTexture(rect, tex, ScaleMode.ScaleToFit);
+            }
+
+            GUILayout.Space(2);
+        }
+
+        private void DrawInlineFileAttachment(ChatAttachment att, float maxWidth)
+        {
+            var fileRect = EditorGUILayout.BeginHorizontal(GUILayout.Height(20));
+            if (fileRect.width > 1)
+                DrawRoundedRect(new Rect(fileRect.x, fileRect.y, fileRect.width, fileRect.height),
+                    new Color(0.22f, 0.22f, 0.26f), 3f);
+
+            GUILayout.Space(6);
+            GUILayout.Label($"F {att.FileName ?? "file"}", EditorStyles.miniLabel,
+                GUILayout.MaxWidth(maxWidth - 12), GUILayout.Height(18));
+            GUILayout.Space(6);
+            EditorGUILayout.EndHorizontal();
+            GUILayout.Space(2);
         }
 
         private static void DrawBubbleBackground(Rect contentRect, Color bgColor, bool isUser)

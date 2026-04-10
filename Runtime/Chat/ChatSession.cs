@@ -6,6 +6,29 @@ using Newtonsoft.Json.Converters;
 
 namespace UniAI
 {
+    public enum ChatAttachmentType
+    {
+        Image,
+        File
+    }
+
+    [Serializable]
+    public class ChatAttachment
+    {
+        /// <summary>附件类型</summary>
+        [JsonConverter(typeof(StringEnumConverter))]
+        public ChatAttachmentType Type;
+
+        /// <summary>显示名</summary>
+        public string FileName;
+
+        /// <summary>文本内容（Type=File 时），或 base64 数据（Type=Image 时）</summary>
+        public string Content;
+
+        /// <summary>MIME 类型（Type=Image 时），如 image/png</summary>
+        public string MediaType;
+    }
+
     [Serializable]
     public class ChatMessage
     {
@@ -25,6 +48,9 @@ namespace UniAI
         public string ToolArguments;
         public string ToolResult;
         public bool IsToolError;
+
+        /// <summary>附件列表（图片 / 文件），可选</summary>
+        public List<ChatAttachment> Attachments;
 
         [NonSerialized] public bool IsStreaming;
     }
@@ -147,7 +173,35 @@ namespace UniAI
 
                 if (msg.Role == AIRole.User)
                 {
-                    messages.Add(AIMessage.User(content));
+                    var userMsg = AIMessage.User(content);
+
+                    if (msg.Attachments != null && msg.Attachments.Count > 0)
+                    {
+                        var contents = new List<AIContent>();
+                        foreach (var att in msg.Attachments)
+                        {
+                            switch (att.Type)
+                            {
+                                case ChatAttachmentType.Image:
+                                    if (!string.IsNullOrEmpty(att.Content))
+                                        contents.Add(new AIImageContent(
+                                            Convert.FromBase64String(att.Content),
+                                            att.MediaType ?? "image/png"));
+                                    break;
+                                case ChatAttachmentType.File:
+                                    if (!string.IsNullOrEmpty(att.Content))
+                                        contents.Add(new AIFileContent(
+                                            att.FileName ?? "unknown",
+                                            att.Content));
+                                    break;
+                            }
+                        }
+
+                        contents.Add(new AITextContent(content));
+                        userMsg.Contents = contents;
+                    }
+
+                    messages.Add(userMsg);
                 }
                 else
                 {

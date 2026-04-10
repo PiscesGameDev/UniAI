@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using UnityEditor;
 using UnityEngine;
 
@@ -52,6 +53,11 @@ namespace UniAI.Editor.Chat
         private ContextCollector.ContextSlot _contextSlots;
         private bool _scrollToBottom;
         private bool _showActionBar;
+
+        // ─── Pending Attachments ───
+
+        private readonly List<ChatAttachment> _pendingAttachments = new();
+        private readonly Dictionary<string, Texture2D> _attachmentThumbnails = new();
 
         // Spinner state
         private double _spinnerStartTime;
@@ -270,7 +276,15 @@ namespace UniAI.Editor.Chat
             if (_controller.ActiveSession == null)
                 CreateNewSession();
 
-            _controller.SendMessage(text, _contextSlots);
+            List<ChatAttachment> attachments = null;
+            if (_pendingAttachments.Count > 0)
+            {
+                attachments = new List<ChatAttachment>(_pendingAttachments);
+                _pendingAttachments.Clear();
+                _attachmentThumbnails.Clear();
+            }
+
+            _controller.SendMessage(text, _contextSlots, attachments);
         }
 
         private void CancelStream()

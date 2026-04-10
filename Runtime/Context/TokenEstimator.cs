@@ -67,7 +67,8 @@ namespace UniAI
                 AITextContent text => EstimateTokens(text.Text),
                 AIToolUseContent toolUse => EstimateTokens(toolUse.Name) + EstimateTokens(toolUse.Arguments) + 10,
                 AIToolResultContent toolResult => EstimateTokens(toolResult.Content) + 10,
-                AIImageContent => 1000, // 图片按固定值估算
+                AIImageContent => 1000,
+                AIFileContent file => EstimateTokens(file.Text) + EstimateTokens(file.FileName) + 10,
                 _ => 0
             };
         }

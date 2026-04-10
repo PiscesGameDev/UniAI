@@ -96,10 +96,10 @@ namespace UniAI.Providers.OpenAI
 
                 // Normal message
                 var role = msg.Role == AIRole.User ? "user" : "assistant";
-                bool hasImage = msg.Contents.Any(c => c is AIImageContent);
+                bool hasMultiContent = msg.Contents.Any(c => c is AIImageContent or AIFileContent);
 
                 object content;
-                if (hasImage)
+                if (hasMultiContent)
                 {
                     content = msg.Contents.Select<AIContent, object>(c =>
                     {
@@ -113,6 +113,8 @@ namespace UniAI.Providers.OpenAI
                                     Url = $"data:{img.MediaType};base64,{Convert.ToBase64String(img.Data)}"
                                 }
                             };
+                        if (c is AIFileContent file)
+                            return new OpenAITextPart { Text = $"[File: {file.FileName}]\n{file.Text}" };
                         return null;
                     }).Where(x => x != null).ToList();
                 }
