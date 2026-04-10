@@ -40,7 +40,7 @@ namespace UniAI.Editor
         /// <summary>
         /// Tool 修改了文件时调用，标记需要在结束后刷新
         /// </summary>
-        public void MarkDirty() => _isDirty = true;
+        private void MarkDirty() => _isDirty = true;
 
         public void Dispose()
         {
