@@ -55,7 +55,7 @@ namespace UniAI.Editor.Chat
         private int _selectedModelIndex;
         private string _currentModelId;
         private string[] _modelNames;
-        private List<ModelRoute> _modelEntries;
+        private List<string> _modelEntries;
         private List<AgentDefinition> _availableAgents;
         private string _mcpStatus;
         private UniTask _mcpInitTask;
@@ -101,7 +101,7 @@ namespace UniAI.Editor.Chat
             {
                 for (int i = 0; i < _modelEntries.Count; i++)
                 {
-                    if (_modelEntries[i].ModelId == session.ModelId)
+                    if (_modelEntries[i] == session.ModelId)
                     {
                         _selectedModelIndex = i;
                         _currentModelId = session.ModelId;
@@ -152,7 +152,7 @@ namespace UniAI.Editor.Chat
                 {
                     for (int i = 0; i < _modelEntries.Count; i++)
                     {
-                        if (_modelEntries[i].ModelId == agent.SpecifyModel)
+                        if (_modelEntries[i] == agent.SpecifyModel)
                         {
                             _selectedModelIndex = i;
                             _currentModelId = agent.SpecifyModel;
@@ -174,7 +174,7 @@ namespace UniAI.Editor.Chat
             if (index == _selectedModelIndex) return;
 
             _selectedModelIndex = index;
-            _currentModelId = _modelEntries[index].ModelId;
+            _currentModelId = _modelEntries[index];
             EnsureRunner();
 
             if (_activeSession != null)
@@ -633,7 +633,7 @@ namespace UniAI.Editor.Chat
             if (_selectedModelIndex >= _modelEntries.Count)
                 _selectedModelIndex = 0;
 
-            _currentModelId = _modelEntries[_selectedModelIndex].ModelId;
+            _currentModelId = _modelEntries[_selectedModelIndex];
 
             try
             {
@@ -652,16 +652,16 @@ namespace UniAI.Editor.Chat
             _modelNames = new string[_modelEntries.Count];
             for (int i = 0; i < _modelEntries.Count; i++)
             {
-                var entry = ModelRegistry.Get(_modelEntries[i].ModelId);
+                var entry = ModelRegistry.Get(_modelEntries[i]);
                 string vendor = !string.IsNullOrEmpty(entry?.Vendor) ? entry.Vendor : "Unknown";
-                _modelNames[i] = $"{vendor}/{_modelEntries[i].ModelId}";
+                _modelNames[i] = $"{vendor}/{_modelEntries[i]}";
             }
 
             if (!string.IsNullOrEmpty(_currentModelId))
             {
                 for (int i = 0; i < _modelEntries.Count; i++)
                 {
-                    if (_modelEntries[i].ModelId == _currentModelId)
+                    if (_modelEntries[i] == _currentModelId)
                     {
                         _selectedModelIndex = i;
                         return;
@@ -670,7 +670,7 @@ namespace UniAI.Editor.Chat
             }
 
             _selectedModelIndex = 0;
-            _currentModelId = _modelEntries.Count > 0 ? _modelEntries[0].ModelId : null;
+            _currentModelId = _modelEntries.Count > 0 ? _modelEntries[0] : null;
         }
 
         private void RebuildAgentCache()

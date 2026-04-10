@@ -22,22 +22,6 @@ namespace UniAI
     }
 
     /// <summary>
-    /// 模型路由信息 — 模型名 + 首选渠道
-    /// </summary>
-    public struct ModelRoute
-    {
-        /// <summary>
-        /// 模型名称（如 "claude-opus-4-6"）
-        /// </summary>
-        public string ModelId;
-
-        /// <summary>
-        /// 首选渠道（优先级最高的）
-        /// </summary>
-        public ChannelEntry Provider;
-    }
-
-    /// <summary>
     /// AI 框架配置 — 动态 Provider 列表
     /// </summary>
     [Serializable]
@@ -69,11 +53,11 @@ namespace UniAI
         }
 
         /// <summary>
-        /// 获取所有可用模型（扁平化、去重，同名模型取优先级最高的渠道）
+        /// 获取所有可用模型（扁平化、去重）
         /// </summary>
-        public List<ModelRoute> GetAllModels()
+        public List<string> GetAllModels()
         {
-            var result = new List<ModelRoute>();
+            var result = new List<string>();
             var seen = new HashSet<string>();
 
             foreach (var provider in Providers)
@@ -84,9 +68,7 @@ namespace UniAI
                 {
                     if (string.IsNullOrEmpty(modelId)) continue;
                     if (seen.Add(modelId))
-                    {
-                        result.Add(new ModelRoute { ModelId = modelId, Provider = provider });
-                    }
+                        result.Add(modelId);
                 }
             }
 
@@ -107,7 +89,6 @@ namespace UniAI
                 if (provider.Models != null && provider.Models.Contains(modelId))
                     result.Add(provider);
             }
-
             return result;
         }
     }
