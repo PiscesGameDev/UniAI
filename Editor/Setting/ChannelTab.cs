@@ -67,8 +67,8 @@ namespace UniAI.Editor
         }
 
         private ChannelEntry SelectedEntry =>
-            Config.Providers.Count > 0 && _selectedIndex < Config.Providers.Count
-                ? Config.Providers[_selectedIndex]
+            Config.ChannelEntries.Count > 0 && _selectedIndex < Config.ChannelEntries.Count
+                ? Config.ChannelEntries[_selectedIndex]
                 : null;
 
         private string ModelKey(string channelId, string modelId) => $"{channelId}:{modelId}";
@@ -127,7 +127,7 @@ namespace UniAI.Editor
 
             GUILayout.Space(12);
 
-            for (int i = 0; i < Config.Providers.Count; i++)
+            for (int i = 0; i < Config.ChannelEntries.Count; i++)
             {
                 DrawProviderItem(i);
                 GUILayout.Space(2);
@@ -138,7 +138,7 @@ namespace UniAI.Editor
 
         private void DrawProviderItem(int index)
         {
-            var entry = Config.Providers[index];
+            var entry = Config.ChannelEntries[index];
             bool isSelected = _selectedIndex == index;
             var rect = EditorGUILayout.BeginHorizontal(GUILayout.Height(30));
 
@@ -246,6 +246,7 @@ namespace UniAI.Editor
                 entry.Enabled = newEnabled;
                 AIConfigManager.SaveConfig(Config);
             }
+
             EditorGUILayout.EndHorizontal();
 
             GUILayout.Space(4);
@@ -253,16 +254,7 @@ namespace UniAI.Editor
             // Name
             EditorGUILayout.BeginHorizontal();
             EditorGUILayout.LabelField("名称", GUILayout.Width(LABEL_WIDTH));
-            if (ChannelPresets.IsPresetId(entry.Id))
-            {
-                EditorGUI.BeginDisabledGroup(true);
-                EditorGUILayout.TextField(entry.Name);
-                EditorGUI.EndDisabledGroup();
-            }
-            else
-            {
-                entry.Name = EditorGUILayout.TextField(entry.Name ?? "");
-            }
+            entry.Name = EditorGUILayout.TextField(entry.Name ?? "");
             EditorGUILayout.EndHorizontal();
 
             GUILayout.Space(4);
@@ -281,22 +273,15 @@ namespace UniAI.Editor
             GUILayout.Space(4);
             EditorGUILayout.BeginHorizontal();
             EditorGUILayout.LabelField("Protocol", GUILayout.Width(LABEL_WIDTH));
-            if (ChannelPresets.IsPresetId(entry.Id))
+
+            var newProtocol = (ProviderProtocol)EditorGUILayout.EnumPopup(entry.Protocol);
+            if (newProtocol != entry.Protocol)
             {
-                EditorGUI.BeginDisabledGroup(true);
-                EditorGUILayout.EnumPopup(entry.Protocol);
-                EditorGUI.EndDisabledGroup();
+                entry.Protocol = newProtocol;
+                if (newProtocol == ProviderProtocol.Claude && string.IsNullOrEmpty(entry.ApiVersion))
+                    entry.ApiVersion = "2023-06-01";
             }
-            else
-            {
-                var newProtocol = (ProviderProtocol)EditorGUILayout.EnumPopup(entry.Protocol);
-                if (newProtocol != entry.Protocol)
-                {
-                    entry.Protocol = newProtocol;
-                    if (newProtocol == ProviderProtocol.Claude && string.IsNullOrEmpty(entry.ApiVersion))
-                        entry.ApiVersion = "2023-06-01";
-                }
-            }
+
             EditorGUILayout.EndHorizontal();
         }
 
@@ -700,31 +685,23 @@ namespace UniAI.Editor
         private void ShowAddProviderMenu()
         {
             var menu = new GenericMenu();
-            var existingIds = new HashSet<string>(Config.Providers.Select(p => p.Id));
-
-            foreach (var preset in ChannelPresets.All)
+            
+            foreach (var channel in ChannelEntry.All)
             {
-                if (existingIds.Contains(preset.Id))
+                var c = channel;
+                menu.AddItem(new GUIContent(channel.Name + "(模板)"), false, () =>
                 {
-                    menu.AddDisabledItem(new GUIContent($"{preset.Name} (已添加)"));
-                }
-                else
-                {
-                    var p = preset;
-                    menu.AddItem(new GUIContent(preset.Name), false, () =>
-                    {
-                        Config.Providers.Add(p);
-                        _selectedIndex = Config.Providers.Count - 1;
-                        Window.Repaint();
-                    });
-                }
+                    Config.ChannelEntries.Add(c);
+                    _selectedIndex = Config.ChannelEntries.Count - 1;
+                    Window.Repaint();
+                });
             }
 
             menu.AddSeparator("");
             menu.AddItem(new GUIContent("自定义 (OpenAI 兼容)"), false, () =>
             {
                 var id = $"custom_{DateTime.Now.Ticks}";
-                Config.Providers.Add(new ChannelEntry
+                Config.ChannelEntries.Add(new ChannelEntry
                 {
                     Id = id,
                     Name = "Custom",
@@ -732,7 +709,7 @@ namespace UniAI.Editor
                     BaseUrl = "https://",
                     Models = new List<string>()
                 });
-                _selectedIndex = Config.Providers.Count - 1;
+                _selectedIndex = Config.ChannelEntries.Count - 1;
                 Window.Repaint();
             });
 
@@ -741,7 +718,7 @@ namespace UniAI.Editor
 
         private void ShowProviderContextMenu(int index)
         {
-            var entry = Config.Providers[index];
+            var entry = Config.ChannelEntries[index];
             var menu = new GenericMenu();
 
             var toggleLabel = entry.Enabled ? "禁用" : "启用";
@@ -765,9 +742,9 @@ namespace UniAI.Editor
                 _fetchedModels.Remove(entry.Id);
                 _availableModels.Remove(entry.Id);
                 _availableModelsScroll.Remove(entry.Id);
-                Config.Providers.RemoveAt(index);
-                if (_selectedIndex >= Config.Providers.Count)
-                    _selectedIndex = Mathf.Max(0, Config.Providers.Count - 1);
+                Config.ChannelEntries.RemoveAt(index);
+                if (_selectedIndex >= Config.ChannelEntries.Count)
+                    _selectedIndex = Mathf.Max(0, Config.ChannelEntries.Count - 1);
                 Window.Repaint();
             });
             menu.ShowAsContext();

@@ -33,7 +33,7 @@ namespace UniAI
         {
             if (config == null) throw new ArgumentNullException(nameof(config));
 
-            var entry = config.GetActiveProvider()
+            var entry = config.GetActiveChannel()
                 ?? throw new InvalidOperationException("No provider configured in AIConfig.");
 
             return Create(entry, entry.DefaultModel, config.General);
@@ -47,7 +47,7 @@ namespace UniAI
             if (config == null) throw new ArgumentNullException(nameof(config));
             if (string.IsNullOrEmpty(modelId)) throw new ArgumentNullException(nameof(modelId));
 
-            var providers = config.FindProvidersForModel(modelId);
+            var providers = config.FindChannelsForModel(modelId);
             if (providers.Count == 0)
                 throw new InvalidOperationException($"No provider found for model '{modelId}'.");
 

@@ -714,9 +714,9 @@ namespace UniAI.Editor
         private Dictionary<string, List<string>> BuildChannelMap()
         {
             var map = new Dictionary<string, List<string>>();
-            if (Config?.Providers == null) return map;
+            if (Config?.ChannelEntries == null) return map;
 
-            foreach (var ch in Config.Providers)
+            foreach (var ch in Config.ChannelEntries)
             {
                 if (!ch.Enabled || ch.Models == null) continue;
                 foreach (var modelId in ch.Models)

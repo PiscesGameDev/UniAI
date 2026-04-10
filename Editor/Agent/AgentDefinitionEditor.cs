@@ -151,7 +151,7 @@ namespace UniAI.Editor
             var byVendor = new System.Collections.Generic.SortedDictionary<string, System.Collections.Generic.SortedSet<string>>();
             if (settings != null)
             {
-                foreach (var provider in settings.Providers)
+                foreach (var provider in settings.ChannelEntries)
                 {
                     if (provider == null || !provider.Enabled || provider.Models == null) continue;
                     foreach (var modelId in provider.Models)

@@ -28,7 +28,7 @@ namespace UniAI.Editor
             AILogger.LogLevel = config.General.LogLevel;
 
             // 环境变量覆盖 API Key
-            foreach (var provider in config.Providers)
+            foreach (var provider in config.ChannelEntries)
             {
                 var effectiveKey = provider.GetEffectiveApiKey();
                 if (effectiveKey != provider.ApiKey)
@@ -46,17 +46,17 @@ namespace UniAI.Editor
             var settings = LoadOrCreateSettings();
 
             // 清除来自环境变量的 Key，避免写入资产
-            foreach (var provider in config.Providers)
+            foreach (var provider in config.ChannelEntries)
             {
                 if (provider.IsApiKeyFromEnv())
                     provider.ApiKey = null;
             }
 
             // 同步数据到 SO（跳过同引用场景，避免 Clear 清空自身）
-            if (settings.Providers != config.Providers)
+            if (settings.ChannelEntries != config.ChannelEntries)
             {
-                settings.Providers.Clear();
-                settings.Providers.AddRange(config.Providers);
+                settings.ChannelEntries.Clear();
+                settings.ChannelEntries.AddRange(config.ChannelEntries);
             }
             if (settings.General != config.General)
             {
@@ -71,7 +71,7 @@ namespace UniAI.Editor
             AILogger.LogLevel = config.General.LogLevel;
 
             // 恢复环境变量覆盖的 Key（内存中保持有效值）
-            foreach (var provider in config.Providers)
+            foreach (var provider in config.ChannelEntries)
             {
                 var effectiveKey = provider.GetEffectiveApiKey();
                 if (effectiveKey != provider.ApiKey)
@@ -105,7 +105,7 @@ namespace UniAI.Editor
         private static UniAISettings CreateDefaultSettings()
         {
             var settings = ScriptableObject.CreateInstance<UniAISettings>();
-            settings.Providers.AddRange(ChannelPresets.CreateDefaults());
+            settings.ChannelEntries.AddRange(ChannelEntry.All);
 
             EnsureResourcesDir();
             AssetDatabase.CreateAsset(settings, SettingsAssetPath);

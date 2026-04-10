@@ -10,14 +10,14 @@ namespace UniAI
     [CreateAssetMenu(menuName = "UniAI/Settings", fileName = "UniAISettings")]
     public class UniAISettings : ScriptableObject
     {
-        [SerializeField] private List<ChannelEntry> _providers = new();
+        [SerializeField] private List<ChannelEntry> _channelEntries = new();
         [SerializeField] private GeneralConfig _general = new();
         [SerializeField] private List<ModelEntry> _customModels = new();
 
         /// <summary>
         /// 渠道列表
         /// </summary>
-        public List<ChannelEntry> Providers => _providers;
+        public List<ChannelEntry> ChannelEntries => _channelEntries;
 
         /// <summary>
         /// 通用设置
@@ -34,7 +34,7 @@ namespace UniAI
         /// </summary>
         public AIConfig ToConfig() => new()
         {
-            Providers = _providers,
+            ChannelEntries = _channelEntries,
             General = _general
         };
 

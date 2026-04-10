@@ -81,7 +81,7 @@ namespace UniAI.Editor.Tools
 
             // 查找渠道
             var config = AIConfigManager.LoadConfig();
-            var channels = config.FindProvidersForModel(model);
+            var channels = config.FindChannelsForModel(model);
             if (channels.Count == 0)
                 return ToolResponse.Error($"Model '{model}' not found in any enabled channel. Add it to a channel's model list first.");
 
@@ -183,9 +183,9 @@ namespace UniAI.Editor.Tools
             var config = AIConfigManager.LoadConfig();
             var channelModels = new Dictionary<string, List<string>>();
 
-            if (config?.Providers != null)
+            if (config?.ChannelEntries != null)
             {
-                foreach (var ch in config.Providers)
+                foreach (var ch in config.ChannelEntries)
                 {
                     if (!ch.Enabled || ch.Models == null) continue;
                     foreach (var modelId in ch.Models)
