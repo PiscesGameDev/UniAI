@@ -78,6 +78,9 @@ namespace UniAI
         /// </summary>
         internal static AgentEvent FromChunk(AIStreamChunk chunk)
         {
+            if (!string.IsNullOrEmpty(chunk.Error))
+                return new AgentEvent { Type = AgentEventType.Error, Text = chunk.Error };
+
             if (!string.IsNullOrEmpty(chunk.DeltaText))
                 return new AgentEvent { Type = AgentEventType.TextDelta, Text = chunk.DeltaText };
 

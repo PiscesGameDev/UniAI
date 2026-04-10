@@ -195,11 +195,20 @@ namespace UniAI
 
                         case AgentEventType.ToolCallResult:
                         {
+                            string toolUseId = evt.ToolCall?.Id;
                             for (int i = session.Messages.Count - 1; i >= 0; i--)
                             {
                                 var m = session.Messages[i];
-                                if (m.IsToolCall && m.ToolName == evt.ToolName &&
-                                    string.IsNullOrEmpty(m.ToolResult))
+                                if (!m.IsToolCall || !string.IsNullOrEmpty(m.ToolResult))
+                                    continue;
+
+                                // 优先按 ToolUseId 精确匹配，回退到 ToolName 匹配
+                                bool idMatch = !string.IsNullOrEmpty(toolUseId)
+                                    && m.ToolUseId == toolUseId;
+                                bool nameMatch = string.IsNullOrEmpty(toolUseId)
+                                    && m.ToolName == evt.ToolName;
+
+                                if (idMatch || nameMatch)
                                 {
                                     m.ToolResult = evt.ToolResult;
                                     m.IsToolError = evt.IsToolError;

@@ -210,6 +210,15 @@ namespace UniAI
 
                     await foreach (var chunk in _client.StreamAsync(request, linkedToken))
                     {
+                        if (!string.IsNullOrEmpty(chunk.Error))
+                        {
+                            await writer.YieldAsync(new AgentEvent
+                            {
+                                Type = AgentEventType.Error,
+                                Text = chunk.Error
+                            });
+                        }
+
                         if (!string.IsNullOrEmpty(chunk.DeltaText))
                         {
                             responseText += chunk.DeltaText;

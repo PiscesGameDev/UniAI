@@ -60,6 +60,7 @@ namespace UniAI.Providers
             {
                 using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct, token);
                 var linkedToken = cts.Token;
+                string lastError = null;
 
                 for (int i = 0; i < _providers.Count; i++)
                 {
@@ -80,11 +81,17 @@ namespace UniAI.Providers
                     catch (OperationCanceledException) { throw; }
                     catch (Exception e)
                     {
+                        lastError = e.Message;
+
                         if (hasYielded)
                         {
                             // 已经向消费者输出了部分数据，不能切换 Provider（会导致响应拼接错乱）
                             AILogger.Error($"FallbackProvider stream: provider[{i}] ({_providers[i].Name}) failed mid-stream: {e.Message}");
-                            await writer.YieldAsync(new AIStreamChunk { IsComplete = true });
+                            await writer.YieldAsync(new AIStreamChunk
+                            {
+                                IsComplete = true,
+                                Error = $"Provider '{_providers[i].Name}' failed mid-stream: {e.Message}"
+                            });
                             return;
                         }
 
@@ -95,7 +102,8 @@ namespace UniAI.Providers
                 // 所有 Provider 都失败（均在流开始前失败）
                 await writer.YieldAsync(new AIStreamChunk
                 {
-                    IsComplete = true
+                    IsComplete = true,
+                    Error = $"All providers failed. Last error: {lastError ?? "unknown"}"
                 });
             });
         }

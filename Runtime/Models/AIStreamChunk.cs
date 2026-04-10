@@ -24,5 +24,10 @@ namespace UniAI
         /// 流式中的 Tool 调用（增量累积完成后填充）
         /// </summary>
         public AIToolCall ToolCall { get; set; }
+
+        /// <summary>
+        /// 错误信息（流式失败时填充，与 IsComplete=true 配合使用）
+        /// </summary>
+        public string Error { get; set; }
     }
 }

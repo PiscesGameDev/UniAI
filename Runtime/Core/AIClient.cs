@@ -62,8 +62,7 @@ namespace UniAI
             var innerProviders = new List<IAIProvider>();
             foreach (var entry in providers)
             {
-                var apiKey = entry.ApiKey;
-                if (string.IsNullOrEmpty(apiKey)) continue;
+                if (string.IsNullOrEmpty(entry.GetEffectiveApiKey())) continue;
                 innerProviders.Add(CreateProvider(entry, modelId, general));
             }
 
@@ -102,7 +101,7 @@ namespace UniAI
         {
             var config = new ProviderBase.ProviderConfig
             {
-                ApiKey = entry.ApiKey,
+                ApiKey = entry.GetEffectiveApiKey(),
                 BaseUrl = entry.BaseUrl,
                 Model = modelId ?? entry.DefaultModel,
                 TimeoutSeconds = general.TimeoutSeconds,
