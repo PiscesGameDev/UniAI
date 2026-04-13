@@ -31,16 +31,8 @@ namespace UniAI.Editor.Chat
             GUILayout.Space(12);
 
             // ─── 模型选择 ───
-            var modelNames = _controller.ModelNames;
-            if (modelNames is { Length: > 0 })
-            {
-                GUILayout.Label("模型:", EditorStyles.miniLabel, GUILayout.Width(36));
-                int selectedIndex = _controller.SelectedModelIndex;
-                int newIdx = EditorGUILayout.Popup(selectedIndex, modelNames,
-                    GUILayout.Width(220), GUILayout.Height(22));
-                if (newIdx != selectedIndex)
-                    _controller.SelectModel(newIdx);
-            }
+            if (_controller.ModelSelectorGUI.Draw())
+                _controller.NotifyModelChanged();
 
             GUILayout.Space(12);
 

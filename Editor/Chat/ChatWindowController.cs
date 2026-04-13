@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using Cysharp.Threading.Tasks;
 using UnityEngine;
 
 namespace UniAI.Editor.Chat
@@ -27,7 +26,7 @@ namespace UniAI.Editor.Chat
 
         // ─── 子模块 ───
 
-        private ModelSelector _modelSelector;
+        private ModelSelectorGUI _modelSelectorGUI;
         private StreamingController _streaming;
         private ChatHistoryManager _history;
         private AIConfig _config;
@@ -40,9 +39,8 @@ namespace UniAI.Editor.Chat
         public ChatHistoryManager History => _history;
         public ChatSession ActiveSession => _activeSession;
         public bool IsStreaming => _streaming.IsStreaming;
-        public string CurrentModelId => _modelSelector.CurrentModelId;
-        public string[] ModelNames => _modelSelector.ModelNames;
-        public int SelectedModelIndex => _modelSelector.SelectedModelIndex;
+        public string CurrentModelId => _modelSelectorGUI.CurrentModelId;
+        public ModelSelectorGUI ModelSelectorGUI => _modelSelectorGUI;
         public IReadOnlyList<AgentDefinition> AvailableAgents => _availableAgents;
         public string McpStatus => _streaming.McpStatus;
 
@@ -55,8 +53,8 @@ namespace UniAI.Editor.Chat
                 new FileChatHistoryStorage("Library/UniAI/History", AIConfigManager.Prefs.MaxHistorySessions));
             _history.Load();
 
-            _modelSelector = new ModelSelector(AIConfigManager.Prefs.LastSelectedModelId);
-            _modelSelector.RebuildCache(_config);
+            _modelSelectorGUI = new ModelSelectorGUI(AIConfigManager.Prefs.LastSelectedModelId);
+            _modelSelectorGUI.RebuildCache(_config);
 
             _streaming = new StreamingController();
             _streaming.OnStreamingChanged += v => OnStreamingChanged?.Invoke(v);
@@ -64,7 +62,7 @@ namespace UniAI.Editor.Chat
             _streaming.OnStateChanged += () => OnStateChanged?.Invoke();
 
             RebuildAgentCache();
-            _streaming.EnsureRunner(_config, _modelSelector, FindAgentById(_activeSession?.AgentId));
+            _streaming.EnsureRunner(_config, _modelSelectorGUI.Selector, FindAgentById(_activeSession?.AgentId));
         }
 
         // ─── 会话管理 ───
@@ -74,11 +72,11 @@ namespace UniAI.Editor.Chat
         /// </summary>
         public void CreateNewSession(AgentDefinition agent = null)
         {
-            string modelId = _modelSelector.ResolveForAgent(agent);
+            string modelId = _modelSelectorGUI.ResolveForAgent(agent);
             _activeSession = ChatSession.Create(modelId);
             _activeSession.AgentId = agent != null ? agent.Id : "";
             _history.Save(_activeSession);
-            _streaming.EnsureRunner(_config, _modelSelector, agent);
+            _streaming.EnsureRunner(_config, _modelSelectorGUI.Selector, agent);
             NotifyAIAvatarChanged();
             OnStateChanged?.Invoke();
         }
@@ -86,8 +84,8 @@ namespace UniAI.Editor.Chat
         public void SwitchToSession(ChatSession session)
         {
             _activeSession = session;
-            _modelSelector.RestoreFromSession(session);
-            _streaming.EnsureRunner(_config, _modelSelector, FindAgentById(session.AgentId));
+            _modelSelectorGUI.RestoreFromSession(session);
+            _streaming.EnsureRunner(_config, _modelSelectorGUI.Selector, FindAgentById(session.AgentId));
             NotifyAIAvatarChanged();
 
             if (!string.IsNullOrEmpty(session.AgentId) && FindAgentById(session.AgentId) == null)
@@ -119,14 +117,26 @@ namespace UniAI.Editor.Chat
 
         public void SelectModel(int index)
         {
-            if (!_modelSelector.Select(index)) return;
+            if (!_modelSelectorGUI.Select(index)) return;
+            OnModelChanged();
+        }
 
-            _streaming.EnsureRunner(_config, _modelSelector, FindAgentById(_activeSession?.AgentId));
+        /// <summary>
+        /// 模型已通过 ModelSelectorGUI.Draw() 变更后调用，执行后续副作用
+        /// </summary>
+        public void NotifyModelChanged()
+        {
+            OnModelChanged();
+        }
+
+        private void OnModelChanged()
+        {
+            _streaming.EnsureRunner(_config, _modelSelectorGUI.Selector, FindAgentById(_activeSession?.AgentId));
 
             if (_activeSession != null)
-                _activeSession.ModelId = _modelSelector.CurrentModelId;
+                _activeSession.ModelId = _modelSelectorGUI.CurrentModelId;
 
-            AIConfigManager.Prefs.LastSelectedModelId = _modelSelector.CurrentModelId;
+            AIConfigManager.Prefs.LastSelectedModelId = _modelSelectorGUI.CurrentModelId;
             AIConfigManager.SavePrefs();
 
             OnStateChanged?.Invoke();
@@ -195,7 +205,7 @@ namespace UniAI.Editor.Chat
             OnStateChanged?.Invoke();
 
             _streaming.StreamResponseAsync(
-                _activeSession, contextSlots, _config, _modelSelector.CurrentModelId,
+                _activeSession, contextSlots, _config, _modelSelectorGUI.CurrentModelId,
                 FindAgentById, _history, GenerateTitle).Forget();
         }
 
@@ -223,7 +233,7 @@ namespace UniAI.Editor.Chat
             OnScrollToBottom?.Invoke();
 
             _streaming.StreamResponseAsync(
-                _activeSession, contextSlots, _config, _modelSelector.CurrentModelId,
+                _activeSession, contextSlots, _config, _modelSelectorGUI.CurrentModelId,
                 FindAgentById, _history, GenerateTitle).Forget();
         }
 
@@ -260,9 +270,9 @@ namespace UniAI.Editor.Chat
         public void ReloadConfig()
         {
             _config = AIConfigManager.LoadConfig();
-            _modelSelector.RebuildCache(_config);
+            _modelSelectorGUI.RebuildCache(_config);
             RebuildAgentCache();
-            _streaming.EnsureRunner(_config, _modelSelector, FindAgentById(_activeSession?.AgentId));
+            _streaming.EnsureRunner(_config, _modelSelectorGUI.Selector, FindAgentById(_activeSession?.AgentId));
             OnStateChanged?.Invoke();
         }
 
