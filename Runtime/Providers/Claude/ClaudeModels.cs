@@ -17,6 +17,11 @@ namespace UniAI.Providers.Claude
         [JsonProperty("stream")] public bool Stream;
         [JsonProperty("tools")] public List<ClaudeToolDef> Tools;
         [JsonProperty("tool_choice")] public object ToolChoice;
+
+        /// <summary>
+        /// 结构化输出虚拟 Tool 名称（不序列化，仅用于 ParseResponse 识别）
+        /// </summary>
+        [JsonIgnore] public string StructuredToolName;
     }
 
     [Serializable]

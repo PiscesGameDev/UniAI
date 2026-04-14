@@ -20,11 +20,6 @@ namespace UniAI
         private bool IsRouted => _config != null;
 
         /// <summary>
-        /// 当前 Provider 名称（直连模式返回 Provider 名称，路由模式返回 "ChannelManager"）
-        /// </summary>
-        public string ProviderName => IsRouted ? "ChannelManager" : _provider.Name;
-
-        /// <summary>
         /// 路由模式 — 只记录 config，不创建 Provider
         /// </summary>
         private AIClient(AIConfig config)
@@ -104,46 +99,5 @@ namespace UniAI
             return ChannelManager.StreamAsync(_config, request.Model, request, ct);
         }
 
-        /// <summary>
-        /// 便捷 Chat：直接发送单条消息获取完整响应
-        /// </summary>
-        public UniTask<AIResponse> ChatAsync(string userMessage, string systemPrompt = null, CancellationToken ct = default)
-        {
-            var request = new AIRequest
-            {
-                SystemPrompt = systemPrompt,
-                Messages = { AIMessage.User(userMessage) }
-            };
-            return SendAsync(request, ct);
-        }
-
-        /// <summary>
-        /// 便捷 Chat：发送单条消息并自动反序列化为 T（结构化输出）
-        /// </summary>
-        public UniTask<AITypedResponse<T>> ChatAsync<T>(
-            string userMessage, AIResponseFormat responseFormat,
-            string systemPrompt = null, CancellationToken ct = default)
-        {
-            var request = new AIRequest
-            {
-                SystemPrompt = systemPrompt,
-                ResponseFormat = responseFormat,
-                Messages = { AIMessage.User(userMessage) }
-            };
-            return SendAsync<T>(request, ct);
-        }
-
-        /// <summary>
-        /// 便捷 Chat：流式响应
-        /// </summary>
-        public IUniTaskAsyncEnumerable<AIStreamChunk> ChatStreamAsync(string userMessage, string systemPrompt = null, CancellationToken ct = default)
-        {
-            var request = new AIRequest
-            {
-                SystemPrompt = systemPrompt,
-                Messages = { AIMessage.User(userMessage) }
-            };
-            return StreamAsync(request, ct);
-        }
     }
 }

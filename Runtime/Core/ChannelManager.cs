@@ -14,6 +14,12 @@ namespace UniAI
     public static class ChannelManager
     {
         /// <summary>
+        /// Provider 池容量上限。超过时清除所有缓存的 Provider。
+        /// 正常使用中 channelId:modelId 组合数远低于此值。
+        /// </summary>
+        private const int MAX_POOL_SIZE = 64;
+
+        /// <summary>
         /// modelId → 上次成功使用的渠道 ID（路由缓存）
         /// </summary>
         private static readonly Dictionary<string, string> _routeCache = new();
@@ -29,47 +35,15 @@ namespace UniAI
         public static async UniTask<AIResponse> SendAsync(
             AIConfig config, string modelId, AIRequest request, CancellationToken ct)
         {
-            // 1. 尝试缓存的渠道
-            if (_routeCache.TryGetValue(modelId, out var cachedChannelId))
-            {
-                var cachedChannel = FindChannel(config, cachedChannelId);
-                if (cachedChannel != null && cachedChannel.IsValid(modelId))
-                {
-                    var provider = GetOrCreateProvider(cachedChannel, modelId, config.General);
-                    try
-                    {
-                        var response = await provider.SendAsync(request, ct);
-                        if (response.IsSuccess)
-                            return response;
-
-                        AILogger.Warning(
-                            $"ChannelManager: cached channel '{cachedChannel.Name}' failed: {response.Error}, falling back...");
-                    }
-                    catch (OperationCanceledException) { throw; }
-                    catch (Exception e)
-                    {
-                        AILogger.Warning(
-                            $"ChannelManager: cached channel '{cachedChannel.Name}' exception: {e.Message}, falling back...");
-                    }
-                }
-
-                // 缓存失效或失败
-                _routeCache.Remove(modelId);
-            }
-
-            // 2. 遍历所有可用渠道（按需创建 Provider）
-            var channels = config.FindChannelsForModel(modelId);
-            if (channels.Count == 0)
+            var candidates = BuildCandidateChannels(config, modelId);
+            if (candidates.Count == 0)
                 return AIResponse.Fail($"No channel found for model '{modelId}'.");
 
             AIResponse lastFailure = null;
 
-            foreach (var channel in channels)
+            foreach (var channel in candidates)
             {
                 ct.ThrowIfCancellationRequested();
-
-                if (channel.Id == cachedChannelId) continue; // 跳过刚失败的
-                if (string.IsNullOrEmpty(channel.GetEffectiveApiKey())) continue;
 
                 var provider = GetOrCreateProvider(channel, modelId, config.General);
 
@@ -233,6 +207,13 @@ namespace UniAI
             string poolKey = $"{channel.Id}:{modelId}";
             if (_providerPool.TryGetValue(poolKey, out var existing))
                 return existing;
+
+            // 超过容量上限时清空池，避免无限增长
+            if (_providerPool.Count >= MAX_POOL_SIZE)
+            {
+                AILogger.Info($"ChannelManager: provider pool reached {MAX_POOL_SIZE}, clearing.");
+                _providerPool.Clear();
+            }
 
             general ??= new GeneralConfig();
             var provider = CreateProvider(channel, modelId, general);

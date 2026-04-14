@@ -69,7 +69,7 @@ namespace UniAI
                 _id = Id,
                 Name = Name,
                 Protocol = Protocol,
-                ApiKey = GetEffectiveApiKey(),
+                ApiKey = ApiKey,
                 BaseUrl = BaseUrl,
                 EnvVarName = EnvVarName,
                 UseEnvVar = UseEnvVar,
@@ -163,9 +163,9 @@ namespace UniAI
         
         
         /// <summary>
-        /// 创建默认 Provider 列表（Claude + OpenAI + Gemini + DeepSeek）
+        /// 创建默认渠道列表（Claude + OpenAI + Gemini + DeepSeek），每次调用返回新列表
         /// </summary>
-        internal static List<ChannelEntry> All = new() { Claude(), OpenAI(), Gemini(), DeepSeek() };
+        internal static List<ChannelEntry> CreateDefaults() => new() { Claude(), OpenAI(), Gemini(), DeepSeek() };
         #endregion
     }
 }

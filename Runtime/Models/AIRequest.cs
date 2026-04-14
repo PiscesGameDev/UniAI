@@ -33,11 +33,6 @@ namespace UniAI
         public float Temperature { get; set; } = 0.7f;
 
         /// <summary>
-        /// 扩展参数（Provider 特有参数）
-        /// </summary>
-        public Dictionary<string, object> ExtendedParams { get; set; }
-
-        /// <summary>
         /// 工具定义列表
         /// </summary>
         public List<AITool> Tools { get; set; }

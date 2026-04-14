@@ -67,7 +67,7 @@ McpClient → IMcpTransport
 
 | 类 | 路径 | 职责 |
 |----|------|------|
-| `AIClient` | `Runtime/Core/AIClient.cs` | 框架唯一入口。路由模式: `Create(config)` — 模型从 `request.Model` 解析，委托 `ChannelManager` 处理缓存和故障转移；直连模式: `Create(entry, modelId, general)` 用于测试连接。便捷方法: `ChatAsync` / `ChatStreamAsync` / `SendAsync<T>` |
+| `AIClient` | `Runtime/Core/AIClient.cs` | 框架唯一入口。路由模式: `Create(config)` — 模型从 `request.Model` 解析，委托 `ChannelManager` 处理缓存和故障转移；直连模式: `Create(entry, modelId, general)` 用于测试连接。`SendAsync` / `StreamAsync` / `SendAsync<T>` |
 | `ChannelManager` | `Runtime/Core/ChannelManager.cs` | 全局静态渠道管理器: Provider 缓存（modelId → 上次成功的渠道/Provider）+ 故障转移 + 渠道验证。`SendAsync` / `StreamAsync` / `CreateProvider` / `Invalidate` / `InvalidateAll` |
 | `AIConfig` | `Runtime/Core/AIConfig.cs` | 配置模型。`ChannelEntries` 渠道列表 + `ActiveChannelId` + `GeneralConfig`（含 `ContextWindowConfig` + `McpRuntimeConfig`） |
 | `ChannelEntry` | `Runtime/Core/ChannelEntry.cs` | 单个渠道配置。`Protocol` (Claude/OpenAI) + `ApiKey` + `BaseUrl` + `Models` + `EnvVarName`/`UseEnvVar` 环境变量覆盖。内置预设: `Claude()` / `OpenAI()` / `Gemini()` / `DeepSeek()` |

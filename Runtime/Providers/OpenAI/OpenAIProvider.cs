@@ -248,7 +248,7 @@ namespace UniAI.Providers.OpenAI
 
         // ────────────────────────── 响应解析 ──────────────────────────
 
-        protected override AIResponse ParseResponse(string json)
+        protected override AIResponse ParseResponse(string json, object requestBody)
         {
             try
             {

@@ -58,7 +58,7 @@ namespace UniAI.Providers
             if (!result.IsSuccess)
                 return ParseError(result);
 
-            return ParseResponse(result.Body);
+            return ParseResponse(result.Body, body);
         }
 
         // ────────────────────────── StreamAsync 模板方法 ──────────────────────────
@@ -116,7 +116,7 @@ namespace UniAI.Providers
 
         protected abstract Dictionary<string, string> BuildHeaders();
 
-        protected abstract AIResponse ParseResponse(string json);
+        protected abstract AIResponse ParseResponse(string json, object requestBody);
 
         protected abstract string GetModelFromBody(object body);
 

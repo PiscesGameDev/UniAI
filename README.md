@@ -101,13 +101,19 @@ using UniAI;
 var settings = UniAISettings.Instance;
 var client = AIClient.Create(settings.ToConfig());
 
-// 便捷 Chat — 单条消息完整响应
-var response = await client.ChatAsync("如何优化 Draw Call？", "你是一个 Unity 游戏开发助手。");
+// 单条消息完整响应
+var response = await client.SendAsync(new AIRequest
+{
+    Model = "gpt-4o",
+    SystemPrompt = "你是一个 Unity 游戏开发助手。",
+    Messages = { AIMessage.User("如何优化 Draw Call？") }
+});
 if (response.IsSuccess) Debug.Log(response.Text);
 
 // 完整请求
 var response = await client.SendAsync(new AIRequest
 {
+    Model = "gpt-4o",
     SystemPrompt = "你是一个 Unity 游戏开发助手。",
     Messages = { AIMessage.User("如何优化 Draw Call？") },
 });
