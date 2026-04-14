@@ -299,6 +299,7 @@ namespace UniAI
         {
             var request = new AIRequest
             {
+                Model = overrides?.Model,
                 SystemPrompt = overrides?.SystemPrompt ?? _definition.SystemPrompt,
                 Messages = messages,
                 Temperature = overrides != null ? overrides.Temperature : _definition.Temperature,

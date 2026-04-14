@@ -77,8 +77,7 @@ namespace UniAI
 
             foreach (var channel in ChannelEntries)
             {
-                if (!channel.Enabled) continue;
-                if (channel.Models != null && channel.Models.Contains(modelId))
+                if (channel.IsValid(modelId))
                     result.Add(channel);
             }
             return result;

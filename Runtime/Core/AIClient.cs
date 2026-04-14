@@ -1,25 +1,39 @@
 using System;
-using System.Collections.Generic;
 using System.Threading;
 using Cysharp.Threading.Tasks;
-using UniAI.Providers;
 
 namespace UniAI
 {
     /// <summary>
-    /// AI 客户端 — 框架的唯一入口
+    /// AI 客户端 — 框架的唯一入口。
+    /// 路由模式: Create(config) — 不绑定模型，发送时从 request.Model 路由，委托 ChannelManager 处理缓存和故障转移。
+    /// 直连模式: Create(entry, modelId, general) 或 new AIClient(provider) — 用于测试连接等场景。
     /// </summary>
     public class AIClient
     {
+        // 路由模式
+        private readonly AIConfig _config;
+
+        // 直连模式
         private readonly IAIProvider _provider;
 
-        /// <summary>
-        /// 当前 Provider 名称
-        /// </summary>
-        public string ProviderName => _provider.Name;
+        private bool IsRouted => _config != null;
 
         /// <summary>
-        /// 使用指定 Provider 创建客户端
+        /// 当前 Provider 名称（直连模式返回 Provider 名称，路由模式返回 "ChannelManager"）
+        /// </summary>
+        public string ProviderName => IsRouted ? "ChannelManager" : _provider.Name;
+
+        /// <summary>
+        /// 路由模式 — 只记录 config，不创建 Provider
+        /// </summary>
+        private AIClient(AIConfig config)
+        {
+            _config = config;
+        }
+
+        /// <summary>
+        /// 直连模式 — 使用指定 Provider
         /// </summary>
         public AIClient(IAIProvider provider)
         {
@@ -27,59 +41,18 @@ namespace UniAI
         }
 
         /// <summary>
-        /// 从配置创建客户端（使用 ActiveProvider 的 DefaultModel）
+        /// 从配置创建客户端（路由模式，模型在发送时从 request.Model 解析）
         /// </summary>
         public static AIClient Create(AIConfig config)
         {
             if (config == null) throw new ArgumentNullException(nameof(config));
 
-            var entry = config.GetActiveChannel()
-                ?? throw new InvalidOperationException("No provider configured in AIConfig.");
-
-            return Create(entry, entry.DefaultModel, config.General);
+            AILogger.Info("AIClient created in routed mode");
+            return new AIClient(config);
         }
 
         /// <summary>
-        /// 从配置 + 模型名创建客户端（自动路由到对应渠道，支持多渠道故障转移）
-        /// </summary>
-        public static AIClient Create(AIConfig config, string modelId)
-        {
-            if (config == null) throw new ArgumentNullException(nameof(config));
-            if (string.IsNullOrEmpty(modelId)) throw new ArgumentNullException(nameof(modelId));
-
-            var providers = config.FindChannelsForModel(modelId);
-            if (providers.Count == 0)
-                throw new InvalidOperationException($"No provider found for model '{modelId}'.");
-
-            var general = config.General ?? new GeneralConfig();
-
-            if (providers.Count == 1)
-            {
-                return Create(providers[0], modelId, general);
-            }
-
-            // 多渠道 → 使用 FallbackProvider
-            var innerProviders = new List<IAIProvider>();
-            foreach (var entry in providers)
-            {
-                if (string.IsNullOrEmpty(entry.GetEffectiveApiKey())) continue;
-                innerProviders.Add(CreateProvider(entry, modelId, general));
-            }
-
-            if (innerProviders.Count == 0)
-                throw new InvalidOperationException($"No provider with API key found for model '{modelId}'.");
-
-            if (innerProviders.Count == 1)
-                return new AIClient(innerProviders[0]);
-
-            var fallback = new FallbackProvider(innerProviders);
-
-            AILogger.Info($"AIClient created with {innerProviders.Count} fallback providers for model: {modelId}");
-            return new AIClient(fallback);
-        }
-
-        /// <summary>
-        /// 从单个 ChannelEntry + 指定模型创建客户端
+        /// 从单个 ChannelEntry + 指定模型创建客户端（直连模式，用于测试连接等）
         /// </summary>
         public static AIClient Create(ChannelEntry entry, string modelId = null, GeneralConfig general = null)
         {
@@ -87,42 +60,25 @@ namespace UniAI
             general ??= new GeneralConfig();
             modelId ??= entry.DefaultModel;
 
-            var provider = CreateProvider(entry, modelId, general);
+            var provider = ChannelManager.CreateProvider(entry, modelId, general);
 
-            AILogger.Info($"AIClient created with provider: {entry.Name} ({entry.Protocol}), model: {modelId}");
+            AILogger.Info($"AIClient created in direct mode: {entry.Name} ({entry.Protocol}), model: {modelId}");
 
             return new AIClient(provider);
         }
 
         /// <summary>
-        /// 创建具体的 IAIProvider 实例
-        /// </summary>
-        private static IAIProvider CreateProvider(ChannelEntry entry, string modelId, GeneralConfig general)
-        {
-            var config = new ProviderBase.ProviderConfig
-            {
-                ApiKey = entry.GetEffectiveApiKey(),
-                BaseUrl = entry.BaseUrl,
-                Model = modelId ?? entry.DefaultModel,
-                TimeoutSeconds = general.TimeoutSeconds,
-                ApiVersion = entry.ApiVersion ?? "2023-06-01"
-            };
-
-            return entry.Protocol switch
-            {
-                ProviderProtocol.Claude => new Providers.Claude.ClaudeProvider(config),
-                ProviderProtocol.OpenAI => new Providers.OpenAI.OpenAIProvider(config),
-                _ => throw new NotSupportedException(
-                    $"Protocol '{entry.Protocol}' is not supported. Use AIClient(IAIProvider) for custom protocols.")
-            };
-        }
-
-        /// <summary>
-        /// 发送请求获取完整响应
+        /// 发送请求获取完整响应（路由模式下 request.Model 必须指定）
         /// </summary>
         public UniTask<AIResponse> SendAsync(AIRequest request, CancellationToken ct = default)
         {
-            return _provider.SendAsync(request, ct);
+            if (!IsRouted)
+                return _provider.SendAsync(request, ct);
+
+            if (string.IsNullOrEmpty(request.Model))
+                return UniTask.FromResult(AIResponse.Fail("request.Model is required in routed mode."));
+
+            return ChannelManager.SendAsync(_config, request.Model, request, ct);
         }
 
         /// <summary>
@@ -130,20 +86,26 @@ namespace UniAI
         /// </summary>
         public async UniTask<AITypedResponse<T>> SendAsync<T>(AIRequest request, CancellationToken ct = default)
         {
-            var response = await _provider.SendAsync(request, ct);
+            var response = await SendAsync(request, ct);
             return AITypedResponse<T>.FromResponse(response);
         }
 
         /// <summary>
-        /// 流式发送请求
+        /// 流式发送请求（路由模式下 request.Model 必须指定）
         /// </summary>
         public IUniTaskAsyncEnumerable<AIStreamChunk> StreamAsync(AIRequest request, CancellationToken ct = default)
         {
-            return _provider.StreamAsync(request, ct);
+            if (!IsRouted)
+                return _provider.StreamAsync(request, ct);
+
+            if (string.IsNullOrEmpty(request.Model))
+                return ChannelManager.ErrorStream("request.Model is required in routed mode.");
+
+            return ChannelManager.StreamAsync(_config, request.Model, request, ct);
         }
 
         /// <summary>
-        /// 便捷 Chat：直接发送单条消息获取完整响应，不经过 Agent
+        /// 便捷 Chat：直接发送单条消息获取完整响应
         /// </summary>
         public UniTask<AIResponse> ChatAsync(string userMessage, string systemPrompt = null, CancellationToken ct = default)
         {

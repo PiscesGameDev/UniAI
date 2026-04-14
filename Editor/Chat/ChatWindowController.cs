@@ -131,7 +131,7 @@ namespace UniAI.Editor.Chat
 
         private void OnModelChanged()
         {
-            _streaming.EnsureRunner(_config, _modelSelectorGUI.Selector, FindAgentById(_activeSession?.AgentId));
+            _streaming.UpdateModel(_modelSelectorGUI.Selector);
 
             if (_activeSession != null)
                 _activeSession.ModelId = _modelSelectorGUI.CurrentModelId;

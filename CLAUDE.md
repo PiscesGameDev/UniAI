@@ -43,7 +43,7 @@ AIAgentRunner / ChatRunner（对话运行器）
   ├── UniAIToolRegistry（[UniAITool] 反射注册表） ← 内置工具
   └── McpClientManager（Tools 动态合并）            ← MCP 外部工具
         ↓
-AIClient（API 入口，支持多渠道故障转移 FallbackProvider）
+AIClient（API 入口，路由模式委托 ChannelManager 处理渠道缓存和故障转移）
         ↓
 IAIProvider 接口
    ├── ClaudeProvider    → Claude Messages API (tool_use/tool_result)
@@ -67,7 +67,8 @@ McpClient → IMcpTransport
 
 | 类 | 路径 | 职责 |
 |----|------|------|
-| `AIClient` | `Runtime/Core/AIClient.cs` | 框架唯一入口。`Create(config, modelId)` 自动路由渠道，多渠道时包装 `FallbackProvider`。便捷方法: `ChatAsync` / `ChatStreamAsync` / `SendAsync<T>` |
+| `AIClient` | `Runtime/Core/AIClient.cs` | 框架唯一入口。路由模式: `Create(config)` — 模型从 `request.Model` 解析，委托 `ChannelManager` 处理缓存和故障转移；直连模式: `Create(entry, modelId, general)` 用于测试连接。便捷方法: `ChatAsync` / `ChatStreamAsync` / `SendAsync<T>` |
+| `ChannelManager` | `Runtime/Core/ChannelManager.cs` | 全局静态渠道管理器: Provider 缓存（modelId → 上次成功的渠道/Provider）+ 故障转移 + 渠道验证。`SendAsync` / `StreamAsync` / `CreateProvider` / `Invalidate` / `InvalidateAll` |
 | `AIConfig` | `Runtime/Core/AIConfig.cs` | 配置模型。`ChannelEntries` 渠道列表 + `ActiveChannelId` + `GeneralConfig`（含 `ContextWindowConfig` + `McpRuntimeConfig`） |
 | `ChannelEntry` | `Runtime/Core/ChannelEntry.cs` | 单个渠道配置。`Protocol` (Claude/OpenAI) + `ApiKey` + `BaseUrl` + `Models` + `EnvVarName`/`UseEnvVar` 环境变量覆盖。内置预设: `Claude()` / `OpenAI()` / `Gemini()` / `DeepSeek()` |
 | `UniAISettings` | `Runtime/Core/UniAISettings.cs` | 运行时 ScriptableObject。`Instance` 单例从 `Resources/UniAI/` 加载。含 `ChannelEntries` + `General` + `CustomModels`（补充 `ModelRegistry`） |
@@ -101,7 +102,6 @@ McpClient → IMcpTransport
 |----|------|------|
 | `IAIProvider` | `Runtime/Providers/IAIProvider.cs` | Provider 接口: `SendAsync` + `StreamAsync` + `Name` |
 | `ProviderBase` | `Runtime/Providers/ProviderBase.cs` | 抽象基类: 模板方法 + `ProviderConfig`（ApiKey/BaseUrl/Model/TimeoutSeconds/ApiVersion） |
-| `FallbackProvider` | `Runtime/Providers/FallbackProvider.cs` | 多渠道故障转移包装，依次尝试直到成功 |
 | `ClaudeProvider` | `Runtime/Providers/Claude/ClaudeProvider.cs` | Claude Messages API (`/v1/messages`) |
 | `ClaudeModels` | `Runtime/Providers/Claude/ClaudeModels.cs` | Claude JSON 模型 |
 | `OpenAIProvider` | `Runtime/Providers/OpenAI/OpenAIProvider.cs` | OpenAI Chat Completions API (`/chat/completions`) |
@@ -391,7 +391,7 @@ UniAISettings.asset (Resources/UniAI/)           ← 运行时 SO
 
 1. `ProviderProtocol` 枚举新增类型
 2. 创建 `Runtime/Providers/NewProvider/` 目录，实现 `IAIProvider`
-3. 在 `AIClient.CreateProvider` switch 中添加分支
+3. 在 `ChannelManager.CreateProvider` switch 中添加分支
 4. （可选）在 `ChannelEntry` 中添加预设工厂方法
 
 ### 添加新内容类型

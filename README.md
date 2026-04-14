@@ -428,7 +428,6 @@ UniAI/
 │   ├── Providers/
 │   │   ├── IAIProvider.cs           # Provider 接口
 │   │   ├── ProviderBase.cs          # Provider 抽象基类
-│   │   ├── FallbackProvider.cs      # 多渠道故障转移
 │   │   ├── Claude/                  # Claude Messages API
 │   │   └── OpenAI/                  # OpenAI Chat Completions API
 │   ├── Http/

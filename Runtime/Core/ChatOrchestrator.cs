@@ -49,6 +49,9 @@ namespace UniAI
         private string _mcpStatus;
         private UniTask _mcpInitTask;
         private ChatOrchestratorSettings _settings;
+        private string _modelId;
+        private AIConfig _lastConfig;
+        private string _lastAgentId;
 
         // ─── 属性 ───
 
@@ -58,13 +61,22 @@ namespace UniAI
         // ─── Runner 管理 ───
 
         /// <summary>
-        /// 根据当前配置重建 Client / Runner / ContextPipeline
+        /// 根据当前配置重建 Client / Runner / ContextPipeline（仅在必要时重建）
         /// </summary>
         public void EnsureRunner(AIConfig config, ModelSelector modelSelector, AgentDefinition agent,
             ChatOrchestratorSettings settings = null)
         {
             _settings = settings ?? new ChatOrchestratorSettings();
-            EnsureClient(config, modelSelector);
+            _modelId = modelSelector.EnsureValid();
+
+            // 仅在 Client 或 Agent 发生变化时重建，切模型不触发重建
+            if (_client != null && !NeedsRebuild(config, agent))
+                return;
+
+            _lastConfig = config;
+            _lastAgentId = agent != null ? agent.Id : null;
+
+            EnsureClient(config);
 
             if (_runner is IDisposable disposableRunner)
             {
@@ -100,6 +112,21 @@ namespace UniAI
             {
                 _runner = new ChatRunner(_client);
             }
+        }
+
+        /// <summary>
+        /// 仅更新模型选择，不重建 Client / Runner
+        /// </summary>
+        public void UpdateModel(ModelSelector modelSelector)
+        {
+            _modelId = modelSelector.EnsureValid();
+        }
+
+        private bool NeedsRebuild(AIConfig config, AgentDefinition agent)
+        {
+            if (_lastConfig != config) return true;
+            string agentId = agent != null ? agent.Id : null;
+            return agentId != _lastAgentId;
         }
 
         /// <summary>
@@ -166,7 +193,8 @@ namespace UniAI
                 }
 
                 var ct = _streamCts.Token;
-                await foreach (var evt in _runner.RunStreamAsync(aiMessages, ct: ct))
+                var requestOverride = new AIRequest { Model = modelId };
+                await foreach (var evt in _runner.RunStreamAsync(aiMessages, requestOverride, ct))
                 {
                     if (ct.IsCancellationRequested) break;
 
@@ -284,10 +312,9 @@ namespace UniAI
 
         // ─── 内部 ───
 
-        private void EnsureClient(AIConfig config, ModelSelector modelSelector)
+        private void EnsureClient(AIConfig config)
         {
-            string modelId = modelSelector.EnsureValid();
-            if (modelId == null)
+            if (_modelId == null)
             {
                 _client = null;
                 return;
@@ -295,7 +322,7 @@ namespace UniAI
 
             try
             {
-                _client = AIClient.Create(config, modelId);
+                _client = AIClient.Create(config);
             }
             catch (Exception e)
             {

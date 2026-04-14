@@ -48,6 +48,7 @@ namespace UniAI
         {
             return new AIRequest
             {
+                Model = overrides?.Model,
                 SystemPrompt = overrides?.SystemPrompt,
                 Messages = messages,
                 Temperature = overrides?.Temperature ?? 0.7f,

@@ -1,5 +1,4 @@
 using System.Collections.Generic;
-using UnityEngine;
 
 namespace UniAI
 {
@@ -66,28 +65,12 @@ namespace UniAI
         }
 
         /// <summary>
-        /// 解析 Agent 会话应使用的模型：Agent 指定 > 当前选择 > 默认
+        /// 解析 Agent 会话应使用的模型：Agent 指定 > 当前选择
         /// </summary>
         public string ResolveForAgent(AgentDefinition agent)
         {
             if (agent != null && !string.IsNullOrEmpty(agent.SpecifyModel))
-            {
-                if (_modelEntries != null)
-                {
-                    for (int i = 0; i < _modelEntries.Count; i++)
-                    {
-                        if (_modelEntries[i] == agent.SpecifyModel)
-                        {
-                            _selectedModelIndex = i;
-                            _currentModelId = agent.SpecifyModel;
-                            return _currentModelId;
-                        }
-                    }
-                }
-
-                Debug.LogWarning(
-                    $"[UniAI Chat] Agent \"{agent.AgentName}\" 指定模型 \"{agent.SpecifyModel}\" 不在可用渠道中，已回退到默认模型。");
-            }
+                return agent.SpecifyModel;
 
             return _currentModelId ?? "";
         }

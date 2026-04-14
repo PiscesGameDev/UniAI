@@ -102,6 +102,29 @@ namespace UniAI
                 return false;
             return !string.IsNullOrEmpty(Environment.GetEnvironmentVariable(EnvVarName));
         }
+
+        public bool IsValid(string modelId)
+        {
+            if (!Enabled)
+            {
+                return false;
+            }
+
+            if (Models == null || !Models.Contains(modelId))
+            {
+                return false;
+            }
+
+            if (string.IsNullOrEmpty(BaseUrl))
+            {
+                return false;
+            }
+            if (string.IsNullOrEmpty(GetEffectiveApiKey()))
+            {
+                return false;
+            }
+            return true;
+        }
         
 
         #region 预设 Channel

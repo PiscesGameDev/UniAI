@@ -63,6 +63,11 @@ namespace UniAI.Editor.Chat
             _orchestrator.EnsureRunner(config, modelSelector, agent, settings);
         }
 
+        internal void UpdateModel(ModelSelector modelSelector)
+        {
+            _orchestrator.UpdateModel(modelSelector);
+        }
+
         internal UniTaskVoid StreamResponseAsync(
             ChatSession session, ContextCollector.ContextSlot contextSlots,
             AIConfig config, string modelId,
