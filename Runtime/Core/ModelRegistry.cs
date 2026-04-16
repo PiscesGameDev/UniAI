@@ -54,6 +54,11 @@ namespace UniAI
             ("qwen-turbo", 131072),
             ("qwen-plus", 131072),
             ("qwen-max", 32768),
+            ("qwen-max-longcontext", 131072),
+            ("qwen-vl-max", 131072),
+            ("qwen3-235b-a22b", 129024),
+            ("text-embedding-v1", 2048),
+            ("gte-rerank-v2", 4000),
             ("qwen", 8192),
         };
 
@@ -111,10 +116,12 @@ namespace UniAI
         public static string GetEndpointPath(ModelEndpoint endpoint) => endpoint switch
         {
             ModelEndpoint.ChatCompletions => "/chat/completions",
+            ModelEndpoint.Embeddings => "/embeddings",
             ModelEndpoint.ImageGenerations => "/images/generations",
             ModelEndpoint.ImageEdits => "/images/edits",
             ModelEndpoint.AudioGenerations => "/audio/generations",
             ModelEndpoint.VideoGenerations => "/video/generations",
+            ModelEndpoint.Rerank => "/services/rerank/text-rerank/text-rerank",
             _ => "/chat/completions"
         };
 
@@ -235,15 +242,35 @@ namespace UniAI
                 contextWindow: 131072);
 
             // ─── Alibaba (Qwen) ───
-            Add("qwen-max-2025", "Alibaba",
+            Add("qwen-turbo", "Alibaba",
                 ModelCapability.Chat, ModelEndpoint.ChatCompletions,
-                contextWindow: 32768);
+                contextWindow: 131072);
             Add("qwen-plus", "Alibaba",
                 ModelCapability.Chat, ModelEndpoint.ChatCompletions,
                 contextWindow: 131072);
+            Add("qwen-max", "Alibaba",
+                ModelCapability.Chat, ModelEndpoint.ChatCompletions,
+                contextWindow: 32768);
+            Add("qwen-max-longcontext", "Alibaba",
+                ModelCapability.Chat, ModelEndpoint.ChatCompletions,
+                "Long context variant",
+                contextWindow: 131072);
             Add("qwen-vl-max", "Alibaba",
                 ModelCapability.Chat | ModelCapability.VisionInput, ModelEndpoint.ChatCompletions,
-                contextWindow: 32768);
+                "Vision-language model",
+                contextWindow: 131072);
+            Add("qwen3-235b-a22b", "Alibaba",
+                ModelCapability.Chat, ModelEndpoint.ChatCompletions,
+                "Qwen3 series large model",
+                contextWindow: 129024);
+            Add("text-embedding-v1", "Alibaba",
+                ModelCapability.Embedding, ModelEndpoint.Embeddings,
+                "Text embedding model",
+                contextWindow: 2048);
+            Add("gte-rerank-v2", "Alibaba",
+                ModelCapability.Rerank, ModelEndpoint.Rerank,
+                "Text rerank model",
+                contextWindow: 4000);
 
             // ─── 专业图像生成 ───
             Add("flux-1-pro", "Black Forest Labs",

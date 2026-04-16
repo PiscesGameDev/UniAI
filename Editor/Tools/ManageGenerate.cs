@@ -76,8 +76,8 @@ namespace UniAI.Editor.Tools
 
             // 查询模型能力 — 必须支持至少一种生成能力
             var capabilities = ModelRegistry.GetCapabilities(model);
-            if (capabilities == ModelCapability.Chat)
-                return ToolResponse.Error($"Model '{model}' is a chat-only model. Use 'list_models' to see available generative models.");
+            if (!IsGenerativeModel(capabilities))
+                return ToolResponse.Error($"Model '{model}' does not support asset generation. Use 'list_models' to see available generative models.");
 
             // 查找渠道
             var config = AIConfigManager.LoadConfig();
@@ -215,7 +215,7 @@ namespace UniAI.Editor.Tools
                     channels
                 };
 
-                if (capabilities == ModelCapability.Chat)
+                if (!IsGenerativeModel(capabilities))
                     chat.Add(info);
                 else
                     generative.Add(info);
@@ -257,6 +257,16 @@ namespace UniAI.Editor.Tools
             {
                 AssetDatabase.CreateFolder("Assets", "Generated");
             }
+        }
+
+        private static bool IsGenerativeModel(ModelCapability capabilities)
+        {
+            const ModelCapability generativeCaps =
+                ModelCapability.ImageGen |
+                ModelCapability.AudioGen |
+                ModelCapability.VideoGen;
+
+            return (capabilities & generativeCaps) != 0;
         }
     }
 }

@@ -36,6 +36,8 @@ namespace UniAI.Editor
         private static readonly Color _imageEditColor = new(0.3f, 0.8f, 0.7f);
         private static readonly Color _audioGenColor = new(0.95f, 0.75f, 0.3f);
         private static readonly Color _videoGenColor = new(0.85f, 0.5f, 0.9f);
+        private static readonly Color _embeddingColor = new(0.45f, 0.85f, 0.95f);
+        private static readonly Color _rerankColor = new(0.95f, 0.65f, 0.25f);
         private static readonly Color _builtInColor = new(0.5f, 0.5f, 0.5f);
         private static readonly Color _customColor = new(0.4f, 0.9f, 0.5f);
         private static readonly Color _headerBg = new(0.16f, 0.16f, 0.16f);
@@ -50,7 +52,7 @@ namespace UniAI.Editor
         private int _sourceFilterIndex;   // 0 = All, 1 = Built-in, 2 = Custom
         private string _searchText = "";
 
-        private static readonly string[] _capOptions = { "All", "Chat", "VisionInput", "ImageGen", "ImageEdit", "AudioGen", "VideoGen" };
+        private static readonly string[] _capOptions = { "All", "Chat", "VisionInput", "ImageGen", "ImageEdit", "AudioGen", "VideoGen", "Embedding", "Rerank" };
         private static readonly string[] _sourceOptions = { "All", "Built-in", "Custom" };
 
         // ─── Table state ───
@@ -852,6 +854,8 @@ namespace UniAI.Editor
             ModelCapability.ImageEdit => _imageEditColor,
             ModelCapability.AudioGen => _audioGenColor,
             ModelCapability.VideoGen => _videoGenColor,
+            ModelCapability.Embedding => _embeddingColor,
+            ModelCapability.Rerank => _rerankColor,
             _ => _chatColor
         };
 
@@ -864,6 +868,8 @@ namespace UniAI.Editor
             ModelCapability.ImageEdit => "ImgEdit",
             ModelCapability.AudioGen => "Audio",
             ModelCapability.VideoGen => "Video",
+            ModelCapability.Embedding => "Embed",
+            ModelCapability.Rerank => "Rerank",
             _ => cap.ToString()
         };
 

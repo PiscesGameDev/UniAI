@@ -27,6 +27,8 @@ namespace UniAI
 
         /// <summary>生成视频。</summary>
         VideoGen = 1 << 5,
+        Embedding = 1 << 6,
+        Rerank = 1 << 7,
     }
 
     /// <summary>
@@ -36,6 +38,7 @@ namespace UniAI
     {
         /// <summary>/chat/completions</summary>
         ChatCompletions,
+        Embeddings,
 
         /// <summary>/images/generations</summary>
         ImageGenerations,
@@ -48,5 +51,6 @@ namespace UniAI
 
         /// <summary>/video/generations</summary>
         VideoGenerations,
+        Rerank,
     }
 }
