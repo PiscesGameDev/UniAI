@@ -7,6 +7,7 @@ using Newtonsoft.Json;
 
 namespace UniAI.Providers
 {
+    
     /// <summary>
     /// Provider 抽象基类 — 提取 SendAsync / StreamAsync 模板方法和通用工具
     /// </summary>
@@ -20,19 +21,7 @@ namespace UniAI.Providers
         {
             NullValueHandling = NullValueHandling.Ignore
         };
-
-        /// <summary>
-        /// Provider 配置 — 从 ChannelEntry 直接构造，替代协议特定的 ClaudeConfig / OpenAIConfig
-        /// </summary>
-        public class ProviderConfig
-        {
-            public string ApiKey;
-            public string BaseUrl;
-            public string Model;
-            public int TimeoutSeconds;
-            public string ApiVersion; // Claude 专用
-        }
-
+        
         /// <summary>当前 Provider 的配置</summary>
         protected ProviderConfig Config { get; }
 
@@ -84,16 +73,16 @@ namespace UniAI.Providers
                 {
                     var evt = parser.ParseLine(line);
                     if (evt == null) continue;
-                    if (evt.Data == null || evt.Data == "[DONE]")
+                    if (evt.Data is null or "[DONE]")
                     {
-                        if (OnStreamDone(streamState, chunk => writer.YieldAsync(chunk)))
+                        if (OnStreamDone(streamState, writer.YieldAsync))
                             break;
                         continue;
                     }
 
                     try
                     {
-                        await ProcessStreamEvent(evt, streamState, chunk => writer.YieldAsync(chunk));
+                        await ProcessStreamEvent(evt, streamState, writer.YieldAsync);
                     }
                     catch (Exception e)
                     {

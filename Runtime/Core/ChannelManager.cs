@@ -153,7 +153,7 @@ namespace UniAI
         /// </summary>
         internal static IAIProvider CreateProvider(ChannelEntry entry, string modelId, GeneralConfig general)
         {
-            var providerConfig = new ProviderBase.ProviderConfig
+            var providerConfig = new ProviderConfig
             {
                 ApiKey = entry.GetEffectiveApiKey(),
                 BaseUrl = entry.BaseUrl,
