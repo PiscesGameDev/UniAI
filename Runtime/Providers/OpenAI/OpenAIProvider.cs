@@ -215,6 +215,11 @@ namespace UniAI.Providers.OpenAI
                 return;
             }
 
+            // 文本增量 — 即使同 chunk 也带了 finish_reason 也要先发出
+            var deltaText = choice.Delta?.Content;
+            if (!string.IsNullOrEmpty(deltaText))
+                await emit(new AIStreamChunk { DeltaText = deltaText });
+
             if (choice.FinishReason != null)
             {
                 // 输出累积的 tool calls
@@ -236,12 +241,7 @@ namespace UniAI.Providers.OpenAI
                         OutputTokens = resp.Usage.CompletionTokens
                     } : null
                 });
-                return;
             }
-
-            var deltaText = choice.Delta?.Content;
-            if (deltaText != null)
-                await emit(new AIStreamChunk { DeltaText = deltaText });
         }
 
         protected override bool OnStreamDone(object streamState, EmitChunk emit) => true;

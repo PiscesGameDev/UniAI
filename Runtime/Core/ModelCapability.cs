@@ -3,32 +3,34 @@ using System;
 namespace UniAI
 {
     /// <summary>
-    /// 模型能力标志 — 描述模型能做什么（可组合）。
-    /// 用于 UI 筛选、能力校验，与 API 端点路由无关。
+    /// 模型能力标志，用于描述模型具备的功能。
     /// </summary>
     [Flags]
     public enum ModelCapability
     {
-        None      = 0,
+        None = 0,
 
-        /// <summary>聊天/对话</summary>
-        Chat      = 1 << 0,
+        /// <summary>聊天与文本生成。</summary>
+        Chat = 1 << 0,
 
-        /// <summary>从文本生成图片（Text-to-Image）</summary>
-        ImageGen  = 1 << 1,
+        /// <summary>支持图片输入，可用于视觉理解或截图分析。</summary>
+        VisionInput = 1 << 1,
 
-        /// <summary>图片编辑（Inpainting / 扩图 / 局部重绘，需传入底图）</summary>
-        ImageEdit = 1 << 2,
+        /// <summary>根据文本生成图片。</summary>
+        ImageGen = 1 << 2,
 
-        /// <summary>音频生成（预留）</summary>
-        AudioGen  = 1 << 3,
+        /// <summary>编辑图片或执行局部重绘。</summary>
+        ImageEdit = 1 << 3,
 
-        /// <summary>视频生成（预留）</summary>
-        VideoGen  = 1 << 4,
+        /// <summary>生成音频。</summary>
+        AudioGen = 1 << 4,
+
+        /// <summary>生成视频。</summary>
+        VideoGen = 1 << 5,
     }
 
     /// <summary>
-    /// 模型 API 端点类型 — 每个模型唯一，决定调用哪个接口。
+    /// 模型对应的 API 端点类型。
     /// </summary>
     public enum ModelEndpoint
     {
@@ -38,13 +40,13 @@ namespace UniAI
         /// <summary>/images/generations</summary>
         ImageGenerations,
 
-        /// <summary>/images/edits（预留）</summary>
+        /// <summary>/images/edits</summary>
         ImageEdits,
 
-        /// <summary>/audio/generations（预留）</summary>
+        /// <summary>/audio/generations</summary>
         AudioGenerations,
 
-        /// <summary>/video/generations（预留）</summary>
+        /// <summary>/video/generations</summary>
         VideoGenerations,
     }
 }

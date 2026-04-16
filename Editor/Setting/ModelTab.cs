@@ -31,6 +31,7 @@ namespace UniAI.Editor
 
         // ─── Colors ───
         private static readonly Color _chatColor = new(0.5f, 0.75f, 1f);
+        private static readonly Color _visionInputColor = new(0.95f, 0.55f, 0.35f);
         private static readonly Color _imageGenColor = new(0.4f, 0.9f, 0.5f);
         private static readonly Color _imageEditColor = new(0.3f, 0.8f, 0.7f);
         private static readonly Color _audioGenColor = new(0.95f, 0.75f, 0.3f);
@@ -49,7 +50,7 @@ namespace UniAI.Editor
         private int _sourceFilterIndex;   // 0 = All, 1 = Built-in, 2 = Custom
         private string _searchText = "";
 
-        private static readonly string[] _capOptions = { "All", "Chat", "ImageGen", "ImageEdit", "AudioGen", "VideoGen" };
+        private static readonly string[] _capOptions = { "All", "Chat", "VisionInput", "ImageGen", "ImageEdit", "AudioGen", "VideoGen" };
         private static readonly string[] _sourceOptions = { "All", "Built-in", "Custom" };
 
         // ─── Table state ───
@@ -846,6 +847,7 @@ namespace UniAI.Editor
         private static Color GetCapabilityColor(ModelCapability cap) => cap switch
         {
             ModelCapability.Chat => _chatColor,
+            ModelCapability.VisionInput => _visionInputColor,
             ModelCapability.ImageGen => _imageGenColor,
             ModelCapability.ImageEdit => _imageEditColor,
             ModelCapability.AudioGen => _audioGenColor,
@@ -857,6 +859,7 @@ namespace UniAI.Editor
         private static string GetCapabilityShortName(ModelCapability cap) => cap switch
         {
             ModelCapability.Chat => "Chat",
+            ModelCapability.VisionInput => "Vision",
             ModelCapability.ImageGen => "ImgGen",
             ModelCapability.ImageEdit => "ImgEdit",
             ModelCapability.AudioGen => "Audio",

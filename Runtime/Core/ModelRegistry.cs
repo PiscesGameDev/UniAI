@@ -154,13 +154,13 @@ namespace UniAI
         {
             // ─── OpenAI ───
             Add("gpt-4o", "OpenAI",
-                ModelCapability.Chat, ModelEndpoint.ChatCompletions,
+                ModelCapability.Chat | ModelCapability.VisionInput, ModelEndpoint.ChatCompletions,
                 contextWindow: 128000);
             Add("gpt-4o-mini", "OpenAI",
-                ModelCapability.Chat, ModelEndpoint.ChatCompletions,
+                ModelCapability.Chat | ModelCapability.VisionInput, ModelEndpoint.ChatCompletions,
                 contextWindow: 128000);
             Add("gpt-4.1", "OpenAI",
-                ModelCapability.Chat, ModelEndpoint.ChatCompletions,
+                ModelCapability.Chat | ModelCapability.VisionInput, ModelEndpoint.ChatCompletions,
                 contextWindow: 1047576);
             Add("o1", "OpenAI",
                 ModelCapability.Chat, ModelEndpoint.ChatCompletions,
@@ -174,27 +174,27 @@ namespace UniAI
 
             // ─── Anthropic ───
             Add("claude-opus-4-6", "Anthropic",
-                ModelCapability.Chat, ModelEndpoint.ChatCompletions,
+                ModelCapability.Chat | ModelCapability.VisionInput, ModelEndpoint.ChatCompletions,
                 contextWindow: 200000);
             Add("claude-sonnet-4-6", "Anthropic",
-                ModelCapability.Chat, ModelEndpoint.ChatCompletions,
+                ModelCapability.Chat | ModelCapability.VisionInput, ModelEndpoint.ChatCompletions,
                 contextWindow: 200000);
             Add("claude-sonnet-4-20250514", "Anthropic",
-                ModelCapability.Chat, ModelEndpoint.ChatCompletions,
+                ModelCapability.Chat | ModelCapability.VisionInput, ModelEndpoint.ChatCompletions,
                 contextWindow: 200000);
             Add("claude-haiku-4-5-20251001", "Anthropic",
-                ModelCapability.Chat, ModelEndpoint.ChatCompletions,
+                ModelCapability.Chat | ModelCapability.VisionInput, ModelEndpoint.ChatCompletions,
                 contextWindow: 200000);
 
             // ─── Google ───
             Add("gemini-2.0-flash", "Google",
-                ModelCapability.Chat, ModelEndpoint.ChatCompletions,
+                ModelCapability.Chat | ModelCapability.VisionInput, ModelEndpoint.ChatCompletions,
                 contextWindow: 1048576);
             Add("gemini-2.5-pro", "Google",
-                ModelCapability.Chat, ModelEndpoint.ChatCompletions,
+                ModelCapability.Chat | ModelCapability.VisionInput, ModelEndpoint.ChatCompletions,
                 contextWindow: 1000000);
             Add("gemini-2.5-flash", "Google",
-                ModelCapability.Chat | ModelCapability.ImageGen, ModelEndpoint.ChatCompletions,
+                ModelCapability.Chat | ModelCapability.VisionInput | ModelCapability.ImageGen, ModelEndpoint.ChatCompletions,
                 "多模态，支持聊天与图片生成，统一走 Chat 端点",
                 contextWindow: 1000000);
             Add("gemini-2.5-flash-image", "Google",
@@ -242,7 +242,7 @@ namespace UniAI
                 ModelCapability.Chat, ModelEndpoint.ChatCompletions,
                 contextWindow: 131072);
             Add("qwen-vl-max", "Alibaba",
-                ModelCapability.Chat, ModelEndpoint.ChatCompletions,
+                ModelCapability.Chat | ModelCapability.VisionInput, ModelEndpoint.ChatCompletions,
                 contextWindow: 32768);
 
             // ─── 专业图像生成 ───

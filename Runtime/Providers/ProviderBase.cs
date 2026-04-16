@@ -84,6 +84,7 @@ namespace UniAI.Providers
                     {
                         await ProcessStreamEvent(evt, streamState, writer.YieldAsync);
                     }
+                    catch (OperationCanceledException) { throw; }
                     catch (Exception e)
                     {
                         AILogger.Warning($"Failed to parse stream event: {e.Message}");
