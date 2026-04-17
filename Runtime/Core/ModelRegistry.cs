@@ -180,6 +180,9 @@ namespace UniAI
                 "Text-to-Image, 专用图片生成端点");
 
             // ─── Anthropic ───
+            Add("claude-opus-4-7", "Anthropic",
+                ModelCapability.Chat | ModelCapability.VisionInput, ModelEndpoint.ChatCompletions,
+                contextWindow: 200000);
             Add("claude-opus-4-6", "Anthropic",
                 ModelCapability.Chat | ModelCapability.VisionInput, ModelEndpoint.ChatCompletions,
                 contextWindow: 200000);
