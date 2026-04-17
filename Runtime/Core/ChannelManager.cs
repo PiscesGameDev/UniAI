@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Threading;
 using Cysharp.Threading.Tasks;
@@ -22,12 +23,12 @@ namespace UniAI
         /// <summary>
         /// modelId → 上次成功使用的渠道 ID（路由缓存）
         /// </summary>
-        private static readonly Dictionary<string, string> _routeCache = new();
+        private static readonly ConcurrentDictionary<string, string> _routeCache = new();
 
         /// <summary>
         /// "channelId:modelId" → Provider 实例（Provider 池，同一渠道+模型复用同一个 Provider）
         /// </summary>
-        private static readonly Dictionary<string, IAIProvider> _providerPool = new();
+        private static readonly ConcurrentDictionary<string, IAIProvider> _providerPool = new();
 
         /// <summary>
         /// 发送请求，内部处理渠道查找 + 缓存优先 + 故障转移
@@ -176,7 +177,7 @@ namespace UniAI
         /// </summary>
         public static void Invalidate(string modelId)
         {
-            _routeCache.Remove(modelId);
+            _routeCache.TryRemove(modelId, out _);
         }
 
         /// <summary>
@@ -208,7 +209,8 @@ namespace UniAI
             if (_providerPool.TryGetValue(poolKey, out var existing))
                 return existing;
 
-            // 超过容量上限时清空池，避免无限增长
+            // 超过容量上限时清空池，避免无限增长。
+            // 并发下可能多个线程同时命中此分支触发多次 Clear，无害。
             if (_providerPool.Count >= MAX_POOL_SIZE)
             {
                 AILogger.Info($"ChannelManager: provider pool reached {MAX_POOL_SIZE}, clearing.");
@@ -216,9 +218,7 @@ namespace UniAI
             }
 
             general ??= new GeneralConfig();
-            var provider = CreateProvider(channel, modelId, general);
-            _providerPool[poolKey] = provider;
-            return provider;
+            return _providerPool.GetOrAdd(poolKey, _ => CreateProvider(channel, modelId, general));
         }
 
         /// <summary>
@@ -246,8 +246,8 @@ namespace UniAI
             var cachedChannel = FindChannel(config, cachedChannelId);
             if (cachedChannel != null && cachedChannel.IsValid(modelId))
                 result.Add(cachedChannel);
-            else
-                _routeCache.Remove(modelId);
+            else if (cachedChannelId != null)
+                _routeCache.TryRemove(modelId, out _);
 
             // 其余渠道
             var channels = config.FindChannelsForModel(modelId);

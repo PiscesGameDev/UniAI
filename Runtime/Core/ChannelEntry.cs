@@ -69,6 +69,7 @@ namespace UniAI
                 _id = Id,
                 Name = Name,
                 Protocol = Protocol,
+                Enabled = Enabled,
                 ApiKey = ApiKey,
                 BaseUrl = BaseUrl,
                 EnvVarName = EnvVarName,
