@@ -24,8 +24,13 @@ namespace UniAI
         /// <summary>
         /// 将消息列表压缩为一段摘要文本
         /// </summary>
+        /// <param name="messages">待摘要的历史消息</param>
+        /// <param name="modelId">用于摘要调用的模型 ID。路由模式下必填，否则 AIClient 会拒绝请求</param>
+        /// <param name="maxTokens">摘要输出 token 上限</param>
+        /// <param name="ct">取消令牌</param>
         public async UniTask<string> SummarizeAsync(
             IReadOnlyList<AIMessage> messages,
+            string modelId,
             int maxTokens = 512,
             CancellationToken ct = default)
         {
@@ -35,6 +40,7 @@ namespace UniAI
 
             var request = new AIRequest
             {
+                Model = modelId,
                 SystemPrompt = SUMMARY_SYSTEM_PROMPT,
                 Messages = new List<AIMessage>
                 {

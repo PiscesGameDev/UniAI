@@ -95,7 +95,7 @@ namespace UniAI
             if (config.EnableSummary && messages.Count > config.MinRecentMessages + 2)
             {
                 messages = await CompressWithSummaryAsync(
-                    messages, systemPrompt, availableTokens, config, session, ct);
+                    messages, systemPrompt, modelId, availableTokens, config, session, ct);
             }
             else
             {
@@ -159,6 +159,7 @@ namespace UniAI
         private async UniTask<List<AIMessage>> CompressWithSummaryAsync(
             List<AIMessage> messages,
             string systemPrompt,
+            string modelId,
             int availableTokens,
             ContextWindowConfig config,
             ChatSession session,
@@ -173,8 +174,8 @@ namespace UniAI
             var toSummarize = messages.GetRange(0, messages.Count - keepCount);
             var toKeep = messages.GetRange(messages.Count - keepCount, keepCount);
 
-            // 生成摘要
-            string summary = await _summarizer.SummarizeAsync(toSummarize, config.SummaryMaxTokens, ct);
+            // 生成摘要（需传入 modelId，路由模式下 AIClient 强制要求）
+            string summary = await _summarizer.SummarizeAsync(toSummarize, modelId, config.SummaryMaxTokens, ct);
             if (string.IsNullOrEmpty(summary))
             {
                 // 摘要失败，回退到截断
