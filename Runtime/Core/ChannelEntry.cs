@@ -158,7 +158,7 @@ namespace UniAI
         {
             Name = "DeepSeek", Protocol = ProviderProtocol.OpenAI,
             BaseUrl = "https://api.deepseek.com/v1",
-            Models = new List<string> { "deepseek-chat", "deepseek-reasoner" },
+            Models = new List<string> { "deepseek-v4-flash", "deepseek-v4-pro" },
             EnvVarName = "DEEPSEEK_API_KEY", UseEnvVar = true
         };
         
