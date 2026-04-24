@@ -24,13 +24,27 @@ namespace UniAI.Providers.OpenAI
 
         protected override string GetModelFromBody(object body) => ((OpenAIRequest)body).Model;
 
+        protected override string ValidateRequest(AIRequest request)
+        {
+            if (!RequestContainsImageInput(request))
+                return null;
+
+            var modelId = ResolveModelId(request);
+            var modelEntry = ModelRegistry.Get(modelId);
+            if (modelEntry == null || modelEntry.HasCapability(ModelCapability.VisionInput))
+                return null;
+
+            return $"Model '{modelId}' does not support image input on this OpenAI-compatible provider. Remove image attachments or use a model with VisionInput.";
+        }
+
         protected override object BuildRequestBody(AIRequest request, bool stream)
         {
+            var modelId = ResolveModelId(request);
             var messages = ConvertMessages(request);
 
             var openAIRequest = new OpenAIRequest
             {
-                Model = string.IsNullOrEmpty(request.Model) ? Config.Model : request.Model,
+                Model = modelId,
                 Messages = messages,
                 MaxTokens = request.MaxTokens,
                 Temperature = request.Temperature,
@@ -46,6 +60,26 @@ namespace UniAI.Providers.OpenAI
         }
 
         // ────────────────────────── 消息转换 ──────────────────────────
+
+        private string ResolveModelId(AIRequest request)
+            => string.IsNullOrEmpty(request.Model) ? Config.Model : request.Model;
+
+        private static bool RequestContainsImageInput(AIRequest request)
+        {
+            if (request?.Messages == null)
+                return false;
+
+            foreach (var msg in request.Messages)
+            {
+                if (msg?.Contents == null)
+                    continue;
+
+                if (msg.Contents.Any(c => c is AIImageContent))
+                    return true;
+            }
+
+            return false;
+        }
 
         private static List<OpenAIMessage> ConvertMessages(AIRequest request)
         {
@@ -149,7 +183,7 @@ namespace UniAI.Providers.OpenAI
                     "auto" => "auto",
                     "any" => "required",
                     "none" => "none",
-                    _ => (object)new { type = "function", function = new { name = request.ToolChoice } }
+                    _ => new { type = "function", function = new { name = request.ToolChoice } }
                 };
             }
         }

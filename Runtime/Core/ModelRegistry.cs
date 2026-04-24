@@ -136,7 +136,7 @@ namespace UniAI
         public static int GetContextWindow(string modelId)
         {
             var entry = Get(modelId);
-            if (entry != null && entry.ContextWindow > 0) return entry.ContextWindow;
+            if (entry is { ContextWindow: > 0 }) return entry.ContextWindow;
 
             if (string.IsNullOrEmpty(modelId)) return DEFAULT_CONTEXT_WINDOW;
 
@@ -217,10 +217,10 @@ namespace UniAI
 
             // ─── DeepSeek ───
             Add("deepseek-v4-flash", "DeepSeek",
-                ModelCapability.Chat | ModelCapability.VisionInput, ModelEndpoint.ChatCompletions,
+                ModelCapability.Chat, ModelEndpoint.ChatCompletions,
                 contextWindow: 1000000);
             Add("deepseek-v4-pro", "DeepSeek",
-                ModelCapability.Chat | ModelCapability.VisionInput, ModelEndpoint.ChatCompletions,
+                ModelCapability.Chat, ModelEndpoint.ChatCompletions,
                 contextWindow: 1000000);
 
             // ─── Meta (Llama) ───

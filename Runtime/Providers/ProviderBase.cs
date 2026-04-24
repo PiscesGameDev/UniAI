@@ -35,6 +35,10 @@ namespace UniAI.Providers
 
         public async UniTask<AIResponse> SendAsync(AIRequest request, CancellationToken ct = default)
         {
+            var validationError = ValidateRequest(request);
+            if (!string.IsNullOrEmpty(validationError))
+                return AIResponse.Fail(validationError);
+
             var url = BuildUrl();
             var body = BuildRequestBody(request, stream: false);
             var json = JsonConvert.SerializeObject(body, Formatting.None, SerializerSettings);
@@ -56,6 +60,17 @@ namespace UniAI.Providers
         {
             return UniTaskAsyncEnumerable.Create<AIStreamChunk>(async (writer, token) =>
             {
+                var validationError = ValidateRequest(request);
+                if (!string.IsNullOrEmpty(validationError))
+                {
+                    await writer.YieldAsync(new AIStreamChunk
+                    {
+                        IsComplete = true,
+                        Error = validationError
+                    });
+                    return;
+                }
+
                 using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct, token);
                 var linkedToken = cts.Token;
 
@@ -111,6 +126,8 @@ namespace UniAI.Providers
         protected abstract string GetModelFromBody(object body);
 
         protected abstract string TryParseErrorBody(string body);
+
+        protected virtual string ValidateRequest(AIRequest request) => null;
 
         /// <summary>
         /// 创建流式解析状态对象（用于跨事件累积 Tool 调用等）。默认返回 null。
