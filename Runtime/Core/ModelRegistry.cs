@@ -45,11 +45,9 @@ namespace UniAI
             ("gemini", 32768),
 
             // DeepSeek
-            ("deepseek-chat", 64000),
-            ("deepseek-reasoner", 64000),
-            ("deepseek-coder", 64000),
-            ("deepseek", 32768),
-
+            ("deepseek-v4-flash", 1000000),
+            ("deepseek-v4-pro", 1000000),
+            
             // Qwen
             ("qwen-turbo", 131072),
             ("qwen-plus", 131072),
@@ -218,12 +216,12 @@ namespace UniAI
                 "图片生成预览版");
 
             // ─── DeepSeek ───
-            Add("deepseek-chat", "DeepSeek",
-                ModelCapability.Chat, ModelEndpoint.ChatCompletions,
-                contextWindow: 64000);
-            Add("deepseek-reasoner", "DeepSeek",
-                ModelCapability.Chat, ModelEndpoint.ChatCompletions,
-                contextWindow: 64000);
+            Add("deepseek-v4-flash", "DeepSeek",
+                ModelCapability.Chat | ModelCapability.VisionInput, ModelEndpoint.ChatCompletions,
+                contextWindow: 1000000);
+            Add("deepseek-v4-pro", "DeepSeek",
+                ModelCapability.Chat | ModelCapability.VisionInput, ModelEndpoint.ChatCompletions,
+                contextWindow: 1000000);
 
             // ─── Meta (Llama) ───
             Add("llama-3.3-70b", "Meta",
