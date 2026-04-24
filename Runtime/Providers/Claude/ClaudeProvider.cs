@@ -26,6 +26,16 @@ namespace UniAI.Providers.Claude
 
         protected override string GetModelFromBody(object body) => ((ClaudeRequest)body).Model;
 
+        protected override string ValidateRequest(AIRequest request)
+        {
+            if (request?.ResponseFormat?.Type == ResponseFormatType.JsonSchema && request.Tools?.Count > 0)
+            {
+                return "Claude provider does not support JsonSchema response format together with tools in the same request. Remove tools, switch to JsonObject, or validate the schema client-side.";
+            }
+
+            return null;
+        }
+
         protected override object BuildRequestBody(AIRequest request, bool stream)
         {
             var claudeMessages = ConvertMessages(request.Messages);
@@ -156,7 +166,7 @@ namespace UniAI.Providers.Claude
             if (format == null || format.Type == ResponseFormatType.Text)
                 return null;
 
-            if (format.Type == ResponseFormatType.JsonSchema && request.Tools == null)
+            if (format.Type == ResponseFormatType.JsonSchema && !(request.Tools?.Count > 0))
             {
                 // 用虚拟 Tool 模拟 JSON Schema 结构化输出
                 var toolName = format.Name ?? "structured_output";
@@ -279,10 +289,9 @@ namespace UniAI.Providers.Claude
             try
             {
                 var resp = JsonConvert.DeserializeObject<ClaudeResponse>(json);
-                var text = resp.Content?
+                var text = string.Concat(resp.Content?
                     .Where(b => b.Type == "text")
-                    .Select(b => b.Text)
-                    .FirstOrDefault() ?? "";
+                    .Select(b => b.Text) ?? Enumerable.Empty<string>());
 
                 List<AIToolCall> toolCalls = null;
                 var rawContent = JObject.Parse(json)?["content"] as JArray;
