@@ -120,53 +120,7 @@ namespace UniAI
             {
                 return false;
             }
-            if (string.IsNullOrEmpty(GetEffectiveApiKey()))
-            {
-                return false;
-            }
-            return true;
+            return !string.IsNullOrEmpty(GetEffectiveApiKey());
         }
-        
-
-        #region 预设 Channel
-        public static ChannelEntry Claude() => new()
-        {
-            Name = "Claude", Protocol = ProviderProtocol.Claude,
-            BaseUrl = "https://api.anthropic.com",
-            Models = new List<string> { "claude-sonnet-4-20250514", "claude-opus-4-6" },
-            ApiVersion = "2023-06-01",
-            EnvVarName = "ANTHROPIC_API_KEY", UseEnvVar = true
-        };
-
-        public static ChannelEntry OpenAI() => new()
-        {
-            Name = "OpenAI", Protocol = ProviderProtocol.OpenAI,
-            BaseUrl = "https://api.openai.com/v1",
-            Models = new List<string> { "gpt-4o", "gpt-4o-mini", "o1" },
-            EnvVarName = "OPENAI_API_KEY", UseEnvVar = true
-        };
-
-        public static ChannelEntry Gemini() => new()
-        {
-            Name = "Gemini", Protocol = ProviderProtocol.OpenAI,
-            BaseUrl = "https://generativelanguage.googleapis.com/v1beta/openai",
-            Models = new List<string> { "gemini-2.0-flash", "gemini-2.5-pro" },
-            EnvVarName = "GEMINI_API_KEY", UseEnvVar = true
-        };
-
-        public static ChannelEntry DeepSeek() => new()
-        {
-            Name = "DeepSeek", Protocol = ProviderProtocol.OpenAI,
-            BaseUrl = "https://api.deepseek.com/v1",
-            Models = new List<string> { "deepseek-v4-flash", "deepseek-v4-pro" },
-            EnvVarName = "DEEPSEEK_API_KEY", UseEnvVar = true
-        };
-        
-        
-        /// <summary>
-        /// 创建默认渠道列表（Claude + OpenAI + Gemini + DeepSeek），每次调用返回新列表
-        /// </summary>
-        internal static List<ChannelEntry> CreateDefaults() => new() { Claude(), OpenAI(), Gemini(), DeepSeek() };
-        #endregion
     }
 }

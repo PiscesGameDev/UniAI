@@ -105,7 +105,7 @@ namespace UniAI.Editor
         private static UniAISettings CreateDefaultSettings()
         {
             var settings = ScriptableObject.CreateInstance<UniAISettings>();
-            settings.ChannelEntries.AddRange(ChannelEntry.CreateDefaults());
+            settings.ChannelEntries.AddRange(BuiltInPresetCatalog.CreateDefaultChannelEntries());
 
             EnsureResourcesDir();
             AssetDatabase.CreateAsset(settings, SettingsAssetPath);

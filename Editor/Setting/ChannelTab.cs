@@ -686,7 +686,7 @@ namespace UniAI.Editor
         {
             var menu = new GenericMenu();
             
-            foreach (var channel in ChannelEntry.CreateDefaults())
+            foreach (var channel in BuiltInPresetCatalog.CreateDefaultChannelEntries())
             {
                 var c = channel;
                 menu.AddItem(new GUIContent(channel.Name + "(模板)"), false, () =>
