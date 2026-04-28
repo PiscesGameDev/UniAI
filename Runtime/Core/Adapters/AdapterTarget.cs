@@ -5,7 +5,9 @@ namespace UniAI
     /// </summary>
     public enum AdapterTarget
     {
+        ConversationProvider,
         OpenAIChatDialect,
+        ImageGenerationProvider,
         OpenAIImageDialect,
         EmbeddingProvider,
         RerankProvider,

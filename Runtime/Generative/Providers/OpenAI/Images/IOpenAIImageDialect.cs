@@ -1,7 +1,7 @@
 using System.Collections.Generic;
 using Newtonsoft.Json.Linq;
 
-namespace UniAI
+namespace UniAI.Providers.OpenAI.Images
 {
     public interface IOpenAIImageDialect
     {

@@ -35,7 +35,10 @@ namespace UniAI.Providers.OpenAI
         AdapterTarget.OpenAIChatDialect,
         "DeepSeek Thinking",
         "DeepSeek thinking mode with reasoning_content replay.",
-        priority: 100)]
+        priority: 100,
+        protocolId: "OpenAI",
+        capabilities: ModelCapability.Chat,
+        endpointId: "ChatCompletions")]
     internal sealed class DeepSeekThinkingDialectFactory : IOpenAIChatDialectFactory
     {
         public bool CanHandle(ModelEntry model)

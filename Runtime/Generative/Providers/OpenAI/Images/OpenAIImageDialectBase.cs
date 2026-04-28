@@ -4,7 +4,7 @@ using System.Globalization;
 using System.Linq;
 using Newtonsoft.Json.Linq;
 
-namespace UniAI
+namespace UniAI.Providers.OpenAI.Images
 {
     public abstract class OpenAIImageDialectBase : IOpenAIImageDialect
     {

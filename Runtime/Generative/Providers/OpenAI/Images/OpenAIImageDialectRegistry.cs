@@ -1,6 +1,6 @@
 using System.Collections.Generic;
 
-namespace UniAI
+namespace UniAI.Providers.OpenAI.Images
 {
     /// <summary>
     /// OpenAI image dialect registry.

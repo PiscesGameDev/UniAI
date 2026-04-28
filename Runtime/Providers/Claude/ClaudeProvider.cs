@@ -10,7 +10,7 @@ namespace UniAI.Providers.Claude
     /// <summary>
     /// Claude Messages API 实现
     /// </summary>
-    public class ClaudeProvider : ProviderBase
+    public class ClaudeProvider : JsonSseProviderBase
     {
         public override string Name => "Claude";
 

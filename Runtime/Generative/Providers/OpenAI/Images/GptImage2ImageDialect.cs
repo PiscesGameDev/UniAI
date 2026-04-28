@@ -4,14 +4,16 @@ using System.Globalization;
 using System.Linq;
 using Newtonsoft.Json.Linq;
 
-namespace UniAI
+namespace UniAI.Providers.OpenAI.Images
 {
     [Adapter(
         "openai.images.gpt-image-2",
         AdapterTarget.OpenAIImageDialect,
         "GPT Image 2",
         "OpenAI image generation/edit dialect for gpt-image-2.",
-        priority: 100)]
+        priority: 100,
+        protocolId: "OpenAI",
+        capabilities: ModelCapability.ImageGen | ModelCapability.ImageEdit)]
     internal sealed class GptImage2DialectFactory : IOpenAIImageDialectFactory
     {
         public bool CanHandle(ModelEntry model)

@@ -1,6 +1,4 @@
 using System;
-using System.Collections.Concurrent;
-using System.Collections.Generic;
 using System.Threading;
 using Cysharp.Threading.Tasks;
 using Cysharp.Threading.Tasks.Linq;
@@ -14,21 +12,8 @@ namespace UniAI
     /// </summary>
     public static class ChannelManager
     {
-        /// <summary>
-        /// Provider 池容量上限。超过时清除所有缓存的 Provider。
-        /// 正常使用中 channelId:modelId 组合数远低于此值。
-        /// </summary>
-        private const int MAX_POOL_SIZE = 64;
-
-        /// <summary>
-        /// modelId → 上次成功使用的渠道 ID（路由缓存）
-        /// </summary>
-        private static readonly ConcurrentDictionary<string, string> _routeCache = new();
-
-        /// <summary>
-        /// "channelId:modelId" → Provider 实例（Provider 池，同一渠道+模型复用同一个 Provider）
-        /// </summary>
-        private static readonly ConcurrentDictionary<string, IAIProvider> _providerPool = new();
+        private static readonly ChannelRouteSelector _selector = new();
+        private static readonly ProviderCache _providerCache = new();
 
         /// <summary>
         /// 发送请求，内部处理渠道查找 + 缓存优先 + 故障转移
@@ -36,7 +21,7 @@ namespace UniAI
         public static async UniTask<AIResponse> SendAsync(
             AIConfig config, string modelId, AIRequest request, CancellationToken ct)
         {
-            var candidates = BuildCandidateChannels(config, modelId);
+            var candidates = _selector.BuildCandidates(config, modelId);
             if (candidates.Count == 0)
                 return AIResponse.Fail($"No channel found for model '{modelId}'.");
 
@@ -46,14 +31,14 @@ namespace UniAI
             {
                 ct.ThrowIfCancellationRequested();
 
-                var provider = GetOrCreateProvider(channel, modelId, config.General);
+                var provider = _providerCache.GetOrCreate(channel, modelId, config.General);
 
                 try
                 {
                     var response = await provider.SendAsync(request, ct);
                     if (response.IsSuccess)
                     {
-                        _routeCache[modelId] = channel.Id;
+                        _selector.MarkSuccess(modelId, channel);
                         return response;
                     }
 
@@ -84,7 +69,7 @@ namespace UniAI
                 using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct, token);
                 var linkedToken = cts.Token;
 
-                var candidates = BuildCandidateChannels(config, modelId);
+                var candidates = _selector.BuildCandidates(config, modelId);
                 if (candidates.Count == 0)
                 {
                     await writer.YieldAsync(new AIStreamChunk
@@ -101,7 +86,7 @@ namespace UniAI
                 {
                     linkedToken.ThrowIfCancellationRequested();
 
-                    var provider = GetOrCreateProvider(channel, modelId, config.General);
+                    var provider = _providerCache.GetOrCreate(channel, modelId, config.General);
                     bool hasYielded = false;
 
                     try
@@ -111,7 +96,7 @@ namespace UniAI
                             if (!hasYielded)
                             {
                                 hasYielded = true;
-                                _routeCache[modelId] = channel.Id;
+                                _selector.MarkSuccess(modelId, channel);
                             }
 
                             await writer.YieldAsync(chunk);
@@ -154,22 +139,7 @@ namespace UniAI
         /// </summary>
         internal static IAIProvider CreateProvider(ChannelEntry entry, string modelId, GeneralConfig general)
         {
-            var providerConfig = new ProviderConfig
-            {
-                ApiKey = entry.GetEffectiveApiKey(),
-                BaseUrl = entry.BaseUrl,
-                Model = modelId ?? entry.DefaultModel,
-                TimeoutSeconds = general.TimeoutSeconds,
-                ApiVersion = entry.ApiVersion ?? "2023-06-01"
-            };
-
-            return entry.Protocol switch
-            {
-                ProviderProtocol.Claude => new Providers.Claude.ClaudeProvider(providerConfig),
-                ProviderProtocol.OpenAI => new Providers.OpenAI.OpenAIProvider(providerConfig),
-                _ => throw new NotSupportedException(
-                    $"Protocol '{entry.Protocol}' is not supported.")
-            };
+            return AIProviderFactoryRegistry.CreateProvider(entry, modelId, general);
         }
 
         /// <summary>
@@ -177,7 +147,7 @@ namespace UniAI
         /// </summary>
         public static void Invalidate(string modelId)
         {
-            _routeCache.TryRemove(modelId, out _);
+            _selector.Invalidate(modelId);
         }
 
         /// <summary>
@@ -185,8 +155,8 @@ namespace UniAI
         /// </summary>
         public static void InvalidateAll()
         {
-            _routeCache.Clear();
-            _providerPool.Clear();
+            _selector.Clear();
+            _providerCache.Clear();
         }
 
         /// <summary>
@@ -200,65 +170,5 @@ namespace UniAI
             });
         }
 
-        /// <summary>
-        /// 获取或创建 Provider（同一 channelId + modelId 复用同一实例）
-        /// </summary>
-        private static IAIProvider GetOrCreateProvider(ChannelEntry channel, string modelId, GeneralConfig general)
-        {
-            string poolKey = $"{channel.Id}:{modelId}";
-            if (_providerPool.TryGetValue(poolKey, out var existing))
-                return existing;
-
-            // 超过容量上限时清空池，避免无限增长。
-            // 并发下可能多个线程同时命中此分支触发多次 Clear，无害。
-            if (_providerPool.Count >= MAX_POOL_SIZE)
-            {
-                AILogger.Info($"ChannelManager: provider pool reached {MAX_POOL_SIZE}, clearing.");
-                _providerPool.Clear();
-            }
-
-            general ??= new GeneralConfig();
-            return _providerPool.GetOrAdd(poolKey, _ => CreateProvider(channel, modelId, general));
-        }
-
-        /// <summary>
-        /// 在 config 中按 ID 查找渠道
-        /// </summary>
-        private static ChannelEntry FindChannel(AIConfig config, string channelId)
-        {
-            foreach (var channel in config.ChannelEntries)
-            {
-                if (channel.Id == channelId)
-                    return channel;
-            }
-            return null;
-        }
-
-        /// <summary>
-        /// 构建候选渠道列表：缓存的渠道优先，然后其余渠道（不创建 Provider）
-        /// </summary>
-        private static List<ChannelEntry> BuildCandidateChannels(AIConfig config, string modelId)
-        {
-            var result = new List<ChannelEntry>();
-
-            // 缓存优先
-            _routeCache.TryGetValue(modelId, out string cachedChannelId);
-            var cachedChannel = FindChannel(config, cachedChannelId);
-            if (cachedChannel != null && cachedChannel.IsValid(modelId))
-                result.Add(cachedChannel);
-            else if (cachedChannelId != null)
-                _routeCache.TryRemove(modelId, out _);
-
-            // 其余渠道
-            var channels = config.FindChannelsForModel(modelId);
-            foreach (var channel in channels)
-            {
-                if (channel.Id == cachedChannelId) continue;
-                if (string.IsNullOrEmpty(channel.GetEffectiveApiKey())) continue;
-                result.Add(channel);
-            }
-
-            return result;
-        }
     }
 }

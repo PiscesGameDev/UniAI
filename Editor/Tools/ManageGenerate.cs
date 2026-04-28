@@ -107,7 +107,7 @@ namespace UniAI.Editor.Tools
             if (channels.Count == 0)
                 return ToolResponse.Error($"Model '{model}' not found in any enabled channel. Add it to a channel's model list first.");
 
-            var route = GenerativeProviderRouter.Resolve(channels, entry, model);
+            var route = GenerativeProviderRouter.Resolve(channels, entry, model, config.General);
             if (route.Provider == null)
                 return ToolResponse.Error(route.Error);
 

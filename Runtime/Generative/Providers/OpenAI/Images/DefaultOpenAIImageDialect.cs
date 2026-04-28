@@ -2,7 +2,7 @@ using System;
 using System.Collections.Generic;
 using Newtonsoft.Json.Linq;
 
-namespace UniAI
+namespace UniAI.Providers.OpenAI.Images
 {
     internal sealed class DefaultOpenAIImageDialect : OpenAIImageDialectBase
     {

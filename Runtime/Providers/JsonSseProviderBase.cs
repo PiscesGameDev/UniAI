@@ -9,9 +9,10 @@ namespace UniAI.Providers
 {
     
     /// <summary>
-    /// Provider 抽象基类 — 提取 SendAsync / StreamAsync 模板方法和通用工具
+    /// JSON + SSE Provider 抽象基类 — 提取 SendAsync / StreamAsync 模板方法和通用工具。
+    /// 适用于 Chat Completions / Messages 这类 JSON 请求、SSE 流式响应的协议。
     /// </summary>
-    public abstract class ProviderBase : IAIProvider
+    public abstract class JsonSseProviderBase : IAIProvider
     {
         public abstract string Name { get; }
 
@@ -25,7 +26,7 @@ namespace UniAI.Providers
         /// <summary>当前 Provider 的配置</summary>
         protected ProviderConfig Config { get; }
 
-        protected ProviderBase(ProviderConfig config)
+        protected JsonSseProviderBase(ProviderConfig config)
         {
             Config = config ?? throw new ArgumentNullException(nameof(config));
             _timeoutSeconds = config.TimeoutSeconds;

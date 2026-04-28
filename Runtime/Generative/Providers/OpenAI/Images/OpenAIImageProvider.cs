@@ -3,11 +3,11 @@ using System.Collections.Generic;
 using System.Threading;
 using Cysharp.Threading.Tasks;
 
-namespace UniAI
+namespace UniAI.Providers.OpenAI.Images
 {
     /// <summary>
-    /// OpenAI Images API compatible image generation provider.
-    /// Dialects handle model-specific request and response differences.
+    /// OpenAI Images API 兼容图片生成 Provider。
+    /// 具体模型的请求/响应差异由 dialect 处理。
     /// </summary>
     internal class OpenAIImageProvider : IGenerativeAssetProvider
     {
@@ -18,17 +18,20 @@ namespace UniAI
         private readonly string _apiKey;
         private readonly string _baseUrl;
         private readonly string _model;
+        private readonly int _timeoutSeconds;
 
         public OpenAIImageProvider(
             string apiKey,
             string baseUrl,
             string model,
+            int timeoutSeconds,
             string providerId = "openai-image",
             string displayName = "OpenAI Image")
         {
             _apiKey = apiKey;
             _baseUrl = baseUrl.TrimEnd('/');
             _model = model;
+            _timeoutSeconds = timeoutSeconds;
             ProviderId = providerId;
             DisplayName = displayName;
         }
@@ -57,13 +60,13 @@ namespace UniAI
                     url,
                     dialect.BuildMultipartParts(_model, request),
                     headers,
-                    120,
+                    _timeoutSeconds,
                     ct);
             }
             else
             {
                 var body = dialect.BuildJsonBody(_model, request);
-                result = await AIHttpClient.PostJsonAsync(url, body.ToString(), headers, 120, ct);
+                result = await AIHttpClient.PostJsonAsync(url, body.ToString(), headers, _timeoutSeconds, ct);
             }
 
             if (!result.IsSuccess)

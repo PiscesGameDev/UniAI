@@ -629,12 +629,23 @@ namespace UniAI.Editor
                 DrawDetailKV("Adapter Info", selectedAdapter.Description);
         }
 
-        private static List<AdapterDescriptor> GetAdapterDescriptorsFor(ModelEntry entry)
+        private List<AdapterDescriptor> GetAdapterDescriptorsFor(ModelEntry entry)
         {
             if (entry == null)
                 return new List<AdapterDescriptor>();
 
-            return AdapterCatalog.GetAdaptersFor(entry).ToList();
+            var channels = GetChannelsForModel(entry.Id);
+            return AdapterCatalog.GetAdaptersFor(entry, channels).ToList();
+        }
+
+        private List<ChannelEntry> GetChannelsForModel(string modelId)
+        {
+            if (string.IsNullOrEmpty(modelId) || Config?.ChannelEntries == null)
+                return null;
+
+            return Config.ChannelEntries
+                .Where(channel => channel?.Models != null && channel.Models.Contains(modelId))
+                .ToList();
         }
 
         private static string FormatAdapterOption(AdapterDescriptor adapter)

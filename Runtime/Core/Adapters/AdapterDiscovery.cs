@@ -50,7 +50,11 @@ namespace UniAI
                         attribute.Description,
                         attribute.Target,
                         attribute.Priority,
-                        type);
+                        type,
+                        attribute.ProtocolId,
+                        attribute.Vendor,
+                        attribute.Capabilities,
+                        ParseEndpoint(attribute.EndpointId, type.FullName));
 
                     registrations.Add(new AdapterRegistration<TFactory>(descriptor, factory));
                 }
@@ -91,7 +95,11 @@ namespace UniAI
                     attribute.Description,
                     attribute.Target,
                     attribute.Priority,
-                    type));
+                    type,
+                    attribute.ProtocolId,
+                    attribute.Vendor,
+                    attribute.Capabilities,
+                    ParseEndpoint(attribute.EndpointId, type.FullName)));
             }
 
             return descriptors
@@ -130,6 +138,18 @@ namespace UniAI
                    && !type.IsAbstract
                    && !type.IsInterface
                    && factoryType.IsAssignableFrom(type);
+        }
+
+        private static ModelEndpoint? ParseEndpoint(string endpointId, string typeName)
+        {
+            if (string.IsNullOrEmpty(endpointId))
+                return null;
+
+            if (Enum.TryParse<ModelEndpoint>(endpointId, true, out var endpoint))
+                return endpoint;
+
+            AILogger.Warning($"Adapter type '{typeName}' has unknown endpoint '{endpointId}'. The endpoint constraint will be ignored.");
+            return null;
         }
     }
 }

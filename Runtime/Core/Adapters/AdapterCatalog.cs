@@ -33,15 +33,39 @@ namespace UniAI
 
         public static IReadOnlyList<AdapterDescriptor> GetAdaptersFor(ModelEntry model)
         {
+            return GetAdaptersFor(model, (ChannelEntry)null);
+        }
+
+        public static IReadOnlyList<AdapterDescriptor> GetAdaptersFor(ModelEntry model, ChannelEntry channel)
+        {
             EnsureInitialized();
 
             if (model == null)
                 return Array.Empty<AdapterDescriptor>();
 
-            var targets = GetTargetsFor(model);
             lock (_sync)
             {
-                return Sort(_descriptors.Values.Where(d => targets.Contains(d.Target))).ToList();
+                return Sort(_descriptors.Values.Where(d => d.IsCompatibleWith(model, channel))).ToList();
+            }
+        }
+
+        public static IReadOnlyList<AdapterDescriptor> GetAdaptersFor(
+            ModelEntry model,
+            IEnumerable<ChannelEntry> channels)
+        {
+            EnsureInitialized();
+
+            if (model == null)
+                return Array.Empty<AdapterDescriptor>();
+
+            var channelList = channels?.Where(c => c != null).ToList();
+            lock (_sync)
+            {
+                if (channelList == null || channelList.Count == 0)
+                    return Sort(_descriptors.Values.Where(d => d.IsCompatibleWith(model, null))).ToList();
+
+                return Sort(_descriptors.Values.Where(d =>
+                    channelList.Any(channel => d.IsCompatibleWith(model, channel)))).ToList();
             }
         }
 
@@ -108,31 +132,6 @@ namespace UniAI
             }
 
             _descriptors[descriptor.Id] = descriptor;
-        }
-
-        private static IReadOnlyList<AdapterTarget> GetTargetsFor(ModelEntry model)
-        {
-            var targets = new List<AdapterTarget>();
-
-            if (model.HasCapability(ModelCapability.Chat))
-                targets.Add(AdapterTarget.OpenAIChatDialect);
-
-            if (model.HasCapability(ModelCapability.ImageGen) || model.HasCapability(ModelCapability.ImageEdit))
-                targets.Add(AdapterTarget.OpenAIImageDialect);
-
-            if (model.HasCapability(ModelCapability.Embedding))
-                targets.Add(AdapterTarget.EmbeddingProvider);
-
-            if (model.HasCapability(ModelCapability.Rerank))
-                targets.Add(AdapterTarget.RerankProvider);
-
-            if (model.HasCapability(ModelCapability.AudioGen))
-                targets.Add(AdapterTarget.AudioGenerationProvider);
-
-            if (model.HasCapability(ModelCapability.VideoGen))
-                targets.Add(AdapterTarget.VideoGenerationProvider);
-
-            return targets;
         }
 
         private static IEnumerable<AdapterDescriptor> Sort(IEnumerable<AdapterDescriptor> descriptors)

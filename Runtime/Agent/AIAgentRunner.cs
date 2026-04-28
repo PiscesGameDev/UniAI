@@ -2,15 +2,12 @@ using System;
 using System.Collections.Generic;
 using System.Threading;
 using Cysharp.Threading.Tasks;
-using Cysharp.Threading.Tasks.Linq;
-using Newtonsoft.Json;
-using Newtonsoft.Json.Linq;
 
 namespace UniAI
 {
     /// <summary>
-    /// Agent 运行器 — 封装 Tool 调用循环
-    /// 无 Tool 时等价于直接 Chat（一轮即结束）
+    /// Agent 运行器门面。
+    /// 负责 Tool 注册和 MCP 生命周期；多轮状态机由 AgentLoop 负责。
     /// </summary>
     public class AIAgentRunner : IConversationRunner, IDisposable
     {
@@ -18,33 +15,19 @@ namespace UniAI
         private readonly AgentDefinition _definition;
         private readonly Dictionary<string, ToolHandlerInfo> _localHandlers = new(StringComparer.Ordinal);
         private readonly List<AITool> _toolDefs = new();
+        private readonly AgentLoop _loop;
         private McpClientManager _mcpManager;
         private UniTask? _mcpInitTask;
         private bool _mcpInitialized;
 
-        /// <summary>
-        /// 是否注册了工具
-        /// </summary>
         public bool HasTools => _toolDefs.Count > 0;
 
-        /// <summary>
-        /// 已注册的本地工具处理器
-        /// </summary>
         public IReadOnlyCollection<ToolHandlerInfo> LocalHandlers => _localHandlers.Values;
 
-        /// <summary>
-        /// MCP 客户端管理器（可能为 null，表示未使用 MCP）
-        /// </summary>
         public McpClientManager McpManager => _mcpManager;
 
-        /// <summary>
-        /// 单个 Tool 执行超时时间（秒），0 或负数表示不限制
-        /// </summary>
         public float ToolTimeoutSeconds { get; set; }
 
-        /// <summary>
-        /// MCP 运行时配置（初始化超时、Tool 调用超时），从 AIConfig.General.Mcp 传入
-        /// </summary>
         public McpRuntimeConfig McpSettings { get; set; }
 
         public AIAgentRunner(AIClient client, AgentDefinition definition)
@@ -52,7 +35,6 @@ namespace UniAI
             _client = client ?? throw new ArgumentNullException(nameof(client));
             _definition = definition ?? throw new ArgumentNullException(nameof(definition));
 
-            // 从 Registry 按组加载本地代码工具
             if (definition.HasTools)
             {
                 foreach (var handler in UniAIToolRegistry.GetHandlers(definition.ToolGroups))
@@ -61,17 +43,24 @@ namespace UniAI
                     _toolDefs.Add(handler.Definition);
                 }
             }
+
+            var toolExecutor = new AgentToolExecutor(
+                _localHandlers,
+                () => _mcpManager,
+                () => ToolTimeoutSeconds);
+            _loop = new AgentLoop(_client, _definition, _toolDefs, toolExecutor);
         }
 
         /// <summary>
-        /// 异步初始化 MCP 连接：连接所有启用的 MCP Server，将其 Tools 合并到可用工具列表
-        /// 没有 MCP 配置时立即返回。初始化成功后不会重复执行；失败时允许下次重试。
-        /// 并发调用会共享同一次初始化过程。
+        /// Initializes MCP once and merges MCP tools into the available tool definitions.
+        /// Failed initialization can be retried by calling this method again.
         /// </summary>
         public UniTask InitializeMcpAsync(CancellationToken ct = default)
         {
-            if (_mcpInitialized) return UniTask.CompletedTask;
-            if (_mcpInitTask.HasValue) return _mcpInitTask.Value;
+            if (_mcpInitialized)
+                return UniTask.CompletedTask;
+            if (_mcpInitTask.HasValue)
+                return _mcpInitTask.Value;
 
             var task = InitializeMcpCoreAsync(ct);
             _mcpInitTask = task;
@@ -89,21 +78,22 @@ namespace UniAI
                 }
 
                 var manager = new McpClientManager();
-                int initTimeout = McpSettings?.InitTimeoutSeconds ?? 0;
+                var initTimeout = McpSettings?.InitTimeoutSeconds ?? 0;
                 await manager.ConnectAllAsync(_definition.McpServers, initTimeout, ct);
 
                 manager.ToolCallTimeoutSeconds = McpSettings?.ToolCallTimeoutSeconds ?? 0;
 
                 foreach (var tool in manager.GetAllTools())
                 {
-                    if (string.IsNullOrEmpty(tool.Name)) continue;
+                    if (string.IsNullOrEmpty(tool.Name))
+                        continue;
 
-                    // MCP Tool 名与本地代码工具冲突时，本地优先
                     if (_localHandlers.ContainsKey(tool.Name))
                     {
                         AILogger.Warning($"MCP tool '{tool.Name}' shadowed by local [UniAITool]");
                         continue;
                     }
+
                     _toolDefs.Add(tool);
                 }
 
@@ -112,381 +102,31 @@ namespace UniAI
             }
             catch
             {
-                // 失败时允许重试：清空缓存的 task，下次调用会重新尝试
                 _mcpInitTask = null;
                 throw;
             }
         }
 
-        /// <summary>
-        /// 非流式运行：返回最终结果。可选 requestOverride 覆盖 AgentDefinition 默认值
-        /// </summary>
-        public async UniTask<AgentResult> RunAsync(List<AIMessage> messages, AIRequest requestOverride = null, CancellationToken ct = default)
+        public UniTask<AgentResult> RunAsync(
+            List<AIMessage> messages,
+            AIRequest requestOverride = null,
+            CancellationToken ct = default)
         {
-            var workingMessages = new List<AIMessage>(messages);
-            var totalUsage = new TokenUsage();
-            int maxTurns = HasTools ? _definition.MaxTurns : 1;
-
-            for (int turn = 0; turn < maxTurns; turn++)
-            {
-                ct.ThrowIfCancellationRequested();
-
-                var request = BuildRequest(workingMessages, requestOverride);
-                var response = await _client.SendAsync(request, ct);
-
-                if (!response.IsSuccess)
-                    return AgentResult.Fail(response.Error, workingMessages, turn);
-
-                AccumulateUsage(totalUsage, response.Usage);
-
-                if (response.HasToolCalls)
-                {
-                    SanitizeToolCallArguments(response.ToolCalls);
-                    workingMessages.Add(BuildAssistantMessage(response.Text, response.ToolCalls, response.ReasoningContent));
-
-                    // 执行 Tool 并追加结果
-                    foreach (var tc in response.ToolCalls)
-                    {
-                        var (result, isError) = await ExecuteToolAsync(tc, ct);
-                        workingMessages.Add(AIMessage.ToolResult(tc.Id, result, isError));
-                    }
-
-                    continue;
-                }
-
-                // 无 Tool 调用 → 结束
-                return AgentResult.Success(response.Text, workingMessages, turn + 1, totalUsage);
-            }
-
-            return AgentResult.Fail("Exceeded maximum turns", workingMessages, maxTurns);
+            return _loop.RunAsync(messages, requestOverride, ct);
         }
 
-        /// <summary>
-        /// 流式运行：yield AgentEvent。可选 requestOverride 覆盖 AgentDefinition 默认值
-        /// </summary>
-        public IUniTaskAsyncEnumerable<AgentEvent> RunStreamAsync(List<AIMessage> messages, AIRequest requestOverride = null, CancellationToken ct = default)
+        public IUniTaskAsyncEnumerable<AgentEvent> RunStreamAsync(
+            List<AIMessage> messages,
+            AIRequest requestOverride = null,
+            CancellationToken ct = default)
         {
-            // 无 Tool 时直接转换 Provider 流，避免额外的 UniTaskAsyncEnumerable.Create 嵌套
-            if (!HasTools)
-                return RunStreamSimple(messages, requestOverride, ct);
-
-            return RunStreamWithTools(messages, requestOverride, ct);
-        }
-
-        /// <summary>
-        /// 简单流式（无 Tool）：直接将 Provider 的 AIStreamChunk 转换为 AgentEvent，
-        /// 不额外包裹 UniTaskAsyncEnumerable.Create，减少嵌套层数
-        /// </summary>
-        private IUniTaskAsyncEnumerable<AgentEvent> RunStreamSimple(List<AIMessage> messages, AIRequest requestOverride, CancellationToken ct)
-        {
-            var request = BuildRequest(new List<AIMessage>(messages), requestOverride);
-            return _client.StreamAsync(request, ct)
-                .Select(AgentEvent.FromChunk)
-                .Where(evt => evt != null);
-        }
-
-        /// <summary>
-        /// 带 Tool 的流式运行：需要 UniTaskAsyncEnumerable.Create 包裹以实现多轮循环
-        /// </summary>
-        private IUniTaskAsyncEnumerable<AgentEvent> RunStreamWithTools(List<AIMessage> messages, AIRequest requestOverride, CancellationToken ct)
-        {
-            return UniTaskAsyncEnumerable.Create<AgentEvent>(async (writer, token) =>
-            {
-                using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct, token);
-                var linkedToken = cts.Token;
-
-                var workingMessages = new List<AIMessage>(messages);
-                var totalUsage = new TokenUsage();
-                int maxTurns = _definition.MaxTurns;
-
-                for (int turn = 0; turn < maxTurns; turn++)
-                {
-                    linkedToken.ThrowIfCancellationRequested();
-
-                    var request = BuildRequest(workingMessages, requestOverride);
-                    var responseText = "";
-                    var reasoningContent = "";
-                    var toolCalls = new List<AIToolCall>();
-                    TokenUsage turnUsage = null;
-
-                    await foreach (var chunk in _client.StreamAsync(request, linkedToken))
-                    {
-                        if (!string.IsNullOrEmpty(chunk.Error))
-                        {
-                            await writer.YieldAsync(new AgentEvent
-                            {
-                                Type = AgentEventType.Error,
-                                Text = chunk.Error
-                            });
-                        }
-
-                        if (!string.IsNullOrEmpty(chunk.DeltaText))
-                        {
-                            responseText += chunk.DeltaText;
-                            await writer.YieldAsync(new AgentEvent
-                            {
-                                Type = AgentEventType.TextDelta,
-                                Text = chunk.DeltaText
-                            });
-                        }
-
-                        if (!string.IsNullOrEmpty(chunk.ReasoningDelta))
-                            reasoningContent += chunk.ReasoningDelta;
-
-                        if (chunk.ToolCall != null)
-                            toolCalls.Add(chunk.ToolCall);
-
-                        if (chunk.IsComplete)
-                        {
-                            if (chunk.Usage != null)
-                                turnUsage = chunk.Usage;
-                            if (!string.IsNullOrEmpty(chunk.ReasoningContent))
-                                reasoningContent = chunk.ReasoningContent;
-                        }
-                    }
-
-                    AccumulateUsage(totalUsage, turnUsage);
-
-                    if (toolCalls.Count > 0)
-                    {
-                        SanitizeToolCallArguments(toolCalls);
-                        workingMessages.Add(BuildAssistantMessage(responseText, toolCalls, reasoningContent));
-
-                        // 执行 Tool
-                        foreach (var tc in toolCalls)
-                        {
-                            await writer.YieldAsync(new AgentEvent
-                            {
-                                Type = AgentEventType.ToolCallStart,
-                                ToolCall = tc,
-                                ReasoningContent = string.IsNullOrEmpty(reasoningContent) ? null : reasoningContent
-                            });
-
-                            var (result, isError) = await ExecuteToolAsync(tc, linkedToken);
-
-                            await writer.YieldAsync(new AgentEvent
-                            {
-                                Type = AgentEventType.ToolCallResult,
-                                ToolCall = tc,
-                                ToolName = tc.Name,
-                                ToolResult = result,
-                                IsToolError = isError
-                            });
-
-                            workingMessages.Add(AIMessage.ToolResult(tc.Id, result, isError));
-                        }
-
-                        await writer.YieldAsync(new AgentEvent
-                        {
-                            Type = AgentEventType.TurnComplete,
-                            TurnIndex = turn,
-                            Usage = turnUsage,
-                            ReasoningContent = string.IsNullOrEmpty(reasoningContent) ? null : reasoningContent
-                        });
-
-                        continue;
-                    }
-
-                    // 无 Tool 调用 → 结束
-                    await writer.YieldAsync(new AgentEvent
-                    {
-                        Type = AgentEventType.TurnComplete,
-                        TurnIndex = turn,
-                        Text = responseText,
-                        Usage = totalUsage,
-                        ReasoningContent = string.IsNullOrEmpty(reasoningContent) ? null : reasoningContent
-                    });
-                    return;
-                }
-
-                await writer.YieldAsync(new AgentEvent
-                {
-                    Type = AgentEventType.Error,
-                    Text = "Exceeded maximum turns"
-                });
-            });
-        }
-
-        private AIRequest BuildRequest(List<AIMessage> messages, AIRequest overrides = null)
-        {
-            var request = new AIRequest
-            {
-                Model = overrides?.Model,
-                SystemPrompt = overrides?.SystemPrompt ?? _definition.SystemPrompt,
-                Messages = messages,
-                Temperature = overrides != null ? overrides.Temperature : _definition.Temperature,
-                MaxTokens = overrides?.MaxTokens > 0 ? overrides.MaxTokens : _definition.MaxTokens
-            };
-
-            if (_toolDefs.Count > 0)
-                request.Tools = _toolDefs;
-
-            return request;
-        }
-
-        /// <summary>
-        /// 修正 tool call 中可能损坏的 arguments JSON（如多个 JSON 对象拼接），
-        /// 确保 BuildAssistantMessage 写入合法 JSON，避免下一轮请求被 API 拒绝。
-        /// </summary>
-        private static void SanitizeToolCallArguments(List<AIToolCall> toolCalls)
-        {
-            foreach (var tc in toolCalls)
-                ParseToolArguments(tc);
-        }
-
-        /// <summary>
-        /// 统一的 JSON 解析 + 修复 + 回写逻辑。
-        /// 返回解析后的 JObject，解析失败时回写 "{}" 并返回空 JObject。
-        /// </summary>
-        private static JObject ParseToolArguments(AIToolCall toolCall)
-        {
-            if (string.IsNullOrEmpty(toolCall.Arguments))
-            {
-                toolCall.Arguments = "{}";
-                return new JObject();
-            }
-
-            try
-            {
-                return JObject.Parse(toolCall.Arguments);
-            }
-            catch (JsonReaderException)
-            {
-                var fixed_ = TryParseFirstJsonObject(toolCall.Arguments);
-                if (fixed_ != null)
-                {
-                    toolCall.Arguments = fixed_.ToString(Formatting.None);
-                    AILogger.Warning($"Tool '{toolCall.Name}' had concatenated JSON arguments, sanitized");
-                    return fixed_;
-                }
-
-                AILogger.Error($"Tool '{toolCall.Name}' has unparseable arguments, replacing with empty object");
-                toolCall.Arguments = "{}";
-                return new JObject();
-            }
-        }
-
-        private static AIMessage BuildAssistantMessage(string text, List<AIToolCall> toolCalls, string reasoningContent)
-        {
-            var msg = new AIMessage
-            {
-                Role = AIRole.Assistant,
-                Contents = new List<AIContent>(),
-                ReasoningContent = string.IsNullOrEmpty(reasoningContent) ? null : reasoningContent
-            };
-            if (!string.IsNullOrEmpty(text))
-                msg.Contents.Add(new AITextContent(text));
-            foreach (var tc in toolCalls)
-            {
-                msg.Contents.Add(new AIToolUseContent
-                {
-                    Id = tc.Id, Name = tc.Name, Arguments = tc.Arguments
-                });
-            }
-            return msg;
-        }
-
-        private async UniTask<(string result, bool isError)> ExecuteToolAsync(AIToolCall toolCall, CancellationToken ct)
-        {
-            // 1. 本地代码工具优先
-            if (_localHandlers.TryGetValue(toolCall.Name, out var handler))
-                return await ExecuteLocalHandlerAsync(handler, toolCall, ct);
-
-            // 2. MCP Tool
-            if (_mcpManager != null && _mcpManager.HasTool(toolCall.Name))
-            {
-                try
-                {
-                    var mcpResult = await TimeoutHelper.WithTimeout(
-                        token => _mcpManager.CallToolAsync(toolCall.Name, toolCall.Arguments, token),
-                        ToolTimeoutSeconds, ct);
-                    AILogger.Verbose($"MCP tool '{toolCall.Name}' executed (error={mcpResult.isError})");
-                    return mcpResult;
-                }
-                catch (OperationCanceledException) when (!ct.IsCancellationRequested)
-                {
-                    var timeoutError = $"MCP tool '{toolCall.Name}' timed out after {ToolTimeoutSeconds}s";
-                    AILogger.Warning(timeoutError);
-                    return (timeoutError, true);
-                }
-            }
-
-            // 3. 未知工具
-            var error = $"Unknown tool: {toolCall.Name}";
-            AILogger.Warning(error);
-            return (error, true);
-        }
-
-        private async UniTask<(string result, bool isError)> ExecuteLocalHandlerAsync(ToolHandlerInfo handler, AIToolCall toolCall, CancellationToken ct)
-        {
-            // 长耗时工具（RequiresPolling）使用自身声明的 MaxPollSeconds，
-            // 绕过全局 ToolTimeoutSeconds，避免被短超时截断。
-            float timeout = handler.RequiresPolling
-                ? handler.MaxPollSeconds
-                : ToolTimeoutSeconds;
-
-            try
-            {
-                var args = ParseToolArguments(toolCall);
-
-                if (handler.RequiresPolling)
-                    AILogger.Info($"Tool '{toolCall.Name}' running in polling mode (max {timeout:0}s)");
-
-                var raw = await TimeoutHelper.WithTimeout(
-                    token => handler.Invoke(args, token),
-                    timeout, ct);
-
-                var json = JsonConvert.SerializeObject(raw);
-                AILogger.Verbose($"Tool '{toolCall.Name}' executed successfully");
-                return (json, false);
-            }
-            catch (OperationCanceledException) when (!ct.IsCancellationRequested)
-            {
-                var error = $"Tool '{toolCall.Name}' timed out after {timeout}s";
-                AILogger.Warning(error);
-                return (error, true);
-            }
-            catch (Exception e)
-            {
-                var error = $"Tool '{toolCall.Name}' failed: {e.Message}";
-                AILogger.Error(error);
-                return (error, true);
-            }
+            return _loop.RunStreamAsync(messages, requestOverride, ct);
         }
 
         public void Dispose()
         {
             _mcpManager?.Dispose();
             _mcpManager = null;
-        }
-
-        /// <summary>
-        /// 尝试从可能拼接的多个 JSON 对象中解析出第一个完整对象。
-        /// 使用 JsonTextReader 逐 token 读取，遇到第一个对象结束即停止。
-        /// </summary>
-        private static JObject TryParseFirstJsonObject(string json)
-        {
-            try
-            {
-                using var reader = new JsonTextReader(new System.IO.StringReader(json))
-                {
-                    SupportMultipleContent = true
-                };
-                if (reader.Read())
-                    return JObject.Load(reader);
-            }
-            catch
-            {
-                // ignore
-            }
-            return null;
-        }
-
-        private static void AccumulateUsage(TokenUsage total, TokenUsage turn)
-        {
-            if (turn == null) return;
-            total.InputTokens += turn.InputTokens;
-            total.OutputTokens += turn.OutputTokens;
         }
     }
 }

@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 
 namespace UniAI
@@ -21,10 +22,14 @@ namespace UniAI
     /// </summary>
     public static class GenerativeProviderRouter
     {
+        private static readonly AdapterRegistry<IGenerativeProviderFactory> _imageProviders =
+            new(AdapterTarget.ImageGenerationProvider);
+
         public static GenerativeProviderRoute Resolve(
             IReadOnlyList<ChannelEntry> channels,
             ModelEntry entry,
-            string modelId)
+            string modelId,
+            GeneralConfig general = null)
         {
             var errors = new List<string>();
 
@@ -32,7 +37,7 @@ namespace UniAI
             {
                 foreach (var channel in channels)
                 {
-                    if (TryCreateProvider(channel, entry, modelId, out var provider, out var error))
+                    if (TryCreateProvider(channel, entry, modelId, general, out var provider, out var error))
                         return new GenerativeProviderRoute(channel, provider);
 
                     if (!string.IsNullOrEmpty(error))
@@ -52,6 +57,7 @@ namespace UniAI
             ChannelEntry channel,
             ModelEntry entry,
             string modelId,
+            GeneralConfig general,
             out IGenerativeAssetProvider provider,
             out string error)
         {
@@ -66,7 +72,7 @@ namespace UniAI
 
             var capabilities = entry?.Capabilities ?? ModelCapability.Chat;
             if (HasImageGenerationCapability(capabilities))
-                return TryCreateImageProvider(channel, entry, modelId, out provider, out error);
+                return TryCreateImageProvider(channel, entry, modelId, general, out provider, out error);
 
             if (entry?.HasCapability(ModelCapability.AudioGen) == true)
                 error = "audio generation is not supported yet.";
@@ -99,52 +105,32 @@ namespace UniAI
             ChannelEntry channel,
             ModelEntry entry,
             string modelId,
+            GeneralConfig general,
             out IGenerativeAssetProvider provider,
             out string error)
         {
             provider = null;
             error = null;
 
-            if (channel.Protocol != ProviderProtocol.OpenAI)
+            foreach (var registration in _imageProviders.Registrations)
             {
-                error = $"protocol '{channel.Protocol}' has no image generation provider.";
-                return false;
+                if (!registration.Factory.CanHandle(channel, entry, modelId))
+                    continue;
+
+                try
+                {
+                    provider = registration.Factory.Create(channel, entry, modelId, general);
+                    return true;
+                }
+                catch (Exception ex)
+                {
+                    error = $"{registration.Descriptor.Id}: {ex.Message}";
+                    return false;
+                }
             }
 
-            var endpoint = entry?.Endpoint ?? ModelEndpoint.ChatCompletions;
-            var adapterTarget = ResolveAdapterTarget(entry?.AdapterId);
-            var usesOpenAIImagesApi =
-                endpoint == ModelEndpoint.ImageGenerations
-                || endpoint == ModelEndpoint.ImageEdits
-                || adapterTarget == AdapterTarget.OpenAIImageDialect;
-
-            if (!usesOpenAIImagesApi)
-            {
-                error = $"endpoint '{endpoint}' is not routed to the OpenAI Images API.";
-                return false;
-            }
-
-            var apiKey = channel.GetEffectiveApiKey();
-            if (string.IsNullOrEmpty(apiKey))
-            {
-                error = "no API key configured.";
-                return false;
-            }
-
-            provider = new OpenAIImageProvider(
-                apiKey,
-                channel.BaseUrl,
-                modelId,
-                providerId: $"image-{channel.Id}-{modelId}",
-                displayName: $"{channel.Name} ({modelId})");
-            return true;
-        }
-
-        private static AdapterTarget? ResolveAdapterTarget(string adapterId)
-        {
-            return AdapterCatalog.TryGet(adapterId, out var adapter)
-                ? adapter.Target
-                : null;
+            error = $"protocol '{channel.Protocol}' and model metadata have no compatible image generation provider.";
+            return false;
         }
     }
 }

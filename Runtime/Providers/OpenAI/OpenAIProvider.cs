@@ -9,7 +9,7 @@ namespace UniAI.Providers.OpenAI
     /// <summary>
     /// OpenAI Chat Completions API provider.
     /// </summary>
-    public class OpenAIProvider : ProviderBase
+    public class OpenAIProvider : JsonSseProviderBase
     {
         public override string Name => "OpenAI";
 
