@@ -37,21 +37,23 @@ namespace UniAI.Editor.Chat
 
         // ─── Runner 管理 ───
 
-        internal void EnsureRunner(AIConfig config, ModelSelector modelSelector, AgentDefinition agent)
+        public StreamingController(ChatHistoryManager history)
+        {
+            _orchestrator.Configure(new ChatOrchestratorDependencies
+            {
+                ContextProvider = new EditorConversationContextProvider(),
+                Persistence = new ChatHistorySessionPersistence(history),
+                TitlePolicy = new FirstUserMessageTitlePolicy(),
+                ToolExecutionGuardFactory = CreateToolExecutionGuard
+            });
+        }
+
+        internal void EnsureRuntime(AIConfig config, ModelSelector modelSelector, AgentDefinition agent)
         {
             // 注入 Runtime 工具配置
             global::UniAI.Tools.ToolConfig.MaxOutputChars = EditorPreferences.instance.ToolMaxOutputChars;
             global::UniAI.Tools.ToolConfig.SearchMaxMatches = EditorPreferences.instance.SearchMaxMatches;
             global::UniAI.Tools.ToolCallbacks.OnAssetsModified = EditorAgentGuard.NotifyAssetsModified;
-
-            // 注入 Editor 行为
-            _orchestrator.GuardFactory = () =>
-            {
-                var guard = new EditorAgentGuard();
-                guard.Lock();
-                return guard;
-            };
-            _orchestrator.ContextCollector = slots => ContextCollector.Collect((ContextCollector.ContextSlot)slots);
 
             var settings = new ChatOrchestratorSettings
             {
@@ -60,7 +62,7 @@ namespace UniAI.Editor.Chat
                 McpResourceInjection = EditorPreferences.instance.McpResourceInjection
             };
 
-            _orchestrator.EnsureRunner(config, modelSelector, agent, settings);
+            _orchestrator.EnsureRuntime(config, modelSelector, agent, settings);
         }
 
         internal void UpdateModel(ModelSelector modelSelector)
@@ -68,19 +70,36 @@ namespace UniAI.Editor.Chat
             _orchestrator.UpdateModel(modelSelector);
         }
 
-        internal UniTaskVoid StreamResponseAsync(
+        internal UniTask StreamResponseAsync(
             ChatSession session, ContextCollector.ContextSlot contextSlots,
-            AIConfig config, string modelId,
-            Func<string, AgentDefinition> findAgent,
-            ChatHistoryManager history, Action generateTitle)
+            AIConfig config, string modelId)
         {
-            return _orchestrator.StreamResponseAsync(
-                session, (int)contextSlots, config, modelId,
-                findAgent, history, generateTitle);
+            return _orchestrator.StreamResponseAsync(new ChatStreamRequest
+            {
+                Session = session,
+                ContextSlots = (int)contextSlots,
+                Config = config,
+                ModelId = modelId
+            });
         }
 
         public void CancelStream() => _orchestrator.CancelStream();
 
         public void Dispose() => _orchestrator.Dispose();
+
+        private static IDisposable CreateToolExecutionGuard()
+        {
+            var guard = new EditorAgentGuard();
+            guard.Lock();
+            return guard;
+        }
+
+        private sealed class EditorConversationContextProvider : IConversationContextProvider
+        {
+            public string Collect(int slots)
+            {
+                return ContextCollector.Collect((ContextCollector.ContextSlot)slots);
+            }
+        }
     }
 }

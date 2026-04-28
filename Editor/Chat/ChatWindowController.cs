@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using Cysharp.Threading.Tasks;
 using UnityEngine;
 
 namespace UniAI.Editor.Chat
@@ -56,13 +57,13 @@ namespace UniAI.Editor.Chat
             _modelSelectorGUI = new ModelSelectorGUI(AIConfigManager.Prefs.LastSelectedModelId);
             _modelSelectorGUI.RebuildCache(_config);
 
-            _streaming = new StreamingController();
+            _streaming = new StreamingController(_history);
             _streaming.OnStreamingChanged += v => OnStreamingChanged?.Invoke(v);
             _streaming.OnScrollToBottom += () => OnScrollToBottom?.Invoke();
             _streaming.OnStateChanged += () => OnStateChanged?.Invoke();
 
             RebuildAgentCache();
-            _streaming.EnsureRunner(_config, _modelSelectorGUI.Selector, FindAgentById(_activeSession?.AgentId));
+            _streaming.EnsureRuntime(_config, _modelSelectorGUI.Selector, FindAgentById(_activeSession?.AgentId));
         }
 
         // ─── 会话管理 ───
@@ -76,7 +77,7 @@ namespace UniAI.Editor.Chat
             _activeSession = ChatSession.Create(modelId);
             _activeSession.AgentId = agent != null ? agent.Id : "";
             _history.Save(_activeSession);
-            _streaming.EnsureRunner(_config, _modelSelectorGUI.Selector, agent);
+            _streaming.EnsureRuntime(_config, _modelSelectorGUI.Selector, agent);
             NotifyAIAvatarChanged();
             OnStateChanged?.Invoke();
         }
@@ -85,7 +86,7 @@ namespace UniAI.Editor.Chat
         {
             _activeSession = session;
             _modelSelectorGUI.RestoreFromSession(session);
-            _streaming.EnsureRunner(_config, _modelSelectorGUI.Selector, FindAgentById(session.AgentId));
+            _streaming.EnsureRuntime(_config, _modelSelectorGUI.Selector, FindAgentById(session.AgentId));
             NotifyAIAvatarChanged();
 
             if (!string.IsNullOrEmpty(session.AgentId) && FindAgentById(session.AgentId) == null)
@@ -205,8 +206,7 @@ namespace UniAI.Editor.Chat
             OnStateChanged?.Invoke();
 
             _streaming.StreamResponseAsync(
-                _activeSession, contextSlots, _config, _modelSelectorGUI.CurrentModelId,
-                FindAgentById, _history, GenerateTitle).Forget();
+                _activeSession, contextSlots, _config, _modelSelectorGUI.CurrentModelId).Forget();
         }
 
         public void SendMessage(string text, ContextCollector.ContextSlot contextSlots,
@@ -233,8 +233,7 @@ namespace UniAI.Editor.Chat
             OnScrollToBottom?.Invoke();
 
             _streaming.StreamResponseAsync(
-                _activeSession, contextSlots, _config, _modelSelectorGUI.CurrentModelId,
-                FindAgentById, _history, GenerateTitle).Forget();
+                _activeSession, contextSlots, _config, _modelSelectorGUI.CurrentModelId).Forget();
         }
 
         public void CancelStream() => _streaming.CancelStream();
@@ -272,7 +271,7 @@ namespace UniAI.Editor.Chat
             _config = AIConfigManager.LoadConfig();
             _modelSelectorGUI.RebuildCache(_config);
             RebuildAgentCache();
-            _streaming.EnsureRunner(_config, _modelSelectorGUI.Selector, FindAgentById(_activeSession?.AgentId));
+            _streaming.EnsureRuntime(_config, _modelSelectorGUI.Selector, FindAgentById(_activeSession?.AgentId));
             OnStateChanged?.Invoke();
         }
 
@@ -286,27 +285,6 @@ namespace UniAI.Editor.Chat
         private void RebuildAgentCache()
         {
             _availableAgents = AgentManager.GetAllAgents();
-        }
-
-        private void GenerateTitle()
-        {
-            if (_activeSession == null || _activeSession.Messages.Count < 1) return;
-
-            string userText = null;
-            foreach (var msg in _activeSession.Messages)
-            {
-                if (!msg.IsToolCall && msg.Role == AIRole.User)
-                {
-                    userText = msg.Content;
-                    break;
-                }
-            }
-
-            if (string.IsNullOrEmpty(userText)) return;
-
-            _activeSession.Title = userText.Length <= 15 ? userText : userText.Substring(0, 15) + "…";
-            _history.Save(_activeSession);
-            OnStateChanged?.Invoke();
         }
 
         private void NotifyAIAvatarChanged()
