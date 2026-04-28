@@ -7,7 +7,7 @@ namespace UniAI.Providers.OpenAI
     // ─── Request Models ───
 
     [Serializable]
-    internal class OpenAIRequest
+    public class OpenAIRequest
     {
         [JsonProperty("model")] public string Model;
         [JsonProperty("messages")] public List<OpenAIMessage> Messages;
@@ -20,7 +20,7 @@ namespace UniAI.Providers.OpenAI
     }
 
     [Serializable]
-    internal class OpenAIMessage
+    public class OpenAIMessage
     {
         [JsonProperty("role")] public string Role;
         [JsonProperty("content")] public object Content;
@@ -30,21 +30,21 @@ namespace UniAI.Providers.OpenAI
     }
 
     [Serializable]
-    internal class OpenAITextPart
+    public class OpenAITextPart
     {
         [JsonProperty("type")] public string Type = "text";
         [JsonProperty("text")] public string Text;
     }
 
     [Serializable]
-    internal class OpenAIImagePart
+    public class OpenAIImagePart
     {
         [JsonProperty("type")] public string Type = "image_url";
         [JsonProperty("image_url")] public OpenAIImageUrl ImageUrl;
     }
 
     [Serializable]
-    internal class OpenAIImageUrl
+    public class OpenAIImageUrl
     {
         [JsonProperty("url")] public string Url;
     }
@@ -52,7 +52,7 @@ namespace UniAI.Providers.OpenAI
     // ─── Response Models ───
 
     [Serializable]
-    internal class OpenAIResponse
+    public class OpenAIResponse
     {
         [JsonProperty("id")] public string Id;
         [JsonProperty("choices")] public List<OpenAIChoice> Choices;
@@ -60,7 +60,7 @@ namespace UniAI.Providers.OpenAI
     }
 
     [Serializable]
-    internal class OpenAIChoice
+    public class OpenAIChoice
     {
         [JsonProperty("index")] public int Index;
         [JsonProperty("message")] public OpenAIResponseMessage Message;
@@ -68,7 +68,7 @@ namespace UniAI.Providers.OpenAI
     }
 
     [Serializable]
-    internal class OpenAIResponseMessage
+    public class OpenAIResponseMessage
     {
         [JsonProperty("role")] public string Role;
         [JsonProperty("content")] public string Content;
@@ -77,7 +77,7 @@ namespace UniAI.Providers.OpenAI
     }
 
     [Serializable]
-    internal class OpenAIUsage
+    public class OpenAIUsage
     {
         [JsonProperty("prompt_tokens")] public int PromptTokens;
         [JsonProperty("completion_tokens")] public int CompletionTokens;
@@ -87,7 +87,7 @@ namespace UniAI.Providers.OpenAI
     // ─── Stream Models ───
 
     [Serializable]
-    internal class OpenAIStreamResponse
+    public class OpenAIStreamResponse
     {
         [JsonProperty("id")] public string Id;
         [JsonProperty("choices")] public List<OpenAIStreamChoice> Choices;
@@ -95,7 +95,7 @@ namespace UniAI.Providers.OpenAI
     }
 
     [Serializable]
-    internal class OpenAIStreamChoice
+    public class OpenAIStreamChoice
     {
         [JsonProperty("index")] public int Index;
         [JsonProperty("delta")] public OpenAIStreamDelta Delta;
@@ -103,7 +103,7 @@ namespace UniAI.Providers.OpenAI
     }
 
     [Serializable]
-    internal class OpenAIStreamDelta
+    public class OpenAIStreamDelta
     {
         [JsonProperty("role")] public string Role;
         [JsonProperty("content")] public string Content;
@@ -114,14 +114,14 @@ namespace UniAI.Providers.OpenAI
     // ─── Tool Models ───
 
     [Serializable]
-    internal class OpenAIToolDef
+    public class OpenAIToolDef
     {
         [JsonProperty("type")] public string Type = "function";
         [JsonProperty("function")] public OpenAIFunctionDef Function;
     }
 
     [Serializable]
-    internal class OpenAIFunctionDef
+    public class OpenAIFunctionDef
     {
         [JsonProperty("name")] public string Name;
         [JsonProperty("description")] public string Description;
@@ -129,7 +129,7 @@ namespace UniAI.Providers.OpenAI
     }
 
     [Serializable]
-    internal class OpenAIToolCallMsg
+    public class OpenAIToolCallMsg
     {
         [JsonProperty("id")] public string Id;
         [JsonProperty("type")] public string Type;
@@ -137,14 +137,14 @@ namespace UniAI.Providers.OpenAI
     }
 
     [Serializable]
-    internal class OpenAIFunctionCall
+    public class OpenAIFunctionCall
     {
         [JsonProperty("name")] public string Name;
         [JsonProperty("arguments")] public string Arguments;
     }
 
     [Serializable]
-    internal class OpenAIStreamToolCall
+    public class OpenAIStreamToolCall
     {
         [JsonProperty("index")] public int Index;
         [JsonProperty("id")] public string Id;
@@ -154,13 +154,13 @@ namespace UniAI.Providers.OpenAI
     // ─── Error Models ───
 
     [Serializable]
-    internal class OpenAIErrorResponse
+    public class OpenAIErrorResponse
     {
         [JsonProperty("error")] public OpenAIErrorDetail Error;
     }
 
     [Serializable]
-    internal class OpenAIErrorDetail
+    public class OpenAIErrorDetail
     {
         [JsonProperty("message")] public string Message;
         [JsonProperty("type")] public string Type;

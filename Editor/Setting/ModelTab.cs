@@ -19,7 +19,7 @@ namespace UniAI.Editor
 
         private const float PAD = 10f;
         private const float ROW_HEIGHT = 24f;
-        private const float DETAIL_WIDTH = 260f;
+        private const float DETAIL_WIDTH = 340f;
         private const float LABEL_WIDTH = 70f;
         private const float TOOLBAR_HEIGHT = 28f;
 
@@ -518,6 +518,14 @@ namespace UniAI.Editor
                 DrawDetailKV("Description", entry.Description);
 
             DrawDetailKV("Endpoint", entry.Endpoint.ToString());
+            if (!string.IsNullOrEmpty(entry.AdapterId))
+                DrawDetailKV("Adapter", entry.AdapterId);
+            if (entry.Behavior != ModelBehavior.None)
+                DrawDetailKV("Behavior", entry.Behavior.ToString());
+            if (entry.BehaviorTags is { Count: > 0 })
+                DrawDetailKV("Tags", string.Join(", ", entry.BehaviorTags));
+            if (entry.BehaviorOptions is { Count: > 0 })
+                DrawDetailKV("Options", FormatBehaviorOptions(entry.BehaviorOptions));
             DrawDetailKV("Context Window", FormatContextWindow(ModelRegistry.GetContextWindow(entry.Id)));
         }
 
@@ -545,6 +553,20 @@ namespace UniAI.Editor
             EditorGUILayout.EndHorizontal();
             GUILayout.Space(2);
 
+            DrawAdapterSelector(entry);
+
+            EditorGUILayout.BeginHorizontal();
+            GUILayout.Space(PAD);
+            GUILayout.Label("Behavior", EditorGUIHelper.DetailLabelStyle, GUILayout.Width(LABEL_WIDTH));
+            var newBehavior = (ModelBehavior)EditorGUILayout.EnumFlagsField(entry.Behavior, GUILayout.Width(160));
+            if (newBehavior != entry.Behavior) { entry.Behavior = newBehavior; MarkDirty(); _rowsDirty = true; }
+            GUILayout.Space(PAD);
+            EditorGUILayout.EndHorizontal();
+            GUILayout.Space(2);
+
+            DrawBehaviorTagsEditor(entry);
+            DrawBehaviorOptionsEditor(entry);
+
             EditorGUILayout.BeginHorizontal();
             GUILayout.Space(PAD);
             GUILayout.Label("Context Window", EditorGUIHelper.DetailLabelStyle, GUILayout.Width(LABEL_WIDTH));
@@ -566,6 +588,60 @@ namespace UniAI.Editor
             EditorGUILayout.EndHorizontal();
         }
 
+        private void DrawAdapterSelector(ModelEntry entry)
+        {
+            var adapters = GetAdapterDescriptorsFor(entry);
+            var labels = new List<string> { "(None)" };
+            labels.AddRange(adapters.Select(FormatAdapterOption));
+            labels.Add("Custom / manual");
+
+            var current = entry.AdapterId ?? "";
+            var matchedIndex = adapters.FindIndex(a =>
+                string.Equals(a.Id, current, StringComparison.OrdinalIgnoreCase));
+
+            var selectedIndex = 0;
+            if (!string.IsNullOrEmpty(current))
+                selectedIndex = matchedIndex >= 0 ? matchedIndex + 1 : labels.Count - 1;
+
+            EditorGUILayout.BeginHorizontal();
+            GUILayout.Space(PAD);
+            GUILayout.Label("Adapter", EditorGUIHelper.DetailLabelStyle, GUILayout.Width(LABEL_WIDTH));
+            var nextIndex = EditorGUILayout.Popup(selectedIndex, labels.ToArray());
+            if (nextIndex != selectedIndex)
+            {
+                if (nextIndex == 0)
+                    entry.AdapterId = "";
+                else if (nextIndex <= adapters.Count)
+                    entry.AdapterId = adapters[nextIndex - 1].Id;
+
+                MarkDirty();
+                _rowsDirty = true;
+            }
+            GUILayout.Space(PAD);
+            EditorGUILayout.EndHorizontal();
+            GUILayout.Space(2);
+
+            DrawEditField("Adapter ID", ref entry.AdapterId);
+
+            var selectedAdapter = adapters.FirstOrDefault(a =>
+                string.Equals(a.Id, entry.AdapterId, StringComparison.OrdinalIgnoreCase));
+            if (selectedAdapter != null && !string.IsNullOrEmpty(selectedAdapter.Description))
+                DrawDetailKV("Adapter Info", selectedAdapter.Description);
+        }
+
+        private static List<AdapterDescriptor> GetAdapterDescriptorsFor(ModelEntry entry)
+        {
+            if (entry == null)
+                return new List<AdapterDescriptor>();
+
+            return AdapterCatalog.GetAdaptersFor(entry).ToList();
+        }
+
+        private static string FormatAdapterOption(AdapterDescriptor adapter)
+        {
+            return $"{adapter.DisplayName} [{adapter.Target}] ({adapter.Id})";
+        }
+
         private void DrawEditField(string label, ref string value)
         {
             EditorGUILayout.BeginHorizontal();
@@ -573,6 +649,42 @@ namespace UniAI.Editor
             GUILayout.Label(label, EditorGUIHelper.DetailLabelStyle, GUILayout.Width(LABEL_WIDTH));
             var newVal = EditorGUILayout.TextField(value ?? "");
             if (newVal != value) { value = newVal; MarkDirty(); _rowsDirty = true; }
+            GUILayout.Space(PAD);
+            EditorGUILayout.EndHorizontal();
+            GUILayout.Space(2);
+        }
+
+        private void DrawBehaviorTagsEditor(ModelEntry entry)
+        {
+            EditorGUILayout.BeginHorizontal();
+            GUILayout.Space(PAD);
+            GUILayout.Label("Tags", EditorGUIHelper.DetailLabelStyle, GUILayout.Width(LABEL_WIDTH));
+            var current = entry.BehaviorTags != null ? string.Join("\n", entry.BehaviorTags) : "";
+            var next = EditorGUILayout.TextArea(current, GUILayout.MinHeight(42));
+            if (next != current)
+            {
+                entry.BehaviorTags = ParseBehaviorTags(next);
+                MarkDirty();
+                _rowsDirty = true;
+            }
+            GUILayout.Space(PAD);
+            EditorGUILayout.EndHorizontal();
+            GUILayout.Space(2);
+        }
+
+        private void DrawBehaviorOptionsEditor(ModelEntry entry)
+        {
+            EditorGUILayout.BeginHorizontal();
+            GUILayout.Space(PAD);
+            GUILayout.Label("Options", EditorGUIHelper.DetailLabelStyle, GUILayout.Width(LABEL_WIDTH));
+            var current = FormatBehaviorOptionsMultiline(entry.BehaviorOptions);
+            var next = EditorGUILayout.TextArea(current, GUILayout.MinHeight(52));
+            if (next != current)
+            {
+                entry.BehaviorOptions = ParseBehaviorOptions(next);
+                MarkDirty();
+                _rowsDirty = true;
+            }
             GUILayout.Space(PAD);
             EditorGUILayout.EndHorizontal();
             GUILayout.Space(2);
@@ -842,7 +954,68 @@ namespace UniAI.Editor
         {
             return (entry.Id != null && entry.Id.ToLowerInvariant().Contains(filter))
                 || (entry.Vendor != null && entry.Vendor.ToLowerInvariant().Contains(filter))
+                || (entry.AdapterId != null && entry.AdapterId.ToLowerInvariant().Contains(filter))
+                || (entry.BehaviorTags != null && entry.BehaviorTags.Any(t => t != null && t.ToLowerInvariant().Contains(filter)))
                 || entry.Capabilities.ToString().ToLowerInvariant().Contains(filter);
+        }
+
+        /// <summary>获取单个能力的颜色</summary>
+        private static string FormatBehaviorOptions(IReadOnlyList<ModelBehaviorOption> options)
+        {
+            if (options == null || options.Count == 0)
+                return "";
+
+            return string.Join(", ", options
+                .Where(o => o != null && !string.IsNullOrEmpty(o.Key))
+                .Select(o => $"{o.Key}={o.Value}"));
+        }
+
+        private static string FormatBehaviorOptionsMultiline(IReadOnlyList<ModelBehaviorOption> options)
+        {
+            if (options == null || options.Count == 0)
+                return "";
+
+            return string.Join("\n", options
+                .Where(o => o != null && !string.IsNullOrEmpty(o.Key))
+                .Select(o => $"{o.Key}={o.Value}"));
+        }
+
+        private static List<string> ParseBehaviorTags(string text)
+        {
+            if (string.IsNullOrEmpty(text))
+                return new List<string>();
+
+            return text.Split(new[] { '\r', '\n', ',', ';' }, StringSplitOptions.RemoveEmptyEntries)
+                .Select(x => x.Trim())
+                .Where(x => !string.IsNullOrEmpty(x))
+                .Distinct()
+                .ToList();
+        }
+
+        private static List<ModelBehaviorOption> ParseBehaviorOptions(string text)
+        {
+            var result = new List<ModelBehaviorOption>();
+            if (string.IsNullOrEmpty(text))
+                return result;
+
+            var lines = text.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries);
+            foreach (var rawLine in lines)
+            {
+                var line = rawLine.Trim();
+                if (string.IsNullOrEmpty(line))
+                    continue;
+
+                var sep = line.IndexOf('=');
+                if (sep <= 0)
+                    continue;
+
+                var key = line.Substring(0, sep).Trim();
+                var value = line.Substring(sep + 1).Trim();
+                if (!string.IsNullOrEmpty(key))
+                    result.Add(new ModelBehaviorOption(key, value));
+            }
+
+            return result;
         }
 
         /// <summary>获取单个能力的颜色</summary>

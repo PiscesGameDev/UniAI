@@ -1,48 +1,61 @@
 using System;
+using System.Collections.Generic;
 using UnityEngine;
 
 namespace UniAI
 {
     /// <summary>
-    /// 模型定义 — 描述一个 AI 模型的元信息与能力。
-    /// Capabilities 描述模型能做什么（可多选），Endpoint 决定走哪个 API 接口（唯一）。
+    /// Model metadata: describes what a model can do and which adapter/dialect should handle it.
     /// </summary>
     [Serializable]
     public class ModelEntry
     {
-        /// <summary>模型唯一标识（如 "dall-e-3"、"gpt-4o"）</summary>
+        /// <summary>Unique model id, for example "dall-e-3" or "gpt-4o".</summary>
         public string Id;
 
-        /// <summary>所属厂商（如 "OpenAI"、"Google"、"Anthropic"）</summary>
+        /// <summary>Model vendor, for example "OpenAI", "Google", or "Anthropic".</summary>
         public string Vendor;
 
-        /// <summary>模型能力集 — 描述模型能做什么（Flags，可组合）</summary>
+        /// <summary>Model capabilities. Flags can be combined.</summary>
         public ModelCapability Capabilities;
 
-        /// <summary>API 端点类型 — 决定走哪个接口（唯一）</summary>
+        /// <summary>Default endpoint family for this model.</summary>
         public ModelEndpoint Endpoint;
 
-        /// <summary>模型简介（用于 UI 悬浮提示，如"多模态全能型"、"专用图片生成"）</summary>
+        /// <summary>Short description for UI display.</summary>
         public string Description;
 
-        /// <summary>模型图标（可选，用于 UI 展示）</summary>
+        /// <summary>Optional icon for UI display.</summary>
         public Texture2D Icon;
 
-        /// <summary>上下文窗口大小（tokens），0 表示由 ModelRegistry 前缀表兜底</summary>
+        /// <summary>Context window in tokens. 0 means ModelRegistry fallback.</summary>
         public int ContextWindow;
 
-        /// <summary>Provider 内部使用的方言/适配器标识。为空时走协议默认适配。</summary>
+        /// <summary>Provider-specific adapter/dialect id. Empty means protocol default.</summary>
         public string AdapterId;
 
-        /// <summary>模型行为标志，用于选择 Provider 方言和参数兼容策略。</summary>
+        /// <summary>Framework-known behavior flags consumed by core providers and runners.</summary>
         public ModelBehavior Behavior;
+
+        /// <summary>User-configurable behavior tags consumed by adapters/dialects.</summary>
+        public List<string> BehaviorTags = new();
+
+        /// <summary>User-configurable key-value behavior options consumed by adapters/dialects.</summary>
+        public List<ModelBehaviorOption> BehaviorOptions = new();
 
         public ModelEntry() { }
 
-        public ModelEntry(string id, string vendor,
-            ModelCapability capabilities, ModelEndpoint endpoint,
-            string description = null, int contextWindow = 0,
-            string adapterId = null, ModelBehavior behavior = ModelBehavior.None)
+        public ModelEntry(
+            string id,
+            string vendor,
+            ModelCapability capabilities,
+            ModelEndpoint endpoint,
+            string description = null,
+            int contextWindow = 0,
+            string adapterId = null,
+            ModelBehavior behavior = ModelBehavior.None,
+            IEnumerable<string> behaviorTags = null,
+            IEnumerable<ModelBehaviorOption> behaviorOptions = null)
         {
             Id = id;
             Vendor = vendor;
@@ -52,9 +65,70 @@ namespace UniAI
             ContextWindow = contextWindow;
             AdapterId = adapterId;
             Behavior = behavior;
+            BehaviorTags = behaviorTags != null ? new List<string>(behaviorTags) : new List<string>();
+            BehaviorOptions = behaviorOptions != null ? new List<ModelBehaviorOption>(behaviorOptions) : new List<ModelBehaviorOption>();
         }
 
-        /// <summary>判断模型是否支持指定能力</summary>
         public bool HasCapability(ModelCapability cap) => (Capabilities & cap) != 0;
+
+        public bool HasBehavior(ModelBehavior behavior) => (Behavior & behavior) != 0;
+
+        public bool HasBehaviorTag(string tag)
+        {
+            if (string.IsNullOrEmpty(tag) || BehaviorTags == null)
+                return false;
+
+            foreach (var item in BehaviorTags)
+            {
+                if (string.Equals(item, tag, StringComparison.OrdinalIgnoreCase))
+                    return true;
+            }
+
+            return false;
+        }
+
+        public string GetBehaviorOption(string key, string defaultValue = null)
+        {
+            if (string.IsNullOrEmpty(key) || BehaviorOptions == null)
+                return defaultValue;
+
+            foreach (var option in BehaviorOptions)
+            {
+                if (option == null)
+                    continue;
+
+                if (string.Equals(option.Key, key, StringComparison.OrdinalIgnoreCase))
+                    return option.Value;
+            }
+
+            return defaultValue;
+        }
+
+        public int GetBehaviorOptionInt(string key, int defaultValue)
+        {
+            var value = GetBehaviorOption(key);
+            return int.TryParse(value, out var parsed) ? parsed : defaultValue;
+        }
+
+        public bool GetBehaviorOptionBool(string key, bool defaultValue)
+        {
+            var value = GetBehaviorOption(key);
+            return bool.TryParse(value, out var parsed) ? parsed : defaultValue;
+        }
+    }
+
+    [Serializable]
+    public class ModelBehaviorOption
+    {
+        public string Key;
+        public string Value;
+
+        public ModelBehaviorOption() { }
+
+        public ModelBehaviorOption(string key, string value)
+        {
+            Key = key;
+            Value = value;
+        }
     }
 }

@@ -4,12 +4,13 @@ using System.Collections.Generic;
 namespace UniAI
 {
     /// <summary>
-    /// 内置模型预设。
-    /// 描述模型元信息，以及它默认归属的内置渠道。
+    /// Built-in model preset with metadata and default channel membership.
     /// </summary>
     public sealed class ModelPreset
     {
         private readonly string[] _defaultChannels;
+        private readonly string[] _behaviorTags;
+        private readonly ModelBehaviorOption[] _behaviorOptions;
 
         public readonly string Id;
         public readonly string Vendor;
@@ -21,6 +22,8 @@ namespace UniAI
         public readonly ModelBehavior Behavior;
 
         public IReadOnlyList<string> DefaultChannels => _defaultChannels;
+        public IReadOnlyList<string> BehaviorTags => _behaviorTags;
+        public IReadOnlyList<ModelBehaviorOption> BehaviorOptions => _behaviorOptions;
 
         public ModelPreset(
             string id,
@@ -31,6 +34,8 @@ namespace UniAI
             int contextWindow = 0,
             string adapterId = null,
             ModelBehavior behavior = ModelBehavior.None,
+            string[] behaviorTags = null,
+            ModelBehaviorOption[] behaviorOptions = null,
             params string[] defaultChannels)
         {
             Id = id;
@@ -41,6 +46,8 @@ namespace UniAI
             ContextWindow = contextWindow;
             AdapterId = adapterId;
             Behavior = behavior;
+            _behaviorTags = behaviorTags ?? Array.Empty<string>();
+            _behaviorOptions = behaviorOptions ?? Array.Empty<ModelBehaviorOption>();
             _defaultChannels = defaultChannels ?? Array.Empty<string>();
         }
 
@@ -60,7 +67,17 @@ namespace UniAI
 
         public ModelEntry ToModelEntry()
         {
-            return new ModelEntry(Id, Vendor, Capabilities, Endpoint, Description, ContextWindow, AdapterId, Behavior);
+            return new ModelEntry(
+                Id,
+                Vendor,
+                Capabilities,
+                Endpoint,
+                Description,
+                ContextWindow,
+                AdapterId,
+                Behavior,
+                _behaviorTags,
+                _behaviorOptions);
         }
     }
 }

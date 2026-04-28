@@ -73,7 +73,24 @@ namespace UniAI
                 "OpenAI",
                 ModelCapability.ImageGen | ModelCapability.ImageEdit,
                 ModelEndpoint.ImageGenerations,
-                "GPT Image 2, 图片生成与编辑模型"),
+                "GPT Image 2, 图片生成与编辑模型",
+                adapterId: "openai.images.gpt-image-2",
+                behavior: ModelBehavior.NoStreaming
+                          | ModelBehavior.NoFunctionCalling
+                          | ModelBehavior.RequiresMultipartForImageEdit,
+                behaviorTags: new[]
+                {
+                    "openai.images.gpt_image",
+                    "openai.images.multipart_edits",
+                    "openai.images.no_response_format"
+                },
+                behaviorOptions: new[]
+                {
+                    new ModelBehaviorOption("image.allowed_output_formats", "png,jpeg,webp"),
+                    new ModelBehaviorOption("image.max_side", "3840"),
+                    new ModelBehaviorOption("image.supports_transparent_background", "false")
+                },
+                defaultChannels: new[] { ChannelOpenAI }),
 
             // Anthropic 模型
             Chat("claude-sonnet-4-20250514", "Anthropic", ModelCapability.Chat | ModelCapability.VisionInput, 200000, ChannelClaude),

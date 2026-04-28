@@ -4,6 +4,7 @@ using System.Text;
 using System.Threading;
 using Cysharp.Threading.Tasks;
 using Cysharp.Threading.Tasks.Linq;
+using UnityEngine;
 using UnityEngine.Networking;
 
 namespace UniAI
@@ -31,6 +32,45 @@ namespace UniAI
             request.SetRequestHeader("Content-Type", "application/json");
 
             AILogger.Verbose($"POST {url} body={jsonBody.Length} chars");
+            return await SendAsync(request, headers, timeoutSeconds, ct);
+        }
+
+        /// <summary>
+        /// Sends a POST multipart/form-data request and returns the complete response.
+        /// </summary>
+        internal static async UniTask<HttpResult> PostMultipartAsync(
+            string url,
+            IReadOnlyList<HttpMultipartFormPart> parts,
+            Dictionary<string, string> headers,
+            int timeoutSeconds,
+            CancellationToken ct)
+        {
+            var form = new WWWForm();
+
+            if (parts != null)
+            {
+                foreach (var part in parts)
+                {
+                    if (part == null || string.IsNullOrEmpty(part.Name))
+                        continue;
+
+                    if (part.Data != null)
+                    {
+                        form.AddBinaryData(
+                            part.Name,
+                            part.Data,
+                            string.IsNullOrEmpty(part.FileName) ? part.Name : part.FileName,
+                            string.IsNullOrEmpty(part.ContentType) ? "application/octet-stream" : part.ContentType);
+                    }
+                    else
+                    {
+                        form.AddField(part.Name, part.Value ?? "");
+                    }
+                }
+            }
+
+            using var request = UnityWebRequest.Post(url, form);
+            AILogger.Verbose($"POST multipart {url} parts={parts?.Count ?? 0}");
             return await SendAsync(request, headers, timeoutSeconds, ct);
         }
 
@@ -146,5 +186,28 @@ namespace UniAI
                 }
             });
         }
+    }
+
+    public sealed class HttpMultipartFormPart
+    {
+        public string Name;
+        public string Value;
+        public byte[] Data;
+        public string FileName;
+        public string ContentType;
+
+        public static HttpMultipartFormPart Field(string name, string value) => new()
+        {
+            Name = name,
+            Value = value
+        };
+
+        public static HttpMultipartFormPart File(string name, byte[] data, string fileName, string contentType) => new()
+        {
+            Name = name,
+            Data = data,
+            FileName = fileName,
+            ContentType = contentType
+        };
     }
 }

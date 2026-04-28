@@ -50,8 +50,29 @@ namespace UniAI.Editor.Tools
             [ToolParam(Description = "Model name (e.g. 'dall-e-3', 'gemini-imagen-3'). Must be in a channel's model list. Model capability (image/audio/video) is auto-detected from ModelRegistry.")]
             public string Model;
 
-            [ToolParam(Description = "Aspect ratio for images: '1:1', '16:9', '9:16'.", Required = false, DefaultValue = "1:1")]
+            [ToolParam(Description = "Aspect ratio for images: '1:1', '16:9', '9:16'.", Required = false)]
             public string AspectRatio;
+
+            [ToolParam(Description = "Provider-native image size such as 'auto', '1024x1024', '1536x1024'.", Required = false)]
+            public string Size;
+
+            [ToolParam(Description = "Image quality such as 'auto', 'low', 'medium', or 'high'.", Required = false)]
+            public string Quality;
+
+            [ToolParam(Description = "Output format such as 'png', 'jpeg', or 'webp'.", Required = false)]
+            public string OutputFormat;
+
+            [ToolParam(Description = "Output compression, usually 0-100 when supported.", Required = false)]
+            public int OutputCompression;
+
+            [ToolParam(Description = "Background preference such as 'auto', 'opaque', or 'transparent'.", Required = false)]
+            public string Background;
+
+            [ToolParam(Description = "Input image asset/file paths for image editing. Use paths under Assets/.", Required = false)]
+            public string[] InputImages;
+
+            [ToolParam(Description = "Optional mask image asset/file path for image editing. Use a path under Assets/.", Required = false)]
+            public string MaskImage;
 
             [ToolParam(Description = "Number of assets to generate (default 1).", Required = false)]
             public int Count;
@@ -74,28 +95,27 @@ namespace UniAI.Editor.Tools
             if (string.IsNullOrEmpty(model))
                 return ToolResponse.Error("'model' is required. Use 'list_models' to see available models and their capabilities.");
 
-            // 查询模型能力 — 必须支持至少一种生成能力
-            var capabilities = ModelRegistry.GetCapabilities(model);
+            // Model metadata determines whether this model can produce generated assets.
+            var entry = ModelRegistry.Get(model);
+            var capabilities = entry?.Capabilities ?? ModelCapability.Chat;
             if (!IsGenerativeModel(capabilities))
                 return ToolResponse.Error($"Model '{model}' does not support asset generation. Use 'list_models' to see available generative models.");
 
-            // 查找渠道
+            // Find compatible channels, then let the runtime router choose a provider.
             var config = AIConfigManager.LoadConfig();
             var channels = config.FindChannelsForModel(model);
             if (channels.Count == 0)
                 return ToolResponse.Error($"Model '{model}' not found in any enabled channel. Add it to a channel's model list first.");
 
-            var channel = channels[0];
-            var apiKey = channel.GetEffectiveApiKey();
-            if (string.IsNullOrEmpty(apiKey))
-                return ToolResponse.Error($"Channel '{channel.Name}' has no API key configured.");
+            var route = GenerativeProviderRouter.Resolve(channels, entry, model);
+            if (route.Provider == null)
+                return ToolResponse.Error(route.Error);
 
-            // 根据能力路由到对应生成器
             GenerateResult result;
             try
             {
-                if (ModelRegistry.HasCapability(model, ModelCapability.ImageGen))
-                    result = await GenerateImage(channel, apiKey, model, args, ct);
+                if (GenerativeProviderRouter.HasImageGenerationCapability(capabilities))
+                    result = await GenerateImage(route.Provider, args, ct);
                 else
                     result = GenerateResult.Fail($"Model '{model}' capabilities ({capabilities}) are not yet supported for generation.");
             }
@@ -115,25 +135,29 @@ namespace UniAI.Editor.Tools
                 return ToolResponse.Error("Generation succeeded but returned no assets.");
 
             // 保存到 Assets/
-            return SaveAssets(result, prompt, model, channel.Name, (string)args["savePath"]);
+            return SaveAssets(result, prompt, model, route.Channel.Name, (string)args["savePath"]);
         }
 
         private static async UniTask<GenerateResult> GenerateImage(
-            ChannelEntry channel, string apiKey, string model, JObject args, CancellationToken ct)
+            IGenerativeAssetProvider provider, JObject args, CancellationToken ct)
         {
-            var aspectRatio = (string)args["aspectRatio"] ?? "1:1";
+            var aspectRatio = (string)args["aspectRatio"];
             int count = (int?)args["count"] ?? 1;
-
-            var provider = new OpenAIImageProvider(
-                apiKey, channel.BaseUrl, model,
-                providerId: $"image-{channel.Id}-{model}",
-                displayName: $"{channel.Name} ({model})");
+            var inputImages = LoadInputImages(args["inputImages"] as JArray);
+            var maskImage = LoadInputImage((string)args["maskImage"]);
 
             var request = new GenerateRequest
             {
                 Prompt = (string)args["prompt"],
                 AssetType = GenerativeAssetType.Image,
                 AspectRatio = aspectRatio,
+                Size = (string)args["size"],
+                Quality = (string)args["quality"],
+                OutputFormat = (string)args["outputFormat"],
+                OutputCompression = (int?)args["outputCompression"],
+                Background = (string)args["background"],
+                InputImages = inputImages,
+                MaskImage = maskImage,
                 Count = count
             };
 
@@ -211,6 +235,10 @@ namespace UniAI.Editor.Tools
                     vendor = entry?.Vendor ?? "Unknown",
                     capabilities = capabilities.ToString(),
                     endpoint = (entry?.Endpoint ?? ModelEndpoint.ChatCompletions).ToString(),
+                    adapterId = entry?.AdapterId ?? "",
+                    behavior = (entry?.Behavior ?? ModelBehavior.None).ToString(),
+                    behaviorTags = entry?.BehaviorTags ?? new List<string>(),
+                    behaviorOptions = FormatModelBehaviorOptions(entry?.BehaviorOptions),
                     description = entry?.Description ?? "",
                     channels
                 };
@@ -230,6 +258,63 @@ namespace UniAI.Editor.Tools
         }
 
         // ─── 辅助 ───
+
+        private static List<GenerateImageInput> LoadInputImages(JArray paths)
+        {
+            if (paths == null || paths.Count == 0)
+                return null;
+
+            var result = new List<GenerateImageInput>();
+            foreach (var item in paths)
+            {
+                var input = LoadInputImage((string)item);
+                if (input != null)
+                    result.Add(input);
+            }
+
+            return result.Count > 0 ? result : null;
+        }
+
+        private static List<object> FormatModelBehaviorOptions(IReadOnlyList<ModelBehaviorOption> options)
+        {
+            var result = new List<object>();
+            if (options == null)
+                return result;
+
+            foreach (var option in options)
+            {
+                if (option == null)
+                    continue;
+
+                result.Add(new { key = option.Key, value = option.Value });
+            }
+
+            return result;
+        }
+
+        private static GenerateImageInput LoadInputImage(string path)
+        {
+            if (string.IsNullOrEmpty(path))
+                return null;
+
+            if (!File.Exists(path))
+                throw new FileNotFoundException($"Image file not found: {path}", path);
+
+            return new GenerateImageInput(
+                File.ReadAllBytes(path),
+                Path.GetFileName(path),
+                GuessImageMediaType(path));
+        }
+
+        private static string GuessImageMediaType(string path)
+        {
+            return Path.GetExtension(path).ToLowerInvariant() switch
+            {
+                ".jpg" or ".jpeg" => "image/jpeg",
+                ".webp" => "image/webp",
+                _ => "image/png"
+            };
+        }
 
         private static string ResolveFilePath(string savePath, string extension, int index, int total)
         {
@@ -261,12 +346,7 @@ namespace UniAI.Editor.Tools
 
         private static bool IsGenerativeModel(ModelCapability capabilities)
         {
-            const ModelCapability generativeCaps =
-                ModelCapability.ImageGen |
-                ModelCapability.AudioGen |
-                ModelCapability.VideoGen;
-
-            return (capabilities & generativeCaps) != 0;
+            return GenerativeProviderRouter.IsGenerativeModel(capabilities);
         }
     }
 }
