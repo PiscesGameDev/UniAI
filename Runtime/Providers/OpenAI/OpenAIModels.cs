@@ -12,7 +12,7 @@ namespace UniAI.Providers.OpenAI
         [JsonProperty("model")] public string Model;
         [JsonProperty("messages")] public List<OpenAIMessage> Messages;
         [JsonProperty("max_tokens")] public int MaxTokens;
-        [JsonProperty("temperature")] public float Temperature;
+        [JsonProperty("temperature")] public float? Temperature;
         [JsonProperty("stream")] public bool Stream;
         [JsonProperty("tools")] public List<OpenAIToolDef> Tools;
         [JsonProperty("tool_choice")] public object ToolChoice;
@@ -26,6 +26,7 @@ namespace UniAI.Providers.OpenAI
         [JsonProperty("content")] public object Content;
         [JsonProperty("tool_call_id")] public string ToolCallId;
         [JsonProperty("tool_calls")] public List<OpenAIToolCallMsg> ToolCallsOut;
+        [JsonProperty("reasoning_content")] public string ReasoningContent;
     }
 
     [Serializable]
@@ -71,6 +72,7 @@ namespace UniAI.Providers.OpenAI
     {
         [JsonProperty("role")] public string Role;
         [JsonProperty("content")] public string Content;
+        [JsonProperty("reasoning_content")] public string ReasoningContent;
         [JsonProperty("tool_calls")] public List<OpenAIToolCallMsg> ToolCalls;
     }
 
@@ -105,6 +107,7 @@ namespace UniAI.Providers.OpenAI
     {
         [JsonProperty("role")] public string Role;
         [JsonProperty("content")] public string Content;
+        [JsonProperty("reasoning_content")] public string ReasoningContent;
         [JsonProperty("tool_calls")] public List<OpenAIStreamToolCall> ToolCalls;
     }
 

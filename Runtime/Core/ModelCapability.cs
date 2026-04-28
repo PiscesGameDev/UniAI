@@ -32,6 +32,27 @@ namespace UniAI
     }
 
     /// <summary>
+    /// 模型行为标志，用于描述同一协议外壳下的模型/厂商方言差异。
+    /// </summary>
+    [Flags]
+    public enum ModelBehavior
+    {
+        None = 0,
+
+        /// <summary>响应中可能返回 reasoning_content。</summary>
+        EmitsReasoningContent = 1 << 0,
+
+        /// <summary>当 assistant 消息包含 tool_calls 时，后续请求必须回放 reasoning_content。</summary>
+        RequiresReasoningReplayForToolCalls = 1 << 1,
+
+        /// <summary>模型默认开启 thinking/reasoning 模式。</summary>
+        ThinkingDefaultEnabled = 1 << 2,
+
+        /// <summary>thinking 模式下不应发送 temperature 等采样参数。</summary>
+        IgnoresTemperatureInThinking = 1 << 3
+    }
+
+    /// <summary>
     /// 模型对应的 API 端点类型。
     /// </summary>
     public enum ModelEndpoint

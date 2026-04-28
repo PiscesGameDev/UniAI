@@ -113,7 +113,19 @@ namespace UniAI
 
             // DeepSeek 模型
             Chat("deepseek-v4-flash", "DeepSeek", ModelCapability.Chat, 1000000, ChannelDeepSeek),
-            Chat("deepseek-v4-pro", "DeepSeek", ModelCapability.Chat, 1000000, ChannelDeepSeek),
+            new ModelPreset(
+                "deepseek-v4-pro",
+                "DeepSeek",
+                ModelCapability.Chat,
+                ModelEndpoint.ChatCompletions,
+                "DeepSeek V4 Pro，thinking mode 默认开启",
+                contextWindow: 1000000,
+                adapterId: "deepseek.openai_chat.thinking",
+                behavior: ModelBehavior.EmitsReasoningContent
+                          | ModelBehavior.RequiresReasoningReplayForToolCalls
+                          | ModelBehavior.ThinkingDefaultEnabled
+                          | ModelBehavior.IgnoresTemperatureInThinking,
+                defaultChannels: new[] { ChannelDeepSeek }),
 
             // Meta（Llama）模型
             Chat("llama-3.3-70b", "Meta", ModelCapability.Chat, 128000),

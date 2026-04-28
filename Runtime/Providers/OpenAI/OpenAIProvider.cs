@@ -40,14 +40,15 @@ namespace UniAI.Providers.OpenAI
         protected override object BuildRequestBody(AIRequest request, bool stream)
         {
             var modelId = ResolveModelId(request);
-            var messages = ConvertMessages(request);
+            var dialect = OpenAIChatDialectRegistry.Resolve(modelId);
+            var messages = ConvertMessages(request, dialect);
 
             var openAIRequest = new OpenAIRequest
             {
                 Model = modelId,
                 Messages = messages,
                 MaxTokens = request.MaxTokens,
-                Temperature = request.Temperature,
+                Temperature = dialect.ShouldOmitTemperature(request) ? null : request.Temperature,
                 Stream = stream
             };
 
@@ -81,7 +82,7 @@ namespace UniAI.Providers.OpenAI
             return false;
         }
 
-        private static List<OpenAIMessage> ConvertMessages(AIRequest request)
+        private static List<OpenAIMessage> ConvertMessages(AIRequest request, IOpenAIChatDialect dialect)
         {
             var messages = new List<OpenAIMessage>();
 
@@ -119,12 +120,14 @@ namespace UniAI.Providers.OpenAI
                         Function = new OpenAIFunctionCall { Name = tu.Name, Arguments = tu.Arguments ?? "{}" }
                     }).ToList();
 
-                    messages.Add(new OpenAIMessage
+                    var assistantMessage = new OpenAIMessage
                     {
                         Role = "assistant",
                         Content = textPart,
                         ToolCallsOut = toolCalls
-                    });
+                    };
+                    dialect.ApplyAssistantMessageExtras(assistantMessage, msg, hasToolCalls: true);
+                    messages.Add(assistantMessage);
                     continue;
                 }
 
@@ -157,7 +160,10 @@ namespace UniAI.Providers.OpenAI
                     content = msg.Contents.FirstOrDefault() is AITextContent t ? t.Text : "";
                 }
 
-                messages.Add(new OpenAIMessage { Role = role, Content = content });
+                var openAIMessage = new OpenAIMessage { Role = role, Content = content };
+                if (msg.Role == AIRole.Assistant)
+                    dialect.ApplyAssistantMessageExtras(openAIMessage, msg, hasToolCalls: false);
+                messages.Add(openAIMessage);
             }
 
             return messages;
@@ -217,10 +223,21 @@ namespace UniAI.Providers.OpenAI
 
         private class OpenAIStreamState
         {
+            public readonly IOpenAIChatDialect Dialect;
             public readonly Dictionary<int, (string Id, string Name, string Args)> ToolCallAccumulators = new();
+            public string ReasoningContent = "";
+
+            public OpenAIStreamState(IOpenAIChatDialect dialect)
+            {
+                Dialect = dialect;
+            }
         }
 
-        protected override object CreateStreamState() => new OpenAIStreamState();
+        protected override object CreateStreamState(object requestBody)
+        {
+            var modelId = (requestBody as OpenAIRequest)?.Model;
+            return new OpenAIStreamState(OpenAIChatDialectRegistry.Resolve(modelId));
+        }
 
         protected override async UniTask ProcessStreamEvent(SSEEvent evt, object streamState, EmitChunk emit)
         {
@@ -228,6 +245,13 @@ namespace UniAI.Providers.OpenAI
             var resp = JsonConvert.DeserializeObject<OpenAIStreamResponse>(evt.Data);
             var choice = resp?.Choices?.FirstOrDefault();
             if (choice == null) return;
+
+            var reasoningDelta = state.Dialect.GetReasoningDelta(choice.Delta);
+            if (!string.IsNullOrEmpty(reasoningDelta))
+            {
+                state.ReasoningContent += reasoningDelta;
+                await emit(new AIStreamChunk { ReasoningDelta = reasoningDelta });
+            }
 
             // 处理 tool_calls 增量
             if (choice.Delta?.ToolCalls != null)
@@ -246,7 +270,9 @@ namespace UniAI.Providers.OpenAI
                         current.Args += tc.Function.Arguments;
                     state.ToolCallAccumulators[tc.Index] = current;
                 }
-                return;
+
+                if (choice.FinishReason == null)
+                    return;
             }
 
             // 文本增量 — 即使同 chunk 也带了 finish_reason 也要先发出
@@ -269,6 +295,9 @@ namespace UniAI.Providers.OpenAI
                 await emit(new AIStreamChunk
                 {
                     IsComplete = true,
+                    ReasoningContent = string.IsNullOrEmpty(state.ReasoningContent)
+                        ? null
+                        : state.ReasoningContent,
                     Usage = resp.Usage != null ? new TokenUsage
                     {
                         InputTokens = resp.Usage.PromptTokens,
@@ -290,6 +319,8 @@ namespace UniAI.Providers.OpenAI
                 var choice = resp.Choices?.FirstOrDefault();
                 var text = choice?.Message?.Content ?? "";
                 var finishReason = choice?.FinishReason;
+                var dialect = OpenAIChatDialectRegistry.Resolve((requestBody as OpenAIRequest)?.Model);
+                var reasoningContent = dialect.GetReasoningContent(choice?.Message);
 
                 List<AIToolCall> toolCalls = null;
                 if (choice?.Message?.ToolCalls != null)
@@ -311,7 +342,8 @@ namespace UniAI.Providers.OpenAI
                     } : null,
                     finishReason,
                     json,
-                    toolCalls
+                    toolCalls,
+                    reasoningContent
                 );
             }
             catch (Exception e)
@@ -331,6 +363,68 @@ namespace UniAI.Providers.OpenAI
             }
             catch { /* use original error */ }
             return null;
+        }
+    }
+
+    internal interface IOpenAIChatDialect
+    {
+        bool ShouldOmitTemperature(AIRequest request);
+        void ApplyAssistantMessageExtras(OpenAIMessage target, AIMessage source, bool hasToolCalls);
+        string GetReasoningContent(OpenAIResponseMessage message);
+        string GetReasoningDelta(OpenAIStreamDelta delta);
+    }
+
+    internal sealed class DefaultOpenAIChatDialect : IOpenAIChatDialect
+    {
+        public static readonly DefaultOpenAIChatDialect Instance = new();
+
+        private DefaultOpenAIChatDialect() { }
+
+        public bool ShouldOmitTemperature(AIRequest request) => false;
+
+        public void ApplyAssistantMessageExtras(OpenAIMessage target, AIMessage source, bool hasToolCalls) { }
+
+        public string GetReasoningContent(OpenAIResponseMessage message) => null;
+
+        public string GetReasoningDelta(OpenAIStreamDelta delta) => null;
+    }
+
+    internal sealed class DeepSeekThinkingDialect : IOpenAIChatDialect
+    {
+        public static readonly DeepSeekThinkingDialect Instance = new();
+
+        private DeepSeekThinkingDialect() { }
+
+        public bool ShouldOmitTemperature(AIRequest request) => true;
+
+        public void ApplyAssistantMessageExtras(OpenAIMessage target, AIMessage source, bool hasToolCalls)
+        {
+            if (!hasToolCalls || string.IsNullOrEmpty(source?.ReasoningContent))
+                return;
+
+            target.ReasoningContent = source.ReasoningContent;
+        }
+
+        public string GetReasoningContent(OpenAIResponseMessage message) => message?.ReasoningContent;
+
+        public string GetReasoningDelta(OpenAIStreamDelta delta) => delta?.ReasoningContent;
+    }
+
+    internal static class OpenAIChatDialectRegistry
+    {
+        public static IOpenAIChatDialect Resolve(string modelId)
+        {
+            var model = ModelRegistry.Get(modelId);
+            if (model == null)
+                return DefaultOpenAIChatDialect.Instance;
+
+            if (model.AdapterId == "deepseek.openai_chat.thinking"
+                || (model.Behavior & ModelBehavior.RequiresReasoningReplayForToolCalls) != 0)
+            {
+                return DeepSeekThinkingDialect.Instance;
+            }
+
+            return DefaultOpenAIChatDialect.Instance;
         }
     }
 }

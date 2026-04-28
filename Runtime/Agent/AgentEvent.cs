@@ -74,6 +74,11 @@ namespace UniAI
         public TokenUsage Usage { get; set; }
 
         /// <summary>
+        /// Provider-native reasoning 内容。仅用于协议回放，不作为普通聊天文本展示。
+        /// </summary>
+        public string ReasoningContent { get; set; }
+
+        /// <summary>
         /// 将流式 AIStreamChunk 转换为 AgentEvent（无 Tool 场景通用）
         /// </summary>
         internal static AgentEvent FromChunk(AIStreamChunk chunk)
@@ -85,7 +90,13 @@ namespace UniAI
                 return new AgentEvent { Type = AgentEventType.TextDelta, Text = chunk.DeltaText };
 
             if (chunk.IsComplete)
-                return new AgentEvent { Type = AgentEventType.TurnComplete, TurnIndex = 0, Usage = chunk.Usage };
+                return new AgentEvent
+                {
+                    Type = AgentEventType.TurnComplete,
+                    TurnIndex = 0,
+                    Usage = chunk.Usage,
+                    ReasoningContent = chunk.ReasoningContent
+                };
 
             return null;
         }

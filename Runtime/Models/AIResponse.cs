@@ -43,18 +43,24 @@ namespace UniAI
         public List<AIToolCall> ToolCalls { get; set; }
 
         /// <summary>
+        /// Provider-native reasoning 内容。仅用于协议回放，不作为普通聊天文本展示。
+        /// </summary>
+        public string ReasoningContent { get; set; }
+
+        /// <summary>
         /// 是否包含 Tool 调用
         /// </summary>
         public bool HasToolCalls => ToolCalls?.Count > 0;
 
-        public static AIResponse Success(string text, TokenUsage usage = null, string stopReason = null, string rawResponse = null, List<AIToolCall> toolCalls = null) => new()
+        public static AIResponse Success(string text, TokenUsage usage = null, string stopReason = null, string rawResponse = null, List<AIToolCall> toolCalls = null, string reasoningContent = null) => new()
         {
             IsSuccess = true,
             Text = text,
             Usage = usage,
             StopReason = stopReason,
             RawResponse = rawResponse,
-            ToolCalls = toolCalls
+            ToolCalls = toolCalls,
+            ReasoningContent = reasoningContent
         };
 
         public static AIResponse Fail(string error, string rawResponse = null) => new()

@@ -188,12 +188,12 @@ namespace UniAI
     /// </summary>
     public sealed class AIRequestMetrics
     {
-        public string Model;
-        public long DurationMs;
-        public int InputTokens;
-        public int OutputTokens;
+        public string Model { get; set; }
+        public long DurationMs { get; set; }
+        public int InputTokens { get; set; }
+        public int OutputTokens { get; set; }
         public int TotalTokens => InputTokens + OutputTokens;
-        public string Error;
-        public bool Success;
+        public string Error { get; set; }
+        public bool Success { get; set; }
     }
 }

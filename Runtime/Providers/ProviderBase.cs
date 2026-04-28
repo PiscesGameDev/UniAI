@@ -82,7 +82,7 @@ namespace UniAI.Providers
                 AILogger.Verbose($"{Name} StreamAsync model={GetModelFromBody(body)}");
 
                 var parser = new SSEParser();
-                var streamState = CreateStreamState();
+                var streamState = CreateStreamState(body);
 
                 await foreach (var line in AIHttpClient.PostStreamAsync(url, json, headers, linkedToken))
                 {
@@ -133,6 +133,11 @@ namespace UniAI.Providers
         /// 创建流式解析状态对象（用于跨事件累积 Tool 调用等）。默认返回 null。
         /// </summary>
         protected virtual object CreateStreamState() => null;
+
+        /// <summary>
+        /// 创建流式解析状态对象。需要请求体上下文的 Provider 可重写此 overload。
+        /// </summary>
+        protected virtual object CreateStreamState(object requestBody) => CreateStreamState();
 
         /// <summary>
         /// 处理单个 SSE 事件，将解析结果通过 emit 输出。子类必须实现协议特定的解析逻辑。

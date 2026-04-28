@@ -31,11 +31,18 @@ namespace UniAI
         /// <summary>上下文窗口大小（tokens），0 表示由 ModelRegistry 前缀表兜底</summary>
         public int ContextWindow;
 
+        /// <summary>Provider 内部使用的方言/适配器标识。为空时走协议默认适配。</summary>
+        public string AdapterId;
+
+        /// <summary>模型行为标志，用于选择 Provider 方言和参数兼容策略。</summary>
+        public ModelBehavior Behavior;
+
         public ModelEntry() { }
 
         public ModelEntry(string id, string vendor,
             ModelCapability capabilities, ModelEndpoint endpoint,
-            string description = null, int contextWindow = 0)
+            string description = null, int contextWindow = 0,
+            string adapterId = null, ModelBehavior behavior = ModelBehavior.None)
         {
             Id = id;
             Vendor = vendor;
@@ -43,6 +50,8 @@ namespace UniAI
             Endpoint = endpoint;
             Description = description;
             ContextWindow = contextWindow;
+            AdapterId = adapterId;
+            Behavior = behavior;
         }
 
         /// <summary>判断模型是否支持指定能力</summary>

@@ -214,6 +214,7 @@ namespace UniAI
                                 ToolUseId = evt.ToolCall?.Id,
                                 ToolName = evt.ToolCall?.Name ?? "unknown",
                                 ToolArguments = evt.ToolCall?.Arguments ?? "",
+                                ReasoningContent = evt.ReasoningContent,
                                 Content = $"调用工具: {evt.ToolCall?.Name}",
                                 Timestamp = DateTimeOffset.UtcNow.ToUnixTimeSeconds()
                             });

@@ -11,6 +11,16 @@ namespace UniAI
         public string DeltaText { get; set; }
 
         /// <summary>
+        /// Provider-native reasoning 增量。仅用于协议回放，不作为普通聊天文本展示。
+        /// </summary>
+        public string ReasoningDelta { get; set; }
+
+        /// <summary>
+        /// Provider-native reasoning 完整内容。通常仅最后一个块有值。
+        /// </summary>
+        public string ReasoningContent { get; set; }
+
+        /// <summary>
         /// 是否为最后一个块
         /// </summary>
         public bool IsComplete { get; set; }

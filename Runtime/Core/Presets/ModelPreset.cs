@@ -17,6 +17,8 @@ namespace UniAI
         public readonly ModelEndpoint Endpoint;
         public readonly string Description;
         public readonly int ContextWindow;
+        public readonly string AdapterId;
+        public readonly ModelBehavior Behavior;
 
         public IReadOnlyList<string> DefaultChannels => _defaultChannels;
 
@@ -27,6 +29,8 @@ namespace UniAI
             ModelEndpoint endpoint,
             string description = null,
             int contextWindow = 0,
+            string adapterId = null,
+            ModelBehavior behavior = ModelBehavior.None,
             params string[] defaultChannels)
         {
             Id = id;
@@ -35,6 +39,8 @@ namespace UniAI
             Endpoint = endpoint;
             Description = description;
             ContextWindow = contextWindow;
+            AdapterId = adapterId;
+            Behavior = behavior;
             _defaultChannels = defaultChannels ?? Array.Empty<string>();
         }
 
@@ -54,7 +60,7 @@ namespace UniAI
 
         public ModelEntry ToModelEntry()
         {
-            return new ModelEntry(Id, Vendor, Capabilities, Endpoint, Description, ContextWindow);
+            return new ModelEntry(Id, Vendor, Capabilities, Endpoint, Description, ContextWindow, AdapterId, Behavior);
         }
     }
 }

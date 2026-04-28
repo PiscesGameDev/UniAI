@@ -48,6 +48,7 @@ namespace UniAI
         public string ToolArguments;
         public string ToolResult;
         public bool IsToolError;
+        public string ReasoningContent;
 
         /// <summary>附件列表（图片 / 文件），可选</summary>
         public List<ChatAttachment> Attachments;
@@ -138,8 +139,17 @@ namespace UniAI
                     if (pendingAssistant == null)
                     {
                         pendingAssistant = new AIMessage
-                            { Role = AIRole.Assistant, Contents = new List<AIContent>() };
+                        {
+                            Role = AIRole.Assistant,
+                            Contents = new List<AIContent>(),
+                            ReasoningContent = msg.ReasoningContent
+                        };
                         messages.Add(pendingAssistant);
+                    }
+                    else if (string.IsNullOrEmpty(pendingAssistant.ReasoningContent)
+                             && !string.IsNullOrEmpty(msg.ReasoningContent))
+                    {
+                        pendingAssistant.ReasoningContent = msg.ReasoningContent;
                     }
 
                     pendingAssistant.Contents.Add(new AIToolUseContent
@@ -206,6 +216,7 @@ namespace UniAI
                 else
                 {
                     var assistantAiMsg = AIMessage.Assistant(content);
+                    assistantAiMsg.ReasoningContent = msg.ReasoningContent;
                     messages.Add(assistantAiMsg);
                     pendingAssistant = assistantAiMsg;
                 }

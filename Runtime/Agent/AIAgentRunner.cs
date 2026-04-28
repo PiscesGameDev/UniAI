@@ -142,7 +142,7 @@ namespace UniAI
                 if (response.HasToolCalls)
                 {
                     SanitizeToolCallArguments(response.ToolCalls);
-                    workingMessages.Add(BuildAssistantMessage(response.Text, response.ToolCalls));
+                    workingMessages.Add(BuildAssistantMessage(response.Text, response.ToolCalls, response.ReasoningContent));
 
                     // 执行 Tool 并追加结果
                     foreach (var tc in response.ToolCalls)
@@ -205,6 +205,7 @@ namespace UniAI
 
                     var request = BuildRequest(workingMessages, requestOverride);
                     var responseText = "";
+                    var reasoningContent = "";
                     var toolCalls = new List<AIToolCall>();
                     TokenUsage turnUsage = null;
 
@@ -229,11 +230,19 @@ namespace UniAI
                             });
                         }
 
+                        if (!string.IsNullOrEmpty(chunk.ReasoningDelta))
+                            reasoningContent += chunk.ReasoningDelta;
+
                         if (chunk.ToolCall != null)
                             toolCalls.Add(chunk.ToolCall);
 
-                        if (chunk.IsComplete && chunk.Usage != null)
-                            turnUsage = chunk.Usage;
+                        if (chunk.IsComplete)
+                        {
+                            if (chunk.Usage != null)
+                                turnUsage = chunk.Usage;
+                            if (!string.IsNullOrEmpty(chunk.ReasoningContent))
+                                reasoningContent = chunk.ReasoningContent;
+                        }
                     }
 
                     AccumulateUsage(totalUsage, turnUsage);
@@ -241,7 +250,7 @@ namespace UniAI
                     if (toolCalls.Count > 0)
                     {
                         SanitizeToolCallArguments(toolCalls);
-                        workingMessages.Add(BuildAssistantMessage(responseText, toolCalls));
+                        workingMessages.Add(BuildAssistantMessage(responseText, toolCalls, reasoningContent));
 
                         // 执行 Tool
                         foreach (var tc in toolCalls)
@@ -249,7 +258,8 @@ namespace UniAI
                             await writer.YieldAsync(new AgentEvent
                             {
                                 Type = AgentEventType.ToolCallStart,
-                                ToolCall = tc
+                                ToolCall = tc,
+                                ReasoningContent = string.IsNullOrEmpty(reasoningContent) ? null : reasoningContent
                             });
 
                             var (result, isError) = await ExecuteToolAsync(tc, linkedToken);
@@ -270,7 +280,8 @@ namespace UniAI
                         {
                             Type = AgentEventType.TurnComplete,
                             TurnIndex = turn,
-                            Usage = turnUsage
+                            Usage = turnUsage,
+                            ReasoningContent = string.IsNullOrEmpty(reasoningContent) ? null : reasoningContent
                         });
 
                         continue;
@@ -282,7 +293,8 @@ namespace UniAI
                         Type = AgentEventType.TurnComplete,
                         TurnIndex = turn,
                         Text = responseText,
-                        Usage = totalUsage
+                        Usage = totalUsage,
+                        ReasoningContent = string.IsNullOrEmpty(reasoningContent) ? null : reasoningContent
                     });
                     return;
                 }
@@ -354,9 +366,14 @@ namespace UniAI
             }
         }
 
-        private static AIMessage BuildAssistantMessage(string text, List<AIToolCall> toolCalls)
+        private static AIMessage BuildAssistantMessage(string text, List<AIToolCall> toolCalls, string reasoningContent)
         {
-            var msg = new AIMessage { Role = AIRole.Assistant, Contents = new List<AIContent>() };
+            var msg = new AIMessage
+            {
+                Role = AIRole.Assistant,
+                Contents = new List<AIContent>(),
+                ReasoningContent = string.IsNullOrEmpty(reasoningContent) ? null : reasoningContent
+            };
             if (!string.IsNullOrEmpty(text))
                 msg.Contents.Add(new AITextContent(text));
             foreach (var tc in toolCalls)
