@@ -52,6 +52,10 @@ https://github.com/Cysharp/UniTask.git?path=src/UniTask/Assets/Plugins/UniTask
 
 打开 `Window > UniAI > Manager`，在「渠道」Tab 中配置 Claude、OpenAI 或 OpenAI-compatible 服务。
 
+<p align="center">
+  <img src=".github/images/settings.png" alt="UniAI Manager Settings" width="860">
+</p>
+
 支持环境变量覆盖 API Key，例如：
 
 - `ANTHROPIC_API_KEY`
@@ -367,6 +371,10 @@ await orchestrator.StreamResponseAsync(new ChatStreamRequest
 ### Chat
 
 菜单：`Window > UniAI > Chat`
+
+<p align="center">
+  <img src=".github/images/chat.png" alt="UniAI Chat Window" width="860">
+</p>
 
 能力：
 
