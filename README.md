@@ -216,6 +216,10 @@ internal static class ReadFileTool
 - Max Turns
 - MCP Servers
 
+<p align="center">
+  <img src=".github/images/agent-settings.png" alt="UniAI Agent Definition Settings" width="860">
+</p>
+
 代码运行 Agent：
 
 ```csharp
